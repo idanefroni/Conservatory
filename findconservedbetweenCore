@@ -1,0 +1,94 @@
+#!/bin/bash
+
+#a=Solyc09g066270.3.1
+#b=AT2G42440
+#c=AT3G58190
+
+remapthreshold=1200
+
+######################
+## high stringency
+#flank=2
+#threshold=1200
+#type="hs"
+
+######################
+## low stringency
+flank=5
+threshold=1000
+type="ls"
+
+#####################
+a=Solyc02g077390.2.1
+b=AT2G33880
+c=AT5G45980
+
+export CONUNPE=~/workspace/solgenomes_long/conUnPe/
+~/workspace/solgenomes_long/conUnPe/makeCorePromoter --genomeDatabase $CONUNPE/../allgenomes/genome_database.csv --locus $a --flank $flank > $a.conc.fasta
+grep -A1 $a $CONUNPE../allgenomes/Slycopersicum.upstream.fasta > $a.fasta
+
+export CONUNPE=~/workspace/bragenomes/conUnPe/
+~/workspace/solgenomes_long/conUnPe/makeCorePromoter --genomeDatabase $CONUNPE/../allgenomes/genome_database.csv --locus $b --flank $flank > $b.conc.fasta
+~/workspace/solgenomes_long/conUnPe/makeCorePromoter --genomeDatabase $CONUNPE/../allgenomes/genome_database.csv --locus $c --flank $flank > $c.conc.fasta
+grep -A1 $b $CONUNPE../allgenomes/Athaliana.upstream.fasta > $b.fasta
+grep -A1 $c $CONUNPE../allgenomes/Athaliana.upstream.fasta > $c.fasta
+
+~/lastz-distrib/bin/lastz $a.conc.fasta $b.conc.fasta --ambiguous=iupac --hspthreshold=$threshold --ydrop=500 --xdrop=1000 --gap=100,40 --seed=match3 --format=maf >"$a.$b".maf
+~/lastz-distrib/bin/lastz $a.conc.fasta $c.conc.fasta --ambiguous=iupac --hspthreshold=$threshold --ydrop=500 --xdrop=1000 --gap=100,40 --seed=match3 --format=maf >"$a.$c".maf
+
+########## Map Solanum
+export CONUNPE=~/workspace/solgenomes_long/conUnPe/
+grep Slyco $a.$b.maf | sed 's/s .* *[0-9]* *[0-9]* [-|+] *[0-9]* //' | awk 'BEGIN{i=0}{print (">frag" i "\n" $0); i=i+1}' | sed 's/-//g'  >$a.$b.fasta
+grep Slyco $a.$c.maf | sed 's/s .* *[0-9]* *[0-9]* [-|+] *[0-9]* //' | awk 'BEGIN{i=0}{print (">frag" i "\n" $0); i=i+1}' | sed 's/-//g'  >$a.$c.fasta
+
+~/lastz-distrib/bin/lastz --seed=match5 --format=sam --gapped --ambiguous=iupac --hspthreshold=$remapthreshold --identity=90 $a.fasta $a.$b.fasta > $a.$b.tmp.sam
+~/lastz-distrib/bin/lastz --seed=match5 --format=sam --gapped --ambiguous=iupac --hspthreshold=$remapthreshold --identity=90 $a.fasta $a.$c.fasta > $a.$c.tmp.sam
+
+rm $a.$b.fasta
+rm $a.$c.fasta
+
+
+$CONUNPE/gene2abs $CONUNPE../allgenomes/Slycopersicum.proce.genes.gff3 $a.$b.tmp.sam U 50000 > $a.$b.sam
+$CONUNPE/gene2abs $CONUNPE../allgenomes/Slycopersicum.proce.genes.gff3 $a.$c.tmp.sam U 50000 > $a.$c.sam
+rm $a.$b.tmp.sam
+rm $a.$c.tmp.sam
+
+samtools sort $a.$b.sam > $a.$b.tmp.bam
+samtools sort $a.$c.sam > $a.$c.tmp.bam
+samtools calmd -b $a.$b.tmp.bam $CONUNPE/../tmp/Slycopersicum.fasta > $a.$b.$type.bam
+samtools calmd -b $a.$c.tmp.bam $CONUNPE/../tmp/Slycopersicum.fasta > $a.$c.$type.bam
+rm $a.$b.tmp.bam
+rm $a.$c.tmp.bam
+
+samtools index $a.$b.$type.bam
+samtools index $a.$c.$type.bam
+
+########## Map Athaliana
+export CONUNPE=~/workspace/bragenomes/conUnPe/
+grep Athaliana $a.$b.maf | sed 's/s .* *[0-9]* *[0-9]* [-|+] *[0-9]* //' | awk 'BEGIN{i=0}{print (">frag" i "\n" $0); i=i+1}' | sed 's/-//g'  >$b.$a.fasta
+grep Athaliana $a.$c.maf | sed 's/s .* *[0-9]* *[0-9]* [-|+] *[0-9]* //' | awk 'BEGIN{i=0}{print (">frag" i "\n" $0); i=i+1}' | sed 's/-//g'  >$c.$a.fasta
+
+~/lastz-distrib/bin/lastz --seed=match5 --format=sam --gapped --ambiguous=iupac --hspthreshold=$remapthreshold --identity=90 $b.fasta $b.$a.fasta > $b.$a.tmp.sam
+~/lastz-distrib/bin/lastz --seed=match5 --format=sam --gapped --ambiguous=iupac --hspthreshold=$remapthreshold --identity=90 $c.fasta $c.$a.fasta > $c.$a.tmp.sam
+
+$CONUNPE../../solgenomes_long/conUnPe/gene2abs $CONUNPE../allgenomes/Athaliana.proce.genes.gff3 $b.$a.tmp.sam U 50000 > $b.$a.sam
+$CONUNPE../../solgenomes_long/conUnPe/gene2abs $CONUNPE../allgenomes/Athaliana.proce.genes.gff3 $c.$a.tmp.sam U 50000 > $c.$a.sam
+rm $b.$a.tmp.sam
+rm $c.$a.tmp.sam
+
+samtools sort $b.$a.sam > $b.$a.tmp.bam
+samtools sort $c.$a.sam > $c.$a.tmp.bam
+samtools calmd -b $b.$a.tmp.bam $CONUNPE/../tmp/Athaliana.fasta > $b.$a.$type.bam
+samtools calmd -b $c.$a.tmp.bam $CONUNPE/../tmp/Athaliana.fasta > $c.$a.$type.bam
+rm $b.$a.tmp.bam
+rm $c.$a.tmp.bam
+
+samtools index $b.$a.$type.bam
+samtools index $c.$a.$type.bam
+
+rm $a.$b.maf
+rm $a.$c.maf
+rm $a*.fasta
+rm $b*.fasta
+rm $c*.fasta
+
