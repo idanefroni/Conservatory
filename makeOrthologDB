@@ -1,0 +1,153 @@
+#!/usr/bin/perl
+#use POSIX;
+use List::MoreUtils qw(uniq);
+use List::MoreUtils qw(first_index);
+
+use strict;
+$|=1;
+
+my $MAX_ORTH=8;
+my $MIN_EVAL= 10;
+my $EVAL_CUTOFF_FOR_FAMILY=0.33;
+#my $EVAL_CUTOFF_FOR_FAMILY=0.01;
+
+my $LINE_LIMIT = 1000000000000;
+
+my $line;
+
+if( @ARGV < 2) {
+   print "makeOrthologDB <A2B> <B2A>\n";
+   exit();
+}
+open A2B, $ARGV[0] or die "cant open file $ARGV[0].\n";
+open B2A, $ARGV[1] or die "cant open file $ARGV[1].\n";
+
+#load the whole b2a table into a hash
+
+my $curlocus = "";
+my @blasthits;
+my %blasthits_eval;
+
+my %b2a_blast;
+my %b2a_blast_eval;
+my $linecounter=0;
+
+while((my $curline = <B2A>) && $linecounter < $LINE_LIMIT ) {
+	$linecounter++;
+	chomp($curline);
+
+	my @line_s = split(/\t/, $curline);
+	my $locus = $line_s[0];
+	my $solocus = $line_s[1];
+	my $eval = $line_s[10];
+	if($locus eq $curlocus) {
+		if(scalar @blasthits < $MAX_ORTH && $eval < $MIN_EVAL) {
+			if (! grep( /^$solocus$/, @blasthits ) ) {
+				push(@blasthits, $solocus);
+				if($eval ==0) { 
+					$blasthits_eval{$solocus} = 400;
+				} else {
+					$blasthits_eval{$solocus} = -log($eval);
+				}
+			}
+		}
+	} else {
+
+			if($curlocus ne "") {
+				#save to hash and output		
+				$b2a_blast{$curlocus} = [@blasthits];
+				$b2a_blast_eval{$curlocus} = [%blasthits_eval];
+			}
+			$curlocus = $locus;
+			@blasthits= ($solocus);
+			%blasthits_eval = ();
+			if($eval ==0) { 
+				$blasthits_eval{$solocus} = 400;
+				} else {
+				$blasthits_eval{$solocus} = -log($eval);
+				}
+		}
+}
+
+print (STDERR "Done reading...\n");
+
+
+my $cursolocus = "";
+
+@blasthits=();
+%blasthits_eval = ();
+
+while(my $curline = <A2B>) {
+
+	chomp($curline);
+	my @line_s = split(/\t/, $curline);
+	my $solocus = $line_s[0];
+	my $locus = $line_s[1];
+	my $eval = $line_s[10];
+
+
+	if($solocus eq $cursolocus) {
+		if(scalar @blasthits < $MAX_ORTH && $eval < $MIN_EVAL) {
+		if (! grep( /^$locus$/, @blasthits ) ) {
+				push(@blasthits, $locus);
+				if($eval ==0) { 
+					$blasthits_eval{$locus} = 400;
+				} else {
+					$blasthits_eval{$locus} = -log($eval);
+				}
+			}
+		}
+	} else {
+		if($cursolocus ne "") {
+			#first, establish the distribution of reciprocal evals.
+
+			my @allevals;
+			foreach(@blasthits) {
+				my $curhit = $_;
+			
+				if (exists $b2a_blast{$curhit}) {		
+					my %recp_eval = @{%b2a_blast_eval{$curhit}};
+
+					if(exists $recp_eval{$cursolocus}) {
+						push(@allevals, ($recp_eval{$solocus} + $blasthits_eval{$curhit}));
+					}
+				}
+			}
+			# now, determine acut off (currently a fixed percentage of max eval. Could be more sophisticated in the future)
+			
+			@allevals = reverse sort {$a <=> $b}  @allevals;
+			my $cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;		
+
+			foreach(@blasthits) {
+				my $curhit = $_;
+				
+				## If we have that gene in the reciprocal db
+				if (exists $b2a_blast{$curhit}) {		
+					my %recp_eval = @{%b2a_blast_eval{$curhit}};
+
+					if(exists $recp_eval{$cursolocus}) {
+						if( ($recp_eval{$solocus} + $blasthits_eval{$curhit})> $cutoff) {
+							# get rid of weird embelishments
+							my $refinedhitname = $curhit;
+							$refinedhitname =~ s/\.p$//;
+							$refinedhitname =~ s/\.1$//;
+							$refinedhitname =~ s/\.0[0-9]$//;
+							
+							
+							print ($cursolocus . "," . $refinedhitname . "," . ($recp_eval{$solocus} + $blasthits_eval{$curhit})  . "\n");
+						}
+					}
+				}
+			}
+		}
+		$cursolocus = $solocus;
+		@blasthits= ($locus);
+		%blasthits_eval = ();
+		
+		if($eval ==0) { 
+			$blasthits_eval{$locus} = 400;
+		} else {
+			$blasthits_eval{$locus} = -log($eval);
+		}
+	}
+}

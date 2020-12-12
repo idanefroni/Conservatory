@@ -1,0 +1,24 @@
+#!/bin/bash
+export TMP=~/workspace/solgenomes_long/tmp
+export MAFFILTER=~/maffilter/MafFilter
+export CONUNPE=~/workspace/solgenomes_long/conUnPe/
+export MAFTOOLS=~/mafTools/
+
+while IFS= read -r line
+do
+   echo $line;
+   ${CONUNPE}/dophyloP $line ${CONUNPE}/../phylo/phyloFit.mod Slycopersicum 6 DONTDOPHYLOP
+done <"${1}"
+
+find ${CONUNPE}../phyloP/ -maxdepth 1 -type f -name "*bed" -exec cat {} \;  > phyloP_raw.bed
+
+awk '{ if($4>2) {print;}}' phyloP_raw.bed | grep -v "-" | sort -k1,1 -k2,2n | bedtools merge -d -1 -c 4 -o max >${CONUNPE}/../phyloP.bed
+~/bedGraphToBigWig ${CONUNPE}/../phyloP.bed ${CONUNPE}/../phylo/chrom.sizes ${CONUNPE}/../phyloP.bw
+
+awk '{ if($4>2) { print; }}' phyloP_raw.bed | grep -v "-" | sort -k1,1 -k2,2n | bedtools merge -d -1 -c 4 -o max | bedtools merge -d 25 -c 4 -o mean | awk '{if(($3-$2)>=10) print;}' >${CONUNPE}/../phyloP_CNS.bed
+~/bedGraphToBigWig ${CONUNPE}/../phyloP_CNS.bed ${CONUNPE}/../phylo/chrom.sizes ${CONUNPE}/../phyloP_CNS.bw
+rm phyloP_raw.bed
+
+find ${CONUNPE}../phyloP/ -size 0 -type f -delete
+find ${CONUNPE}../phyloP/CNS -size 0 -type f -delete
+

@@ -1,0 +1,5 @@
+for f in *${1}.proteins.fasta;
+do
+   makeblastdb -in ${f} -input_type fasta -dbtype prot -parse_seqids -out blastdb/${f%.proteins.fasta}
+done
+

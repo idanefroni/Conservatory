@@ -1,0 +1,13 @@
+#!/bin/bash
+
+command="cat ${2}"
+while IFS= read -r line
+do
+	dic=($line)
+	gene=${dic[0]}
+	sp=${dic[1]}
+	sedcom="sed 's/${gene}[a-zA-Z0-9._]*/${sp} /g'"
+	command=" ${command} | ${sedcom}"
+done <"${1}"
+
+eval "${command}"

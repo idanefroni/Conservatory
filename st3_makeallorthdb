@@ -1,0 +1,12 @@
+# Find reference genome file
+
+reffile=`(head -n 2 genome_database.csv | tail -n 1 | cut -d ',' -f 1)`
+
+for f in *${1}.fasta.gz;
+do
+   echo $f;
+  $CONUNPE/makeOrthologDB `find REF2${f%.fasta.gz}*.txt -print` `find ${f%.fasta.gz}*2REF.txt -print` | sort -t , -k 1,1 -k 3,3nr > ${f%.fasta.gz}.orthologs.csv
+done
+
+echo "Fix ${reffile}"
+$CONUNPE/make${reffile}OrthologDB
