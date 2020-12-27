@@ -1,26 +1,77 @@
 #!/usr/bin/perl
-#use POSIX;
+use POSIX;
 use List::MoreUtils qw(uniq);
 use List::MoreUtils qw(first_index);
-
 use strict;
-$|=1;
+use Cwd 'abs_path';
+use Getopt::Long;
 
 my $MAX_ORTH=8;
 my $MIN_EVAL= 10;
 my $EVAL_CUTOFF_FOR_FAMILY=0.33;
-#my $EVAL_CUTOFF_FOR_FAMILY=0.01;
-
-my $LINE_LIMIT = 1000000000000;
+my $conservatoryDir=abs_path(".");
+my $help=0;
+my $genome="";
+my $genomefound = 0;
 
 my $line;
-
-if( @ARGV < 2) {
-   print "makeOrthologDB <A2B> <B2A>\n";
-   exit();
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"genome=s" => \$genome,
+			"help" => \$help) or die("Error in command line arguments\n");
+			
+			
+if( $genome eq "" || $help) {
+	print "Conservatory version 0.0.1\n\n";
+	
+	print "buildOrthologDB\n\n";
+	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
+	print "\t--genome\t\tGenome name for which to build putative ortholog databse (MANDATORY). \n\n";
+    exit();
 }
-open A2B, $ARGV[0] or die "cant open file $ARGV[0].\n";
-open B2A, $ARGV[1] or die "cant open file $ARGV[1].\n";
+my $genomedb_file = $conservatoryDir . "/genome_database.csv";
+
+##### Sanity checks.
+die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e $genomedb_file;
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes/tmpblast");
+
+######### Find out what is the reference genome and the processing REGEX
+open(my $genomedb, "<", $genomedb_file);
+my $header=<$genomedb>;
+my $referenceGenome="";
+my $geneProcessingREGEX="";
+my $referenceGeneProcessingREGEX="";
+
+while(<$genomedb>) {
+	chomp;
+	my @genomeDBLine = split /,/;
+	if($genomeDBLine[0] eq $genome) {
+		$referenceGenome = $genomeDBLine[3];
+		$geneProcessingREGEX = $genomeDBLine[8];
+	}
+}
+
+#move back to the begining of the genome databse file
+seek $genomedb,0, SEEK_SET;
+
+# Now find the processing REGEX for the reference genome
+while(<$genomedb>) {
+	chomp;
+	my @genomeDBLine = split /,/;
+	if($genomeDBLine[0] eq $referenceGenome) {
+		$referenceGeneProcessingREGEX = $genomeDBLine[8];
+	}
+}
+close($genomedb);
+
+die "ERROR: Cannot file genome $genome in database.\n" unless $referenceGenome ne "";
+
+my $genome2refFileName = "$conservatoryDir/genomes/tmpblast/$genome" . "2" . "$referenceGenome" . ".txt";
+my $ref2genomeFileName = "$conservatoryDir/genomes/tmpblast/$referenceGenome" . "2" . "$genome" . ".txt";
+my $outputOrthologFileName = "$conservatoryDir/genomes/$genome.orthologs.csv";
+
+open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
+open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
+open (my $output, ">", $outputOrthologFileName);
 
 #load the whole b2a table into a hash
 
@@ -32,7 +83,7 @@ my %b2a_blast;
 my %b2a_blast_eval;
 my $linecounter=0;
 
-while((my $curline = <B2A>) && $linecounter < $LINE_LIMIT ) {
+while(my $curline = <$ref2g>) {
 	$linecounter++;
 	chomp($curline);
 
@@ -69,15 +120,12 @@ while((my $curline = <B2A>) && $linecounter < $LINE_LIMIT ) {
 		}
 }
 
-print (STDERR "Done reading...\n");
-
-
 my $cursolocus = "";
 
 @blasthits=();
 %blasthits_eval = ();
 
-while(my $curline = <A2B>) {
+while(my $curline = <$g2ref>) {
 
 	chomp($curline);
 	my @line_s = split(/\t/, $curline);
@@ -129,12 +177,16 @@ while(my $curline = <A2B>) {
 						if( ($recp_eval{$solocus} + $blasthits_eval{$curhit})> $cutoff) {
 							# get rid of weird embelishments
 							my $refinedhitname = $curhit;
-							$refinedhitname =~ s/\.p$//;
-							$refinedhitname =~ s/\.1$//;
-							$refinedhitname =~ s/\.0[0-9]$//;
 							
+							if($referenceGeneProcessingREGEX ne "") {
+				    			eval '$refinedhitname =~ s/$referenceGeneProcessingREGEX//g;'; 
+							}
+
 							
-							print ($cursolocus . "," . $refinedhitname . "," . ($recp_eval{$solocus} + $blasthits_eval{$curhit})  . "\n");
+							if($geneProcessingREGEX ne "") {
+				    			eval '$cursolocus =~ s/$geneProcessingREGEX//g;'; 
+							}
+							print $output ($cursolocus . "," . $refinedhitname . "," . ($recp_eval{$solocus} + $blasthits_eval{$curhit})  . "\n");
 						}
 					}
 				}
@@ -151,3 +203,5 @@ while(my $curline = <A2B>) {
 		}
 	}
 }
+
+close($output);

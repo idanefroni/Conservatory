@@ -1,152 +1,175 @@
 #!/usr/bin/perl
 
 use POSIX;
+use strict;
+use warnings;
 use Text::CSV;
 use Data::Dumper qw(Dumper);
+use List::Util qw(min max sum);
 use List::MoreUtils qw(uniq firstidx);
 use Bio::Kmer;
 use String::Diff;
-use List::Util qw(min max sum);
-use strict;
 use Cwd;
 use Getopt::Long;
 use experimental 'smartmatch';
 
-$|=1;
-
-###### utility function
+################################################################################
+###### utility functions #######################################################
 sub mean {
     return sum(@_)/@_;
 }
 
 # Simple mask.
-my $mask_seq=1;
+
 sub maskseq {
 	my ($seq) = @_;
-	
 	$seq =~ s/[A|T]{10}/XXXXXXXXXX/g;
-
 	return ($seq);
 }
 
+sub extractFasta {
+	my ($fastaFileName, $locus) = @_;
+	my $seq="";
+	open (my $fastaFile, "<" , $fastaFileName) || die "Cannot open file $fastaFile.\n";
+	while((my $line = <$fastaFile>) && $seq eq "") {
+		chomp($line);
+		if( $line eq ">$locus") {
+			$seq = <$fastaFile>;
+			chomp($seq);
+			$seq = maskseq($seq);
+		} else { $line = <$fastaFile>; } 
+	}
+	close($fastaFile);
+	return($seq);
+}
 
 ################################################################################
 ######### Setup
 
-my $genomedb_fname;
+my $conservatoryDir=abs_path(".");
 my $locus;
-my $collapsefield=1;
-my $MIN_QUALITY = 10; # the minimum alignment quality score from vista to be consideted a legit alignment
+my $family;
+my $MIN_QUALITY = 0; # the minimum alignment quality score from vista to be consideted a legit alignment
 my $MIN_ALIGNMENTS = 4; # The minimum number of aligned promoters that is required to generate a MAF file
-
 my $IDENTITY= 60;
 my $KEEP_TMP = 0;
 my $VERBOSE = 0;
-my $DUMP_GTF = 0;
 my $DUMP_SAM = 0;
-my $output_dir = ".\\";
-my $upstreamlen;
-my $downstreamlen;
+my $help = 0;
 
-GetOptions ("genomeDatabase=s" => \$genomedb_fname,
+########### Parameters
+my $upstreamLength;
+my $downstreamLength;
+my $maffilterDir;
+
+
+
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
-			"collapsefield=i" => \$collapsefield,
-			"min_quality=i" => \$MIN_QUALITY,
-			"min_alignments=i" => \$MIN_ALIGNMENTS,
+			"family=s" => \$family,
 			"identity=i" => \$IDENTITY,
-			"output-dir=s" => \$output_dir,
 			"keep-tmp" => \$KEEP_TMP,
 			"verbose" => \$VERBOSE,
-			"dump-gff" => \$DUMP_GTF,
-			"dump-sam" => \$DUMP_SAM) or die ("Error in command line arguments\n");
+			"dump-sam" => \$DUMP_SAM,
+			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
-if( $locus eq "" or $genomedb_fname eq "") {
-   print "conUnPe --genomeDatabase <genomedb> --locus <Locus>";
-   print "\t--genomeDatabase\tName of a comma seperated files of the available genomes metadata.\n";
-   print "\t--locus\t\t\tThe locus.l\n";
-   print "\t--collapsefield\t\tWhich field in the metadata to treat as pangenome aggregator. 0 - genome version, 1 - Species (Default) 2 - Species Family.\n";
-   print "\t--identity\t\tMinimum identity for LASTZ alignments. Default is 80. Use lower number if species are more distant.\n";
+if( $locus eq "" or $family eq "" or $help) {
+	print "Conservatory version 0.0.1\n\n";
+
+   print "buildAlignmentForFamily --conservatoryDirectory <dir> --family <familyName> --locus <Locus>";
+   print "\t--family\tFamily name (MANDATORY).\n";
+   print "\t--locus\t\t\tLocus in the reference genome for the family (MANDATORY).\n";
+   print "\t--identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
-   print "\t--verbose\t\tPrint out progress reports.\n";
-   print "\t--dump-gff\t\tExport a gtf of all pair-wise alignment, translated to absoluted ITAG coordinates. For JBrowse tracks.\n";
-   print "\t--dump-sam\t\tExport a sam of all pair-wise alignment, translated to absoluted ITAG coordinates. For JBrowse tracks.\n";
-   print "\t--output-dir\t\tThe name of the output directory for alignment files (Default is current directory).\n\n";
+   print "\t--dump-sam\t\tExport a sam of all pair-wise alignment, translated to absoluted coordinates. For JBrowse tracks.\n";
+   print "\t--verbose\t\tOutput extra progress messages.\n";
+   print "\t--help\t\t\tPrints this message.\n\n";
    print "\nRequired Environment variables:\n\tTMP\t\tTemporary directory\n\tAVID\t\tLocation of avid aligner\n";
-   print "\tLASTZ\t\tlastz aligner directory\n\tMULTIZ\t\tmultiz directory\n\tCONUNPE\t\tconUnPe directory\n\nMAFFILTER\t\tmafFileter directory\n\n";
+   print "\n\nMAFFILTER\t\tmafFileter directory\n\n";
    
    exit();
 }
 
 
-#the environmental variable TMP should have the temporary directory
-# the AVID variable is the directory of avid
+### Set up directory and file access
+my $genomedbFile = $conservatoryDir . "/genome_database.csv";
+my $parameterFile = $conservatoryDir . "/conservatory.parameters.txt";
+my $outputDir = "$conservatoryDir/alignments/$family/";
+my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
+my $maffilterDir;
+my $avidDir;
 
-if(%ENV{TMP} eq "") {
-	print "Temporary directory is not defined in variable TMP. Exiting.\n";
-	exit;
+####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
+####### 
+die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
+
+my $t_multiz = `sh -c 'command -v multiz'`;
+die "ERROR: Cannot find multiz in path. Please make sure it is installed.\n" unless ($t_multiz ne "");  
+
+my $t_lastz = `sh -c 'command -v lastz'`;
+die "ERROR: Cannot find lastz in path. Please make sure it is installed.\n" unless ($t_lastz ne "");  
+
+##################### Read Parameters
+if($verbose) { print localtime(). ": Loading parameter file $parameterFile.\n"; }
+open (my $parameters, "<", $parameterFile);
+while(my $curline = <$parameters>) {
+	chomp($curline);
+	if(substr($curline,1,1) ne "#") {
+		(my $paramName, my $paramValue) = split /=/, $curline;
+		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
+		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
+		elsif(uc($paramName) eq "MAFFILTERDIRECTORY") { $maffilterDir = $paramValue; }
+		elsif(uc($paramName) eq "AVIDDIRECTORY") { $avidDir = $paramValue; }
+		elsif($paramName ne "") { print localtime() . ": WARNING Unknown parameter $paramName.\n"; }
+	}
 }
+close($parameters);
+if($verbose) { print localtime() . ": Running parameters (upstreamLength $upstreamLength; downstreamLength $downstreamLength).\n"; } 
 
-if(%ENV{AVID} eq "") {
-	print "The avid directory (containing the avid-linux executablefile) is not defined in variable AVID. Exiting.\n";
-	exit;
+####### Check presence of programs.
+
+die "ERROR: Cannot find file maffilter program ($maffilterDir/maffilter)\n" unless -e "$maffilterDir/maffilter";
+die "ERROR: Cannot find file avid program ($avidDir/avid-linux)\n" unless -e "$avidDir/avid-linux";
+
+###############################################
+##### Now set things up
+##### Find out what is our reference genome
+my $refgenome="";
+open (my $genomeDatabase, "<", $genomedbFile);
+my $header = <$genomeDatabase>;
+while((<$genomeDatabase>) && $refgenome eq "") {
+	(my $curgenome, my $curspecies, my $curfamily, my $currefgenome) = split /,/;
+	if($curfamily eq $family && $curgenome eq $currefgenome) { $refgenome = $curgenome; }
 }
+close ($genomeDatabase);
+die "ERROR: Cannot find family ($family) or the reference genome for the family in the genome database file.\n" unless $refgenome ne "";
+	
+####### now make sure our directories exist
+if (! -e $outputDir) { mkdir($outputDir); }
+if (! -e $tmpDir) { mkdir($tmpDir); }
 
-if(%ENV{LASTZ} eq "") {
-	print "The lastz directory (containing the lastz executablefile) is not defined in variable LASTZ. Exiting.\n";
-	exit;
-}
+####### Set up the reference fasta files
+my $refFilenameUp = "$tmpDir/$refgenome.$locus_up.fasta";
+my $refFilenameDown = "$tmpDir/$refgenome.$locus_down.fasta";
+my $upstreamRefSeq = extractFasta("$conservatoryDir/genomes/$refgenome.upstream.fasta", $locus)
+my $downstreamRefSeq = extractFasta("$conservatoryDir/genomes/$refgenome.downstream.fasta", $locus)
 
-if(%ENV{MULTIZ} eq "") {
-	print "The multiz directory (containing the multiz executablefile) is not defined in variable MULTIZ. Exiting.\n";
-	exit;
-}
-
-if(%ENV{CONUNPE} eq "") {
-	print "The CONUNPE directory (containing the mapmaf2gtf.perl executablefile) is not defined in variable CONUNPE. Exiting.\n";
-	exit;
-}
-if(%ENV{MAFFILTER} eq "") {
-	print "The mafFilter directory (containing the maffilter executablefile) is not defined in variable MAFFILTER. Exiting.\n";
-	exit;
-}
-my $TMP = %ENV{TMP} . "//";
-my $AVID = %ENV{AVID} . "//";
-my $LASTZ = %ENV{LASTZ} . "//";
-my $MULTIZ = %ENV{MULTIZ} . "//";
-my $CONUNPE = %ENV{CONUNPE} . "//";
-my $MAFFILTER = %ENV{MAFFILTER} . "//";
-
-$output_dir = $output_dir . "//";
-
-my $line;
-
-if ( not -f $AVID. "//" . "avid-linux") {
-	print STDERR "Can't find avid at: " . $AVID ."\n";
-	exit;
-}
-
-if ( not -f $LASTZ. "//" . "lastz") {
-	print STDERR "Can't find lastz at: " . $LASTZ ."\n";
-	exit;
-}
-if ( not -f $MULTIZ. "//" . "multiz") {
-	print STDERR "Can't find multiz at: " . $MULTIZ ."\n";
-	exit;
-}
+### and set up our reference sequences.
+open(my $upRefFile, ">", $refFileNameUp);
+print $upRefFile (">$locus.c1|$refgenome|\n$upstreamRefSeq\n");
+close($upRefFile);
+open(my $downRefFile, ">", $refFileNameDown);
+print $downRefFile (">$locus.c1|$refgenome|\n$downstreamRefSeq\n");
+close($downRefFile);
 
 
-my $reffilename = "Slreference.fasta";
-my $reffilename_down = "Slreference_down.fasta";
-
-
-# Create temporary directory
-my $tmpdir = $TMP . "//" . $locus . "//";
-mkdir $tmpdir;
 #remember where we are
-my $curdir = getcwd;				
+my $curdir = getcwd;
 
-
+# set up orthology hashes
 my %orth_quality;  #Hash of alignment quality
 my %orth_names; # Hash of the names for the best alignments
 my %orth_species;
@@ -155,18 +178,21 @@ my %orth_fasta_down_names;
 
 ##############################################################################
 # Load Genomes
-# Reference genome must always be the first on in the genome_database.csv file
 
-open (my $genomedb, $CONUNPE . "../allgenomes/" . $genomedb_fname) || die "Can't open genome database file";
-my $referencegenome;
+open (my $genomeDatabase, "<", $genomedbFile);
+
 my $referencegfffile;
 my $referenceseq;  
 my $align_ref_seq;
 
-my $header = <$genomedb>;
-while(my $genomeline = <$genomedb>) {
+$header = <$genomeDatabase>;
+
+while(<$genomedb>) {
 	chomp($genomeline);
-	my @genomefields = split(",", $genomeline);
+	(my $curgenome, my $curspecies, my $curfamily, my $currefgenome, my $curminquality) = split /,/;
+	
+	if($curgenome ne $refgenome && $curfamily eq $family) {
+	}
 	
 	########## Process all orthologs
 	open (my $orthologfile, $CONUNPE . "../allgenomes/" . $genomefields[9]) || die "Can't open ortholog file " . $genomefields[9] . "\n";
@@ -209,29 +235,6 @@ while(my $genomeline = <$genomedb>) {
 			########################################
 			# If this is the first sequence, if it the reference sequence for the genome and all should be aligned to it
 			#
-			if($referencegenome eq "") {
-				
-				$referencegenome = $genomefields[0];
-				$referencegfffile = $genomefields[7];
-				$referenceseq = $curseq;
-				$align_curseq = $curseq;
-				open (my $reffile, '>' , $tmpdir . $reffilename);
-				if($mask_seq) {
-					$curseq=maskseq($curseq);
-				}
-				print $reffile (">" . $ortholog_fields[0] . ".c1|" . $genomefields[0] . "|" . $ortholog_fields[1] ."\n" . $curseq . "\n");
-				close($reffile);
-				$upstreamlen = length($curseq);
-				
-				#### Extract the downstream sequences as well
-				open (my $reffile_down, '>' , $tmpdir . $reffilename_down);
-				if($mask_seq) {
-					$downcurseq=maskseq($downcurseq);
-				}
-				print $reffile_down (">" . $ortholog_fields[0] . ".c1|" . $genomefields[0] . "|" . $ortholog_fields[1] ."\n" . $downcurseq . "\n");
-				$downstreamlen = length($downcurseq);
-				close($reffile_down);
-
 			} else {
 				# Upstream
 				my $compfilename = $genomefields[0] . $ortholog_fields[1] . ".fasta";

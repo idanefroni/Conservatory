@@ -1,1 +1,0 @@
-grep "Medtr" Mtruncatula.proteins.fasta | awk '{print (substr($1,2) "," substr($1,2) ",800") }' > Mtruncatula.orthologs.csv

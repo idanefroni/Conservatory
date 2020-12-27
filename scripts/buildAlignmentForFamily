@@ -1,0 +1,260 @@
+#!/usr/bin/perl
+
+use POSIX;
+use strict;
+#use warnings;
+use Text::CSV;
+use Data::Dumper qw(Dumper);
+use List::Util qw(min max sum);
+use List::MoreUtils qw(uniq firstidx);
+use Bio::Kmer;
+use String::Diff;
+use Cwd;
+use Cwd 'abs_path';
+use Getopt::Long;
+use experimental 'smartmatch';
+
+################################################################################
+###### utility functions #######################################################
+sub mean {
+    return sum(@_)/@_;
+}
+
+sub extractFastaToFile {
+	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
+	
+	my $maskseq = " sed 's/[A|T]{10}/XXXXXXXXXX/g'";
+	my $addc1 = "awk '{if(NR==1) {print(\$0\".c1\"); } else {print \$0;}}'";
+	
+	system("samtools faidx $fastaFile $locus | $maskseq | $addc1 >$outputFastaFile");
+}
+
+################################################################################
+######### Setup
+
+my $conservatoryDir=abs_path(".");
+my $locus;
+my $family;
+my $MIN_QUALITY = 0; # the minimum alignment quality score from vista to be consideted a legit alignment
+my $MIN_ALIGNMENTS = 4; # The minimum number of aligned promoters that is required to generate a MAF file
+my $IDENTITY= 60;
+my $keep_tmp = 0;
+my $verbose = 0;
+my $DUMP_SAM = 0;
+my $help = 0;
+
+##### Define mask
+
+
+########### Parameters
+my $upstreamLength;
+my $downstreamLength;
+my $maffilterDir;
+my $avidDir;
+
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"locus=s" => \$locus,
+			"family=s" => \$family,
+			"identity=i" => \$IDENTITY,
+			"keep-tmp" => \$keep_tmp,
+			"verbose" => \$verbose,
+			"dump-sam" => \$DUMP_SAM,
+			"help" => \$help) or die ("Error in command line arguments\n");
+			
+
+if( $locus eq "" or $family eq "" or $help) {
+	print "Conservatory version 0.0.1\n\n";
+
+   print "buildAlignmentForFamily --conservatoryDirectory <dir> --family <familyName> --locus <Locus>\n\n\n";
+   print "\t--family\tFamily name (MANDATORY).\n";
+   print "\t--locus\t\t\tLocus in the reference genome for the family (MANDATORY).\n";
+   print "\t--identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
+   print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
+   print "\t--dump-sam\t\tExport a sam of all pair-wise alignment, translated to absoluted coordinates. For JBrowse tracks.\n";
+   print "\t--verbose\t\tOutput extra progress messages.\n";
+   print "\t--help\t\t\tPrints this message.\n\n";
+   print "\nRequired Environment variables:\n\tTMP\t\tTemporary directory\n\tAVID\t\tLocation of avid aligner\n";
+   print "\n\nMAFFILTER\t\tmafFilter directory\n\n";
+   
+   exit();
+}
+
+
+### Set up directory and file access
+my $genomedbFile = $conservatoryDir . "/genome_database.csv";
+my $parameterFile = $conservatoryDir . "/conservatory.parameters.txt";
+my $outputDir = "$conservatoryDir/alignments/$family/";
+my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
+my $genomeDir ="$conservatoryDir/genomes";
+
+####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
+####### 
+die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
+
+my $t_multiz = `sh -c 'command -v multiz'`;
+die "ERROR: Cannot find multiz in path. Please make sure it is installed.\n" unless ($t_multiz ne "");  
+
+my $t_lastz = `sh -c 'command -v lastz'`;
+die "ERROR: Cannot find lastz in path. Please make sure it is installed.\n" unless ($t_lastz ne ""); 
+
+my $samtools = `sh -c 'command -v samtools'`;
+die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" unless ($samtools ne "");  
+
+##################### Read Parameters
+if($verbose) { print localtime(). ": Loading parameter file $parameterFile.\n"; }
+open (my $parameters, "<", $parameterFile);
+while(my $curline = <$parameters>) {
+	chomp($curline);
+	if(substr($curline,1,1) ne "#") {
+		(my $paramName, my $paramValue) = split /=/, $curline;
+		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
+		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
+		elsif(uc($paramName) eq "MAFFILTERDIRECTORY") { $maffilterDir = $conservatoryDir . $paramValue; }
+		elsif(uc($paramName) eq "AVIDDIRECTORY") { $avidDir = $conservatoryDir . $paramValue; }
+		elsif($paramName ne "") {  }
+	}
+}
+close($parameters);
+if($verbose) { print localtime() . ": Running parameters (upstreamLength $upstreamLength; downstreamLength $downstreamLength).\n"; } 
+
+####### Check presence of programs.
+
+die "ERROR: Cannot find file maffilter program ($maffilterDir/maffilter)\n" unless -e "$maffilterDir/maffilter";
+die "ERROR: Cannot find file avid program ($avidDir/avid-linux)\n" unless -e "$avidDir/avid-linux";
+
+###############################################
+##### Now set things up
+##### Find out what is our reference genome
+my $refGenome="";
+open (my $genomeDatabase, "<", $genomedbFile);
+my $header = <$genomeDatabase>;
+while((my $line = <$genomeDatabase>) && $refGenome eq "") {
+	(my $curGenome, my $curSpecies, my $curFamily, my $curRefGenome) = split /,/, $line;
+	if($curFamily eq $family && $curGenome eq $curRefGenome) { $refGenome = $curGenome; }
+}
+close ($genomeDatabase);
+die "ERROR: Cannot find family ($family) or the reference genome for the family in the genome database file.\n" unless $refGenome ne "";
+	
+####### now make sure our directories exist
+if (! -e $outputDir) { mkdir($outputDir); }
+if (! -e $tmpDir) { mkdir($tmpDir); }
+
+####### Set up the reference fasta files
+my $upstreamRefFastaName = "$tmpDir/$refGenome.$locus" . "_up.fasta";
+my $downstreamRefFastaName = "$tmpDir/$refGenome.$locus" . "_down.fasta";
+
+extractFastaToFile("$genomeDir/$refGenome" . ".upstream.fasta.gz", $locus, $upstreamRefFastaName);
+extractFastaToFile("$genomeDir/$refGenome" . ".downstream.fasta.gz", $locus, $downstreamRefFastaName);
+
+#remember where we are
+my $curDir = getcwd;
+chdir $tmpDir;	
+
+# set up orthology hashes
+my %orth_quality;  #Hash of alignment quality
+my %orth_names; # Hash of the names for the best alignments
+my %orth_species;
+my %orth_fasta_names;
+my %orth_fasta_down_names;
+
+##############################################################################
+# Load Genomes
+
+open (my $genomeDatabase, "<", $genomedbFile);
+$header = <$genomeDatabase>;
+while(<$genomeDatabase>) {
+	chomp;
+	(my $curGenome, my $curSpecies, my $curFamily, my $curRefGenome, my $curMinQuality) = split /,/;
+	
+	if($curGenome ne $refGenome && $curFamily eq $family) { #if this is within our family (and not the reference)
+		### get ortholog sequences
+		open (my $orthologFile, "<", "$genomeDir/$curGenome" . ".orthologs.csv") || die "Can't open ortholog file for $curGenome.\n";
+		while(my $orth_line = <$orthologFile>) {
+			chomp($orth_line);
+			(my $curPutativeOrtholog, my $curRefLocus, my $score) = split /,/,$orth_line;
+			if($curRefLocus eq $locus) {
+				if($verbose) { print "Extracting sequence for $curPutativeOrtholog ($curGenome).\n"; }
+				my $upstreamFastaName ="$tmpDir/$curGenome.$curPutativeOrtholog" . "_up.fasta";
+				my $downstreamFastaName = "$tmpDir/$curGenome.$curPutativeOrtholog" . "_down.fasta";
+				extractFastaToFile("$genomeDir/$curGenome" . ".upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
+				extractFastaToFile("$genomeDir/$curGenome" . ".downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
+
+				system("$avidDir/avid-linux -nm=both $upstreamRefFastaName $upstreamFastaName >/dev/null 2>/dev/null");
+				
+				if(!$keep_tmp) {
+					unlink($upstreamFastaName);
+					unlink($downstreamFastaName);
+				}
+			}
+		}
+		
+		close($orthologFile);
+	
+	}
+}
+	
+			### align the sequences
+			
+			
+				### Align
+				
+				
+				########## Check for quality
+#my $vistaoutfile = "Slreference_" . $genomefields[0] . $ortholog_fields[1];
+
+#				open (my $qualityfile, "grep Score " . $vistaoutfile . ".info |") || die ("can't open quality file");
+#				my $qualityline = <$qualityfile>;
+#				my @qualitysplit = split ' ', $qualityline;
+#				my $quality =  $qualitysplit[3];
+#				close ($qualityfile);
+#				if($VERBOSE) {
+#					print "Found ortholog for: " . $ortholog_fields[0] . " from " . $genomefields[0] . " of family " . $genomefields[$collapsefield] ." named " . $ortholog_fields[1] . " with quality " . $quality . ".\n";
+#				}
+		
+#				if($quality> $genomefields[4]) {
+#					my @align_array;
+#					my @align_array_maf;
+#					my $gap=0;
+#		
+#					if(not exists $orth_names{$genomefields[$collapsefield]}) {
+#
+#						$orth_names{$genomefields[$collapsefield]} = [ $ortholog_fields[1] ];
+#						$orth_species{$genomefields[$collapsefield]} = [ $genomefields[0] ];
+#						$orth_fasta_names{$genomefields[$collapsefield]} = [ $compfilename ];
+#						$orth_fasta_down_names{$genomefields[$collapsefield]} =  [ $downcompfilename ];					
+#						$orth_quality{$genomefields[$collapsefield]} = [ $quality ];
+#						
+#					} else {
+#							push( @{ $orth_names{$genomefields[$collapsefield]} }, $ortholog_fields[1]);
+#							push( @{ $orth_species{$genomefields[$collapsefield]} } , $genomefields[0]);
+#							push( @{ $orth_fasta_names{$genomefields[$collapsefield]} }, $compfilename);
+#							push( @{ $orth_fasta_down_names{$genomefields[$collapsefield]} }, $downcompfilename);
+#							push( @{ $orth_quality{$genomefields[$collapsefield]} }, $quality);
+#					}
+#				} else {
+#				}
+				
+				# cleaup - remove the tmp files
+#				unlink ($vistaoutfile . ".info");
+#				unlink ($vistaoutfile . ".minfo");
+#				unlink ($vistaoutfile . ".out");
+				
+#				chdir $curdir;
+#			}
+#		}
+#	}
+#}
+
+
+
+
+
+close($genomeDatabase);
+chdir $curDir;	
+
+if(!$keep_tmp) {
+	unlink($upstreamRefFastaName);
+	unlink($downstreamRefFastaName);
+}

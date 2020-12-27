@@ -1,7 +1,0 @@
-#!/bin/bash
-
-while IFS= read -r line
-do
-   echo $line;
-   ${CONUNPE}/conUnPe --genomeDatabase genome_database.csv --output MAF --dump-sam --output-dir ~/workspace/solgenomes_long/genes/ --locus $line
-done <"${1}"

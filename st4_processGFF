@@ -1,6 +1,0 @@
-for f in *${1}.genes.gff3;
-do
-   echo $f;
-  ${CONUNPE}/collapseCDSGFF.perl $f | sort -k1,1 -k4,4n > ${f%.genes.gff3}.proce.genes.gff3
-done
-

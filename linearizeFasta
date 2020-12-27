@@ -1,1 +1,0 @@
-awk '{if(index($0, ">")!=0) { printf("\n%s\n",$0);} else {printf("%s",$0);}} END {printf("\n");}' | sed -n '1!p'

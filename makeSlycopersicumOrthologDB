@@ -1,1 +1,0 @@
-grep "Solyc" Slycopersicum.proteins.fasta | awk '{print (substr($1,2) "," substr($1,2) ",800") }' > Slycopersicum.orthologs.csv

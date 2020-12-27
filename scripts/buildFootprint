@@ -1,0 +1,107 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Cwd 'abs_path';
+use Getopt::Long;
+use List::Util qw(min max);
+
+my $conservatoryDir=abs_path(".");
+my $help=0;
+my $genome="";
+my $genomefound = 0;
+
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"genome=s" => \$genome,
+			"help" => \$help) or die("Error in command line arguments\n");
+			
+if( $genome eq "" || $help) {
+	print "Conservatory version 0.0.1\n\n";
+	
+	print "buildFootprint\n\n";
+	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
+	print "\t--genome\t\tGenome name for which to build footprint databse (MANDATORY). \n\n";
+    exit();
+}
+my $genomedb_file = $conservatoryDir . "/genome_database.csv";
+
+##### Sanity checks.
+die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e $genomedb_file;
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes");
+
+open(my $genomedb, "<", $genomedb_file);
+my $header=<$genomedb>;
+
+## set up hash for CDS
+my %CDS;
+
+while(my $curgenomeline= <$genomedb>) {
+	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $minScore, $GeneNameField, $GeneNameProcessREGEX,$GeneNameIdentifierREGEX) = split /,/, $curgenomeline;
+	if($curgenomeName eq $genome) {
+		$genomefound=1;
+		my $genomeGFFFileName = "$conservatoryDir/genomes/$genome.genes.gff3";
+		open(my $inGFF, "<", $genomeGFFFileName) || die "ERROR: Cannot find GFF3 file $genomeGFFFileName\n";
+		while (my $line = <$inGFF>) {
+		    chomp $line;
+		    if(substr ($line,0,1) ne "#") {
+		    	my @array = split( "\t", $line );
+		    	my $type = $array[2];
+		    	if($type eq "CDS") {
+		    		my %geneinfo = split /[;=]/, $array[8];
+		    		my $genenameRaw = $geneinfo{$GeneNameField};
+		    		die "ERROR: Cannot find gene name in $GeneNameField ($line)\n" unless $genenameRaw ne "";
+		    		my $genenameProcessed = $genenameRaw;
+		    		if($GeneNameProcessREGEX ne "") {
+		    			eval '$genenameProcessed =~ s/$GeneNameProcessREGEX//g;';
+		    		}
+		    		
+		    		if( defined $CDS{$genenameProcessed}) {
+		    			my $min;
+		    			my $max;
+		    			my $curcds = $CDS{$genenameProcessed};
+		    			$min = min($array[3], $array[4], $curcds->{'Start'});
+		    			$max = max($array[3], $array[4], $curcds->{'End'});
+		    			$curcds->{'Start'} = $min;
+		    			$curcds->{'End'} = $max;
+		    			$CDS{$genenameProcessed} = $curcds;
+		    		} else {
+		    			# GFF file shold be sorted. However, there are some weird stuff in a few genomes. Thus, make no assumptions...
+		    			my ($min, $max);
+		    			$min = min($array[3], $array[4]);
+		    			$max = max($array[3], $array[4]);
+		    			#### Chr Note Start End Dir	    			
+		    			$CDS{$genenameProcessed} = {
+		    					'Name' => $genenameProcessed,
+		    					'Chr' => $array[0],
+		    					'Source' =>  $array[1],
+		    					'Start' => $min,
+		    					'End' => $max,
+		    					'Dir' => $array[6]
+		    				    };		    			
+		    		}
+		    	}
+		      }
+          }
+         close($inGFF);
+	}
+}
+close($genomedb);
+
+die "ERROR: cannot find genome $genome in database.\n" unless $genomefound;
+### Now dump footprint file
+my $footprintGFFFileName = "$conservatoryDir/genomes/$genome" . ".footprint.gff3";
+open (my $outFootprint, ">", $footprintGFFFileName ) || die "ERROR: Cannot create output footprint GFF3 file $footprintGFFFileName\n";
+
+# Sort
+my @cdsarray = values %CDS;
+
+my @sortedFootprints = sort {
+	$a->{'Chr'} cmp $b->{'Chr'} ||
+	$a->{'Start'} <=> $b->{'Start'}
+} @cdsarray;
+
+# .. and write.
+
+foreach my $footprint ( @sortedFootprints ) {
+	print $outFootprint $footprint->{'Chr'} . "\t" . $footprint->{'Source'} . "\tFootprint\t" . $footprint->{'Start'} . "\t" . $footprint->{'End'} . "\t.\t" . $footprint->{'Dir'} . "\t.\tName=" . $footprint->{'Name'} ."\n"; 
+}
+close($outFootprint);
