@@ -1,0 +1,247 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Bio::AlignIO;
+use Bio::Tools::GFF;
+use Bio::SeqFeatureI;
+use Bio::Cigar;
+use Cwd 'abs_path';
+use Getopt::Long;
+
+##############################################
+#### Utility Functions #######################
+
+sub revCigar {
+	my ($cigar) = @_;
+	
+	$cigar=~ s/M/M /g;
+	$cigar=~ s/I/I /g;
+	$cigar=~ s/D/D /g;
+	$cigar=~ s/H/H /g;
+	$cigar=~ s/S/S /g;
+	my @cigarsp = split /\s+/, $cigar;
+	@cigarsp= reverse @cigarsp;
+	my $cigar_rev = join("", @cigarsp);
+	return ($cigar_rev);
+}
+##############################################
+
+my $conservatoryDir=abs_path(".");
+my $genome="";
+my $format="";
+my $relPosition="";
+my $infileName="";
+my $outfileName="";
+my $help=0;
+my $infile;
+########### Parameters
+my $upstreamLength;
+my $downstreamLength;
+
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"genome=s" => \$genome,
+			"format=s" => \$format,
+			"relPos=s" => \$relPosition,
+			"input=s" => \$infileName,
+			"output=s" => \$outfileName,
+			"help" => \$help) or die ("Error in command line arguments\n");
+			
+
+if($genome eq "" || $format eq "" || $relPosition eq "" || $help || ($format ne "SAM" && $format ne "MAF") || ($relPosition ne "UP" && $relPosition ne "DOWN")) {
+	print "Conservatory version 0.0.1\n\n";
+	
+	print "convertRelative2absCoordinate --genome <genomeName> --format <SAM|MAF> --relPos <UP|DOWN>\n\n\n";
+	print "\t--genome\t\tName of the reference genome (MANDATORY).\n";
+	print "\t--format\t\tInput format (SAM or MAF) (MANDATORY).\n";
+	print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
+	print "\t\t\t\t(Currently only SAM is implimented)\n";
+	print "\t--relPos\t\tCoordinates are relative to UPstream or DOWNstream (MANDATORY).\n";
+	print "\t--input\t\t\tInput file name (default:STDIN).\n";
+	print "\t--output\t\tOutput file name (default:STDOUT).\n";
+	exit();
+}
+### Set up directory and file access
+my $genomedbFile = $conservatoryDir . "/genome_database.csv";
+my $parameterFile = $conservatoryDir . "/conservatory.parameters.txt";
+my $genomeDir ="$conservatoryDir/genomes";
+my $footprintFile = "$genomeDir/$genome.footprint.gff3";
+
+####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
+####### 
+die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e $genomeDir);
+die "ERROR: Cannot find footprint file ($footprintFile)\n" unless (-e $footprintFile);
+die "ERROR: Cannot find input file ($infileName)\n" unless (-e $infileName || $infileName eq "");
+
+##################### Read Parameters
+open (my $parameters, "<", $parameterFile);
+while(my $curline = <$parameters>) {
+	chomp($curline);
+	if(substr($curline,1,1) ne "#") {
+		(my $paramName, my $paramValue) = split /=/, $curline;
+		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
+		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
+		elsif($paramName ne "") {  }
+	}
+}
+close($parameters);
+
+if($infileName eq "") {
+	$infile = \*STDIN;
+} else {
+	open($infile, "<", $infileName);
+}
+
+
+my $gff = Bio::Tools::GFF->new(-file => $footprintFile,
+							   -gff_version => 3);
+
+my $length;
+if($relPosition eq "UP") {
+	$length = $upstreamLength;
+} else {
+	$length = $downstreamLength;
+}
+
+my $outbedorthfilename = $ARGV[4];
+my $outconservbedfilename = $ARGV[5];
+											
+my %genePos = (
+	'Chr' => "",
+	'Start' => 0,
+	'End' => 0,
+	'Strand' => "",
+	'Name' => "");
+
+if($format eq "SAM") {
+	while ( my $line =<$infile>) {
+		if(substr($line,0,1) eq '@' ) {
+			#If this is the gene coordinate. find it.
+			if(substr($line,0,3) eq '@SQ') {
+				my @fields = split /\t/, $line;
+				
+				my $genename = $fields[1];
+				$genename =~ s/\.c1//;
+				$genename =~ s/SN://;
+
+				while((my $feature = $gff->next_feature) && $genePos{'Chr'} eq "") {
+					my @tags = $feature->get_tag_values("Name");
+					if( $tags[0] eq $genename) {
+						$genePos{'Chr'} = $feature->seq_id;
+						$genePos{'Start'} =$feature->start;
+						$genePos{'End'} =$feature->end;
+						if ($feature->strand == -1) {
+							$genePos{'Strand'} = "-";
+						} else {
+							$genePos{'Strand'} = "+";
+						}
+						$genePos{'Name'} = $genename;
+					}
+				}
+				printf("\@SQ\tSN:" . $genePos{'Chr'} . "\tLN:9999999999\n");
+				
+			} else {
+				print $line;
+			}
+		} else {
+			chomp $line;
+			my @fields= split /\t/,$line;
+	
+			my $orthname = $genePos{'Name'} . ":" . $fields[0];
+			$orthname =~ s/\.c1//;
+			$fields[0] = $orthname;
+			$fields[2] = $genePos{'Chr'};
+			my $aln_start = $fields[3];
+			my $cigar = Bio::Cigar->new($fields[5]);
+			my $aln_end = $fields[3] + $cigar->reference_length;
+			$fields[5] =~ s/[0-9]+H//g;
+			
+			if($genePos{'Strand'} eq "+") {
+				if($relPosition eq "UP") {
+					$fields[3] =  $genePos{'Start'}  - $length + $aln_start;
+				} else { #if its downstream
+					$fields[3] = $genePos{'End'} + $aln_start + 1;	
+				}
+			} else {
+				$fields[9] = reverse $fields[9];
+				$fields[9] =~ tr/ATGCatgc/TACGtacg/;
+				# reverse CIGAR...
+				$fields[5] = revCigar($fields[5]);
+
+				if($relPosition eq "UP") {
+					$fields[3] =  $genePos{'End'} + $length - $aln_end +2;
+				} else {
+					$fields[3] = $genePos{'Start'} - $aln_end +2;	
+				}
+			}
+
+			printf ( join("\t", @fields) ."\n");
+		}
+	}
+}
+
+
+
+
+
+#if($format eq "MAF") {
+#	my $maf = Bio::AlignIO->new(-file => $infile,
+#								-format => "maf");
+#	while ( my $aln = $maf->next_aln) {
+#		my @seqs = $aln->each_seq;
+	
+#		my $sol = $seqs[0];
+#		my $other = $seqs[1];
+
+		#If its the first time, find the gene
+#		if($genechr eq "") {
+#			my $feature;
+#			$genename = $sol->id();
+#			$genename =~ s/\.c1//;
+#			$orthname = $other->id();
+		
+#			while(($feature = $gff->next_feature) && $genechr eq "") {
+#				my @tags = $feature->get_tag_values("Name");
+#				if( $tags[0] eq $genename) {
+#					$genechr=$feature->seq_id;
+#					$genestart=$feature->start;
+#					$geneend=$feature->end;
+#					$strand = $feature->strand;
+#					if ($strand == -1) {
+#						$strand = "-";
+#					} else {
+#						$strand = "+";
+#					}
+#				}
+#			}
+#		}
+#		my $aln_start = $sol->start;
+#		my $aln_end = $sol->end;
+#	
+#		if($strand eq "+") {
+#			if($upordownstream eq "U") {
+#				$sol->start($genestart - $length + $aln_start -1 );
+#				$sol->end($genestart - $length + $aln_end - 1);		
+#			} else { #if its downstream
+#				$sol->start($geneend + $aln_start );
+#				$sol->end($geneend + $aln_end );		
+#			}
+#			$sol->id($genechr);
+#		} else {
+#			if($upordownstream eq "U") {
+#				$sol->start($geneend + $length - $aln_end );
+#				$sol->end($geneend + $length - $aln_start );		
+#			} else {
+#				$sol->start($genestart - $aln_end );
+#				$sol->end($genestart - $aln_start );		
+#			}
+#			$sol->id($genechr);	
+#		}
+#		printf ( $sol->id . "\t" . $orthname . "\tCNS\t" . ($sol->start+1) . "\t" . ($sol->end+1) . "\t%.1f\t%s\t.\t" . "Name=" . $orthname . ";Gene=" . $genename . "\n", $aln->percentage_identity, ".");
+#	}
+#}
+
+
+
+

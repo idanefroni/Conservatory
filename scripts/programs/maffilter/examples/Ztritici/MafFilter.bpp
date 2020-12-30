@@ -1,0 +1,38 @@
+DATA=tba_refIPO323
+input.file=$(DATA).maf.gz
+input.file.compression=gzip
+input.format=Maf
+output.log=$(DATA).maffilter.log
+maf.filter=                                        \
+  SequenceStatistics(                              \
+      statistics=(                                 \
+        BlockSize(),                               \
+        BlockLength(),                             \
+        SiteStatistics(species=(Ztritici_IPO323))),\
+      ref_species=Ztritici_IPO323,                 \
+      file=$(DATA).statistics.csv),                \
+  ExtractFeature(                                  \
+      ref_species=Ztritici_IPO323,                 \
+      feature.file=Mgraminicolav2.FrozenGeneCatalog20080910.gff.gz, \
+      feature.file.compression=gzip,               \
+      feature.format=GTF,                          \
+      feature.type=CDS,                            \
+      file=$(DATA).noncoding.maf.gz,               \
+      compression=gzip,                            \
+      complete=yes,                                \
+      ignore_strand=no,                            \
+      verbose=no),                                 \
+  SequenceStatistics(                              \
+      statistics=(                                 \
+        BlockSize,                                 \
+        BlockLength,                               \
+        SiteStatistics(species=(Ztritici_IPO323))),\
+      ref_species=Ztritici_IPO323,                 \
+      file=Zt12g_CDS.statistics.csv),              \
+  MinBlockSize(min_size=2),                        \  
+  OutputAlignments(                                \
+      format=Clustal,                              \
+      file=Zt12g_CDS.aln,                          \
+      compression=none,                            \
+      mask=yes)                                    \
+

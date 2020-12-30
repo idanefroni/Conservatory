@@ -99,7 +99,7 @@ while(my $curgenomeline= <$genomedb>) {
 		die localtime() . ": ABORT Cannot find proteins fasta file ($genomeFastaFile)\n" unless -e $genomeProteinFile;
 		my $genomeGFFFile = "$conservatoryDir/genomes/$curgenomeName.genes.gff3";
 		die localtime() . ": ABORT Cannot find genome GFF3 file ($genomeGFFFile)\n" unless -e $genomeGFFFile;
-		if($verbose) { print localtime() . ": OK Found all genome files.\n"; }
+		if($verbose) { print localtime() . ": $curgenomeName : OK Found all genome files.\n"; }
 		
 		########### start processing genome.
 		#######  Stage 1: Make blast database
@@ -108,7 +108,7 @@ while(my $curgenomeline= <$genomedb>) {
 			print localtime() . ": $curgenomeName : START building protein blast database\n";
 			system("makeblastdb -in $genomeProteinFile -input_type fasta -dbtype prot -parse_seqids -out \"$conservatoryDir/genomes/blastdb/$curgenomeName\" >>processGenome.log 2>&1 ");
 			print localtime() . ": $curgenomeName : END building protein blast database\n";
-		} elsif ($verbose) { print localtime() . ": SKIP Blast database already exists (use --force to rebuild)\n"; }
+		} else { print localtime() . ": SKIP Blast database already exists (use --force to rebuild)\n"; }
 		
 		if((! -e "$conservatoryDir/genomes/blastdb/$curgenomeReference.phr" || $forceOrthology) && $rebuiltReferenceBlastDB ne $curgenomeReference) {
 			my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReference.proteins.fasta";
@@ -128,7 +128,7 @@ while(my $curgenomeline= <$genomedb>) {
 			die localtime() . ": ABORT Internal error. Can not run buildFootprint script!\n" unless -r $genomeFootprintGFFFile;
 			print localtime() . ": $curgenomeName : END building footprint database\n";
 			
-		} elsif ($verbose) { print localtime() . ": SKIP Footprint database already exists (use --force to rebuild)\n"; }
+		} else { print localtime() . ": SKIP Footprint database already exists (use --force to rebuild)\n"; }
 		
 		######### Stage 3: Build regulatory sequence database
 		my $upstreamDB = "$conservatoryDir/genomes/$curgenomeName.upstream.fasta";
@@ -136,7 +136,7 @@ while(my $curgenomeline= <$genomedb>) {
 		## Introns would be here...
 		
 		if(! -e "$upstreamDB.gz" || $force) {
-			if( -e $upstreamDB) { ## If it is found, delete old indices
+			if( -e "$upstreamDB.gz") { ## If it is found, delete old indices
 				if(-e "$upstreamDB.gz") { unlink("$upstreamDB.gz"); }
 				if(-e "$upstreamDB.gz.fai") { unlink("$upstreamDB.gz.fai"); }
 				if(-e "$upstreamDB.gz.gzi") { unlink("$upstreamDB.gz.gzi"); }
@@ -149,7 +149,7 @@ while(my $curgenomeline= <$genomedb>) {
 			system("samtools faidx $upstreamDB.gz");
 			
 			print localtime() . ": $curgenomeName : END building upstream sequence database.\n";
-		}  elsif ($verbose) { print localtime() . ": SKIP Upstream sequence database already exists (use --force to rebuild)\n"; }
+		}  else { print localtime() . ": SKIP Upstream sequence database already exists (use --force to rebuild)\n"; }
 		if(! -e "$downstreamDB.gz" || $force) {
 			if( -e $downstreamDB) { ## If it is found, delete old indices
 				if(-e "$downstreamDB.gz") { unlink("$downstreamDB.gz"); }
@@ -195,12 +195,12 @@ while(my $curgenomeline= <$genomedb>) {
 					system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
 					system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
 					print localtime() . ": $curgenomeName : END reciprocal blast.\n";
-				} elsif ($verbose) { print localtime() . ": SKIP blast temporary files already exists. Delete $blastG2REF to rebuild.\n" }
+				} else { print localtime() . ": SKIP blast temporary files already exists. Delete $blastG2REF to rebuild.\n" }
 				print localtime() . ": $curgenomeName : START Building ortholog database.\n";
 				system("$conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome $curgenomeName");
 				print localtime() . ": $curgenomeName : END Building ortholog database.\n";
 			} 
-		} elsif ($verbose) { print localtime(). ": SKIP Ortholog database already exists (use --forceOrthology to rebuild)\n"; }
+		} else { print localtime(). ": SKIP Ortholog database already exists (use --forceOrthology to rebuild)\n"; }
 		print localtime() . ": END processing genome $curgenomeName\n-------------------------------------------------------------------------------------------------------------\n";
 	}
 }

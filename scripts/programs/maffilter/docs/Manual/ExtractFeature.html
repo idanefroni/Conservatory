@@ -1,0 +1,128 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- This is the manual of MafFilter, version 1.3.1.
+
+Copyright (C) 2018 Julien Y. Dutheil -->
+<!-- Created by GNU Texinfo 6.1, http://www.gnu.org/software/texinfo/ -->
+<head>
+<title>MafFilter Manual 1.3.1: ExtractFeature</title>
+
+<meta name="description" content="MafFilter Manual 1.3.1: ExtractFeature">
+<meta name="keywords" content="MafFilter Manual 1.3.1: ExtractFeature">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Extracting.html#Extracting" rel="up" title="Extracting">
+<link href="SelectChr.html#SelectChr" rel="next" title="SelectChr">
+<link href="OrderFilter.html#OrderFilter" rel="prev" title="OrderFilter">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="http://www.w3.org/StyleSheets/Core/Steely">
+
+
+</head>
+
+<body lang="en">
+<a name="ExtractFeature"></a>
+<div class="header">
+<p>
+Next: <a href="SelectChr.html#SelectChr" accesskey="n" rel="next">SelectChr</a>, Previous: <a href="OrderFilter.html#OrderFilter" accesskey="p" rel="prev">OrderFilter</a>, Up: <a href="Extracting.html#Extracting" accesskey="u" rel="up">Extracting</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>]</p>
+</div>
+<a name="Extract-features-from-the-alignment"></a>
+<h4 class="subsection">2.1.6 Extract features from the alignment</h4>
+
+<p>The <code>ExtractFeature</code> extracts parts of the alignment corresponding to certain features.
+The features to extract are typically provided via a GFF file. 
+</p>
+<a name="Synopsis_003a-6"></a>
+<h3 class="heading">Synopsis:</h3>
+
+<table class="cartouche" border="1"><tr><td>
+<div class="example">
+<pre class="example">maf.filter=                                 \
+    [...]
+    ExtractFeature(                         \
+        ref_species=species1,               \
+        feature.file=species1.gff3.gz,      \
+        feature.file.compression=gzip,      \
+        feature.format=GFF,                 \
+        feature.type=mRNA,                  \
+        compression=gzip,                   \
+        complete=yes,                       \
+        ignore_strand=no),                  \
+    [...]
+</pre></div>
+</td></tr></table>
+
+<a name="Arguments_003a-5"></a>
+<h3 class="heading">Arguments:</h3>
+
+<dl compact="compact">
+<dt><code>ref_species={string}</code></dt>
+<dd><p>The name of the species for which the coordinates of the features are provided.
+</p>
+</dd>
+<dt><code>feature.file={path}</code></dt>
+<dd><p>The file where the features are described.
+</p>
+</dd>
+<dt><code>feature.file.compression={none|gzip|zip|bzip2}</code></dt>
+<dd><p>Compression format for the feature file.
+</p>
+</dd>
+<dt><code>feature.format={GFF|GTF|BedGraph}</code></dt>
+<dd><p>Format for the feature file, currently GFF (v3.0), GTF or BedGraph.
+</p>
+</dd>
+<dt><code>feature.type={all|(list)}</code></dt>
+<dd><p>Specifies which type of feature should be extracted from the feature file, if several are available.
+</p>
+</dd>
+<dt><code>compression={none|gzip|zip|bzip2}</code></dt>
+<dd><p>Compression format for output file (if file != none).
+</p>
+</dd>
+<dt><code>complete={yes|no}</code></dt>
+<dd><p>Tell if only complete features should be extracted or if partial extraction is allowed.
+</p>
+</dd>
+<dt><code>ignore_strand={yes|no}</code></dt>
+<dd><p>If yes, features will be extracted &ldquo;as is&rdquo;. Otherwise, the invert-complement sequence will be returned if it is located on the negative strand.
+</p>
+</dd>
+</dl>
+
+
+
+
+
+</body>
+</html>

@@ -23,7 +23,7 @@ sub mean {
 sub extractFastaToFile {
 	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
 	
-	my $maskseq = " sed 's/[A|T]{10}/XXXXXXXXXX/g'";
+	my $maskseq = " sed 's/[A|T]{10}/XXXXXXXXXX/g' | sed 's/N/X/g'";
 	my $addc1 = "awk '{if(NR==1) {print(\$0\".c1\"); } else {print \$0;}}'";
 	
 	system("samtools faidx $fastaFile $locus | $maskseq | $addc1 >$outputFastaFile");
@@ -33,17 +33,18 @@ sub extractFastaToFile {
 ######### Setup
 
 my $conservatoryDir=abs_path(".");
+my $curDir;
 my $locus;
 my $family;
 my $MIN_QUALITY = 0; # the minimum alignment quality score from vista to be consideted a legit alignment
 my $MIN_ALIGNMENTS = 4; # The minimum number of aligned promoters that is required to generate a MAF file
+my $EMPTY_FILE = 32; # The size of an empty MAF file, containing no alignments
 my $IDENTITY= 60;
 my $keep_tmp = 0;
 my $verbose = 0;
-my $DUMP_SAM = 0;
+my $force=0;
+my $dump_sam = 0;
 my $help = 0;
-
-##### Define mask
 
 
 ########### Parameters
@@ -56,25 +57,28 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
 			"family=s" => \$family,
 			"identity=i" => \$IDENTITY,
+			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
-			"dump-sam" => \$DUMP_SAM,
+			"dump-bam" => \$dump_sam,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
 if( $locus eq "" or $family eq "" or $help) {
 	print "Conservatory version 0.0.1\n\n";
 
-   print "buildAlignmentForFamily --conservatoryDirectory <dir> --family <familyName> --locus <Locus>\n\n\n";
+   print "buildAlignmentForFamily --family <familyName> --locus <Locus>\n\n\n";
    print "\t--family\tFamily name (MANDATORY).\n";
    print "\t--locus\t\t\tLocus in the reference genome for the family (MANDATORY).\n";
+   print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
+   print "\n\t\tAlignment options\n\n";
    print "\t--identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
-   print "\t--dump-sam\t\tExport a sam of all pair-wise alignment, translated to absoluted coordinates. For JBrowse tracks.\n";
+   print "\t--dump-bam\t\tExport a bam of all pair-wise alignment, translated to absoluted coordinates. For JBrowse tracks.\n";
+   print "\n\t\tGeneral options\n\n";
+   print "\t--force\t\tComputer alignments and CNS even if files exist.\n";
    print "\t--verbose\t\tOutput extra progress messages.\n";
    print "\t--help\t\t\tPrints this message.\n\n";
-   print "\nRequired Environment variables:\n\tTMP\t\tTemporary directory\n\tAVID\t\tLocation of avid aligner\n";
-   print "\n\nMAFFILTER\t\tmafFilter directory\n\n";
    
    exit();
 }
@@ -111,8 +115,8 @@ while(my $curline = <$parameters>) {
 		(my $paramName, my $paramValue) = split /=/, $curline;
 		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
 		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
-		elsif(uc($paramName) eq "MAFFILTERDIRECTORY") { $maffilterDir = $conservatoryDir . $paramValue; }
-		elsif(uc($paramName) eq "AVIDDIRECTORY") { $avidDir = $conservatoryDir . $paramValue; }
+		elsif(uc($paramName) eq "MAFFILTERDIRECTORY") { $maffilterDir = "$conservatoryDir/$paramValue"; }
+		elsif(uc($paramName) eq "AVIDDIRECTORY") { $avidDir = "$conservatoryDir/$paramValue"; }
 		elsif($paramName ne "") {  }
 	}
 }
@@ -134,59 +138,96 @@ while((my $line = <$genomeDatabase>) && $refGenome eq "") {
 	(my $curGenome, my $curSpecies, my $curFamily, my $curRefGenome) = split /,/, $line;
 	if($curFamily eq $family && $curGenome eq $curRefGenome) { $refGenome = $curGenome; }
 }
-close ($genomeDatabase);
+seek ($genomeDatabase,0,SEEK_SET);
 die "ERROR: Cannot find family ($family) or the reference genome for the family in the genome database file.\n" unless $refGenome ne "";
 	
 ####### now make sure our directories exist
 if (! -e $outputDir) { mkdir($outputDir); }
 if (! -e $tmpDir) { mkdir($tmpDir); }
 
-####### Set up the reference fasta files
-my $upstreamRefFastaName = "$tmpDir/$refGenome.$locus" . "_up.fasta";
-my $downstreamRefFastaName = "$tmpDir/$refGenome.$locus" . "_down.fasta";
+### Mow check if alignment is already there
 
-extractFastaToFile("$genomeDir/$refGenome" . ".upstream.fasta.gz", $locus, $upstreamRefFastaName);
-extractFastaToFile("$genomeDir/$refGenome" . ".downstream.fasta.gz", $locus, $downstreamRefFastaName);
+if(!(-e "$outputDir/$locus.up.maf" && -e "$outputDir/$locus.down.maf") || $force ) {
+  ####### Set up the reference fasta files
+  my $upstreamRefFastaName = "$tmpDir/$refGenome.$locus" . "_up.fasta";
+  my $downstreamRefFastaName = "$tmpDir/$refGenome.$locus" . "_down.fasta";
 
-#remember where we are
-my $curDir = getcwd;
-chdir $tmpDir;	
+  extractFastaToFile("$genomeDir/$refGenome" . ".upstream.fasta.gz", $locus, $upstreamRefFastaName);
+  extractFastaToFile("$genomeDir/$refGenome" . ".downstream.fasta.gz", $locus, $downstreamRefFastaName);
+  if($verbose) { print localtime() . ": Done extracting reference sequences.\n";}
 
-# set up orthology hashes
-my %orth_quality;  #Hash of alignment quality
-my %orth_names; # Hash of the names for the best alignments
-my %orth_species;
-my %orth_fasta_names;
-my %orth_fasta_down_names;
+  #remember where we are
+  $curDir = getcwd;
+  chdir $tmpDir;	
+  # set up orthology hashes
+  my %orthologs;
+  ##############################################################################
+  # Load Genomes
+  $header = <$genomeDatabase>;
 
-##############################################################################
-# Load Genomes
-
-open (my $genomeDatabase, "<", $genomedbFile);
-$header = <$genomeDatabase>;
-while(<$genomeDatabase>) {
+  while(<$genomeDatabase>) {
 	chomp;
 	(my $curGenome, my $curSpecies, my $curFamily, my $curRefGenome, my $curMinQuality) = split /,/;
-	
+
 	if($curGenome ne $refGenome && $curFamily eq $family) { #if this is within our family (and not the reference)
 		### get ortholog sequences
-		open (my $orthologFile, "<", "$genomeDir/$curGenome" . ".orthologs.csv") || die "Can't open ortholog file for $curGenome.\n";
+		open (my $orthologFile, "<", "$genomeDir/$curGenome.orthologs.csv") || die "ERROR: Can't open ortholog file $genomeDir/$curGenome.orthologs.csv.\n";
 		while(my $orth_line = <$orthologFile>) {
 			chomp($orth_line);
 			(my $curPutativeOrtholog, my $curRefLocus, my $score) = split /,/,$orth_line;
 			if($curRefLocus eq $locus) {
-				if($verbose) { print "Extracting sequence for $curPutativeOrtholog ($curGenome).\n"; }
+				my $quality = 0;
 				my $upstreamFastaName ="$tmpDir/$curGenome.$curPutativeOrtholog" . "_up.fasta";
 				my $downstreamFastaName = "$tmpDir/$curGenome.$curPutativeOrtholog" . "_down.fasta";
 				extractFastaToFile("$genomeDir/$curGenome" . ".upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
 				extractFastaToFile("$genomeDir/$curGenome" . ".downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
 
 				system("$avidDir/avid-linux -nm=both $upstreamRefFastaName $upstreamFastaName >/dev/null 2>/dev/null");
-				
-				if(!$keep_tmp) {
+				### Check alignment quality of upstream sequence to determine orthology
+				my $avidQualityFileName = "$tmpDir/$refGenome.$locus" ."_up_" . "$curGenome.$curPutativeOrtholog" . "_up";
+				if(-e "$avidQualityFileName.info") {
+					open (my $avidQualityFile, "grep Score " . $avidQualityFileName . ".info |");
+					my $qualityLine = <$avidQualityFile>;
+					my @qualityArray = split ' ', $qualityLine;
+					$quality =  $qualityArray[3];
+					close ($avidQualityFile);
+					# Now remove the temporary AVID alignment files
+					unlink ("$avidQualityFileName.info");
+					unlink ("$avidQualityFileName.minfo");
+					unlink ("$avidQualityFileName.out");
+				} else {
+ 					print (localtime() . " WARNING: Cannot open quality file $avidQualityFileName.info for locus $locus.\n");
+					$quality = -99;
+				}
+
+				#############################################################
+				if($quality> $curMinQuality) {
+					if($verbose) { print "PROGRESS: Found possible ortholog ($curGenome:$curPutativeOrtholog). Quality: $quality.\n"; }
+					
+					if(not defined $orthologs{$curSpecies}) {
+						$orthologs{$curSpecies} = [ {
+							'Name' => $curPutativeOrtholog,
+							'Genome' => $curGenome,
+							'upstreamFileName' => $upstreamFastaName,
+							'downstreamFileName' => $downstreamFastaName,
+							'Quality' => $quality} ];		
+					} else {
+						push( @{ $orthologs{$curSpecies} },
+							{
+								'Name' => $curPutativeOrtholog,
+								'Genome' => $curGenome,
+								'upstreamFileName' => $upstreamFastaName,
+								'downstreamFileName' => $downstreamFastaName,
+								'Quality' => $quality
+							});
+					}
+								
+				} else {
 					unlink($upstreamFastaName);
 					unlink($downstreamFastaName);
 				}
+				
+				
 			}
 		}
 		
@@ -194,67 +235,194 @@ while(<$genomeDatabase>) {
 	
 	}
 }
-	
-			### align the sequences
-			
-			
-				### Align
-				
-				
-				########## Check for quality
-#my $vistaoutfile = "Slreference_" . $genomefields[0] . $ortholog_fields[1];
+close ($genomeDatabase);				
 
-#				open (my $qualityfile, "grep Score " . $vistaoutfile . ".info |") || die ("can't open quality file");
-#				my $qualityline = <$qualityfile>;
-#				my @qualitysplit = split ' ', $qualityline;
-#				my $quality =  $qualitysplit[3];
-#				close ($qualityfile);
-#				if($VERBOSE) {
-#					print "Found ortholog for: " . $ortholog_fields[0] . " from " . $genomefields[0] . " of family " . $genomefields[$collapsefield] ." named " . $ortholog_fields[1] . " with quality " . $quality . ".\n";
-#				}
+#####################################################################################################
+###### Now we have assembled the list of putative orthologs. Select the best genome for each species
+
+foreach my $curOrthSpecies (keys %orthologs) {
+		# first, check if we have a consistent duplication. if not, pick the best alignment.
+		# For consistent duplication it means that the number of genes is a multiple of the number of species.
+		# if so, pick the best duplication group
+		my @genomeNames;
+		my @qScores;
+		foreach my $curOrth (@{ $orthologs{$curOrthSpecies} }) {	
+			my %derefCurOrth = %$curOrth; 
+			push @genomeNames,  $derefCurOrth{'Genome'};		
+			push @qScores, $derefCurOrth{'Quality'};
+		}
+
 		
-#				if($quality> $genomefields[4]) {
-#					my @align_array;
-#					my @align_array_maf;
-#					my $gap=0;
-#		
-#					if(not exists $orth_names{$genomefields[$collapsefield]}) {
-#
-#						$orth_names{$genomefields[$collapsefield]} = [ $ortholog_fields[1] ];
-#						$orth_species{$genomefields[$collapsefield]} = [ $genomefields[0] ];
-#						$orth_fasta_names{$genomefields[$collapsefield]} = [ $compfilename ];
-#						$orth_fasta_down_names{$genomefields[$collapsefield]} =  [ $downcompfilename ];					
-#						$orth_quality{$genomefields[$collapsefield]} = [ $quality ];
-#						
-#					} else {
-#							push( @{ $orth_names{$genomefields[$collapsefield]} }, $ortholog_fields[1]);
-#							push( @{ $orth_species{$genomefields[$collapsefield]} } , $genomefields[0]);
-#							push( @{ $orth_fasta_names{$genomefields[$collapsefield]} }, $compfilename);
-#							push( @{ $orth_fasta_down_names{$genomefields[$collapsefield]} }, $downcompfilename);
-#							push( @{ $orth_quality{$genomefields[$collapsefield]} }, $quality);
-#					}
-#				} else {
-#				}
-				
-				# cleaup - remove the tmp files
-#				unlink ($vistaoutfile . ".info");
-#				unlink ($vistaoutfile . ".minfo");
-#				unlink ($vistaoutfile . ".out");
-				
-#				chdir $curdir;
-#			}
-#		}
-#	}
-#}
+		if( (scalar @{ $orthologs{$curOrthSpecies} }) % ( scalar uniq ( @genomeNames )) == 0 &&
+			(scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 ) {
 
+			my @bestOrthologsGroup;
+			my $bestQuality =0;
+			my @genomesToTest = uniq ( @genomeNames );
+			foreach my $curGenomeToTest ( @genomesToTest) {
+				my @indexes = grep { @genomeNames[$_] eq $curGenomeToTest } 0 ..(scalar @genomeNames);
+			
+				my $meanQuality = mean ( @qScores[@indexes] );
+				if($meanQuality > $bestQuality) {
+					$bestQuality = $meanQuality;
+					@bestOrthologsGroup = @indexes;
+				}
+			}
+			
+			### Remove all temporary files
+			foreach my $i (0..((scalar @qScores)-1)) {
+				if( !($i ~~ @bestOrthologsGroup)) {
+					unlink($orthologs{$curOrthSpecies}[$i]->{'upstreamFileName'});
+					unlink($orthologs{$curOrthSpecies}[$i]->{'downstreamFileName'});
+				}
+			}
+			my %tmporth = %orthologs;
+			$orthologs{$curOrthSpecies} = [ ];
+			foreach my $i (@bestOrthologsGroup) {
+				push( @ { $orthologs{$curOrthSpecies} },
+					$tmporth{$curOrthSpecies}[$i]);
+			}
+			if($verbose) { print "PROGRESS: Picked ortholog genome " . $orthologs{$curOrthSpecies}[0]->{'Genome'} . ", " . (scalar @{ $orthologs{$curOrthSpecies} }) . " Genes:";
+					       foreach my $i ( @{ $orthologs{$curOrthSpecies} }) { print $i->{'Name'} . ","; }
+					       print ".\n";
+			}
 
+		} else {
+			#### Only one possible gene. pick the best genome based on AVID quality scores.
 
+			my $topQuality = max( @qScores);
+			my $topQualityIdx = firstidx { $_ == $topQuality } @qScores;
 
+			### Remove all temporary files
+			foreach my $i (0..((scalar @qScores)-1)) {
+				if($i != $topQualityIdx) {
+					unlink($orthologs{$curOrthSpecies}[$i]->{'upstreamFileName'});
+					unlink($orthologs{$curOrthSpecies}[$i]->{'downstreamFileName'});
+				}
+			}
+			
+			## Now remove all the other genes
+			$orthologs{$curOrthSpecies} = [ $orthologs{$curOrthSpecies}[$topQualityIdx] ];
+			if($verbose) { print "PROGRESS: Picked ortholog genome " . $orthologs{$curOrthSpecies}[0]->{'Genome'} . ",Gene " . $orthologs{$curOrthSpecies}[0]->{'Name'} . "\n"; }
+		}
+}
+####################################################################################################################################
+##### At this point, we have selected our orthologs (%orthologs) and have all the filtered upstream and downstream sequences in fasta files 
+##### Perform alignments to the reference genome
+my @species = keys %orthologs;
+my $numOfSpecies = scalar @species;
 
-close($genomeDatabase);
-chdir $curDir;	
+if ($verbose) { print "PROGRESS: Done with ortholog selection. Collected $numOfSpecies Orthologs.\n"; }
 
+my $lastzParameters = "--gap=400,50 --nochain --seed=match3 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$IDENTITY --ydrop=500 --hspthreshold=2500 --gappedthresh=2500 --inner=1800";
+if ($numOfSpecies > $MIN_ALIGNMENTS) {
+	foreach my $speciesToAlign (@species) {
+		foreach my $orthologToAlign (@{ $orthologs{$speciesToAlign} }) {
+			$orthologToAlign->{'MAFUpFileName'} = $locus . "." . $orthologToAlign->{'Name'} . "_up.maf";
+			system("lastz --format=maf $lastzParameters $upstreamRefFastaName " . $orthologToAlign->{'upstreamFileName'} . " > " . $orthologToAlign->{'MAFUpFileName'});
+			$orthologToAlign->{'AlignmentSizeUp'} = -s "$locus." . $orthologToAlign->{'Name'} . "_up.maf";
+			if($verbose) { print "PROGRESS: Alignment of " . $orthologToAlign->{'Name'} . " Done. Size is " . $orthologToAlign->{'AlignmentSizeUp'} . "\n"; }
+
+			$orthologToAlign->{'MAFDownFileName'} = $locus . "." . $orthologToAlign->{'Name'} . "_down.maf";
+
+			system("lastz --format=maf $lastzParameters $downstreamRefFastaName " . $orthologToAlign->{'downstreamFileName'} . " > " . $orthologToAlign->{'MAFDownFileName'});
+			$orthologToAlign->{'AlignmentSizeDown'} = -s "$locus." . $orthologToAlign->{'Name'} . "_down.maf";
+			if($dump_sam) {
+				my $convertParameters = "--conservatoryDirectory $conservatoryDir --genome $refGenome --format SAM";
+				system("lastz --format=sam $lastzParameters $upstreamRefFastaName " . $orthologToAlign->{'upstreamFileName'} . " | $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos UP >>" .
+					$locus . ".sam");
+				system("lastz --format=sam $lastzParameters $downstreamRefFastaName " . $orthologToAlign->{'downstreamFileName'} . " | $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos DOWN >>" .
+					$locus . ".sam");
+			}
+		}
+	}
+	#### Now all alignments were performed. Begin to combine MAF by multiz. 
+	### First, move everything to an array
+	my @orthologsToProcess;
+	foreach my $speciesToAlign (@species) {
+		foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
+			if($curOrtholog->{'AlignmentSizeUp'} > $EMPTY_FILE || $curOrtholog->{'AlignmentSizeDown'} > $EMPTY_FILE) {
+				push @orthologsToProcess, $curOrtholog;
+			}
+		}
+	}
+	if((scalar @orthologsToProcess) > 0) {
+		my @orthologsToProcessSorted = reverse sort { $a->{'AlignmentSizeUp'} <=> $b->{'AlignmentSizeUp'} } @orthologsToProcess;
+
+		my $finalMafUpFileName = "$locus.up.maf";
+		my $finalMafDownFileName = "$locus.down.maf";
+
+		system("multiz " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " 1 | uniq >$finalMafUpFileName");
+		system("multiz " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " 1 | uniq >$finalMafDownFileName");
+
+		foreach my $curOrthologToMultiz (@orthologsToProcessSorted) {
+			if($curOrthologToMultiz->{'AlignmentSizeUp'} > $EMPTY_FILE) {
+				system("multiz $finalMafUpFileName " . $curOrthologToMultiz->{'MAFUpFileName'} . " 1 | uniq >$finalMafUpFileName.tmp");
+				unlink($finalMafUpFileName);
+				system("mv $finalMafUpFileName.tmp $finalMafUpFileName");
+			}
+			if($curOrthologToMultiz->{'AlignmentSizeDown'} > $EMPTY_FILE) {
+				system("multiz $finalMafDownFileName " . $curOrthologToMultiz->{'MAFDownFileName'} . " 1 | uniq >$finalMafDownFileName.tmp");
+				unlink($finalMafDownFileName);
+				system("mv $finalMafDownFileName.tmp $finalMafDownFileName");
+			}
+		}
+
+		### Wrap up. Filter and clean up MAF file
+		my $command= "$maffilterDir/maffilter \"input.file=$finalMafUpFileName\" \"maf.filter=Concatenate(),Merge(species=($locus), dist_max=4),MinBlockSize(min_size=$MIN_ALIGNMENTS),EntropyFilter(species=($locus)),QualFilter(species=($locus)),MinBlockLength(min_length=8),Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+		system ($command);
+		unlink($finalMafUpFileName);
+		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafUpFileName.fil | sed 's/\\.c1//' > $finalMafUpFileName");
+		unlink("$finalMafUpFileName.fil");
+		$command= "$maffilterDir/maffilter \"input.file=$finalMafDownFileName\" \"maf.filter=Concatenate(),Merge(species=($locus), dist_max=4),MinBlockSize(min_size=$MIN_ALIGNMENTS),EntropyFilter(species=($locus)),QualFilter(species=($locus)),MinBlockLength(min_length=8),Output(file=$finalMafDownFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+		system ($command);
+		unlink($finalMafDownFileName);
+		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafDownFileName.fil | sed 's/\\.c1//' > $finalMafDownFileName");
+		unlink("$finalMafDownFileName.fil");
+
+		####### Move final files to output directories
+		if( (-s $finalMafUpFileName) > $EMPTY_FILE) {
+			system("mv $finalMafUpFileName $outputDir");
+		} else { unlink($finalMafUpFileName); }
+		if( (-s $finalMafDownFileName) > $EMPTY_FILE) {
+			system("mv $finalMafDownFileName $outputDir");
+		} else { unlink($finalMafDownFileName); }
+	}
+} else { if($verbose) { print localtime() . " PROGRESS: Number of species with alignments ($numOfSpecies) below minimum ($MIN_ALIGNMENTS)."; }} 
+
+### Fix SAM (if we have one) and move to output
+if($dump_sam && $numOfSpecies > $MIN_ALIGNMENTS) {
+	system("mv $locus.sam $locus.sam.tmp");
+	system("grep \"@\" $locus.sam.tmp | sort | uniq >$locus.sam");
+	system("grep -v \"@\" $locus.sam.tmp | sort -k3,3 -k4,4n | uniq >>$locus.sam");
+	unlink("$locus.sam.tmp");
+	system("samtools view -b $locus.sam > $locus.bam");
+	unlink("$locus.sam");
+	system("mv $locus.bam $outputDir");
+}
+
+### Remove temporary files
 if(!$keep_tmp) {
 	unlink($upstreamRefFastaName);
 	unlink($downstreamRefFastaName);
+	## remove all of the fasta and maf files
+	foreach my $speciesToAlign (@species) {
+		foreach my $orthologToAlign (@{ $orthologs{$speciesToAlign} }) {
+			unlink($orthologToAlign->{'upstreamFileName'});
+			unlink($orthologToAlign->{'downstreamFileName'});
+			
+			unlink("$tmpDir/$locus" . "." . $orthologToAlign->{'Name'} . "_up.maf");
+			unlink("$tmpDir/$locus" . "." . $orthologToAlign->{'Name'} . "_down.maf");
+		}
+		
+	}
 }
+
+} else { print localtime() . " SKIP: Alignment files for $locus already exists. Use --force remake.\n"; }
+
+######## Now do phyloP.
+#$CONUNPE/gene2genome $CONUNPE/gene2genome.dic $CONUNPE/../genes/${GENENAME}_down.maf | grep -v '?' > $TMP/${GENENAME}_down.filter_tmp.maf
+# phyloP --seed 123 --wig-scores --no-prune --mode CON --method SCORE ${TREE} $TMP/${GENENAME}.filter.maf | wig2bed | sort -k1,1 -k2,2n | awk '{ if( $5 > 1 ) { print $0;} }' > $CONUNPE/../phyloP/CNS/${GENENAME}.phyloP.rel.bed
+#### and go back.
+chdir $curDir;	
+if($verbose) { print "PROGRESS: Done alignments for $locus.\n"; }

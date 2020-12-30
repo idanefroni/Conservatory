@@ -1,0 +1,119 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- This is the manual of MafFilter, version 1.3.1.
+
+Copyright (C) 2018 Julien Y. Dutheil -->
+<!-- Created by GNU Texinfo 6.1, http://www.gnu.org/software/texinfo/ -->
+<head>
+<title>MafFilter Manual 1.3.1: Descriptive</title>
+
+<meta name="description" content="MafFilter Manual 1.3.1: Descriptive">
+<meta name="keywords" content="MafFilter Manual 1.3.1: Descriptive">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Analyzing.html#Analyzing" rel="up" title="Analyzing">
+<link href="BlockSize.html#BlockSize" rel="next" title="BlockSize">
+<link href="Analyzing.html#Analyzing" rel="prev" title="Analyzing">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="http://www.w3.org/StyleSheets/Core/Steely">
+
+
+</head>
+
+<body lang="en">
+<a name="Descriptive"></a>
+<div class="header">
+<p>
+Next: <a href="Phylogenetics.html#Phylogenetics" accesskey="n" rel="next">Phylogenetics</a>, Previous: <a href="Analyzing.html#Analyzing" accesskey="p" rel="prev">Analyzing</a>, Up: <a href="Analyzing.html#Analyzing" accesskey="u" rel="up">Analyzing</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>]</p>
+</div>
+<a name="Descriptive-statistics"></a>
+<h4 class="subsection">2.3.1 Descriptive statistics</h4>
+
+<p>The section describes how to compute simple statistics for each alignment block.
+For the sake of computer efficiency, several statistics can be computed simultaneously on each alignment block.
+The results are written in a text file, with one line per block and one column per statistics.
+In addition, the coordinates of the block will be reported according to a specified reference species.
+The choice of statistics is specified by the user. Some of them output several results, which will appear each in a column in the output file.
+</p>
+<p>Descriptive statistics are computed through the <code>SequenceStatistics</code> filter, which takes the following arguments:
+</p>
+<a name="Synopsis_003a-19"></a>
+<h3 class="heading">Synopsis:</h3>
+
+<table class="cartouche" border="1"><tr><td>
+<div class="example">
+<pre class="example">maf.filter=                                 \
+    [...],
+    SequenceStatistics(                     \
+        statistics=(\                       \
+            BlockLength,                    \
+            AlnScore,                       \
+            BlockCounts),                   \
+        ref_species=species1,               \
+        file=data.statistics.csv,           \
+        compression=none),                  \
+    [...]
+</pre></div>
+</td></tr></table>
+
+<a name="Arguments_003a-18"></a>
+<h3 class="heading">Arguments:</h3>
+
+<dl compact="compact">
+<dt><code>statistics={list of statistics functions}</code></dt>
+<dd><p>See below for the list of possible functions and their detailed description.
+</p>
+</dd>
+<dt><code>ref_species={string}</code></dt>
+<dd><p>The species to use to report block coordinates in the output file. For block where the reference species is missing, NA will be output.
+</p>
+</dd>
+<dt><code>file={path}</code></dt>
+<dd><p>A file path for the output file.
+</p>
+</dd>
+<dt><code>compression={none|gzip|zip|bzip2}</code></dt>
+<dd><p>Compression format for output file.
+</p>
+</dd>
+</dl>
+
+<p>The statistics to compute take the form of functions (just like filters themselves), which can potentially take arguments.
+Here is the list of currently available statistical functions:
+</p>
+
+
+
+
+</body>
+</html>

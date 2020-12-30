@@ -1,0 +1,27 @@
+DATA=Umaydis
+input.file=$(DATA).fasta
+input.format=Fasta(zero_based=no)
+input.file.compression=none
+output.log=$(DATA).noncoding.maffilter.log
+maf.filter=                                   \
+  FeatureFilter(                              \
+      ref_species=Umaydis,                    \
+      feature.file=$(DATA).gff3,              \
+      feature.file.compression=none,          \
+      feature.format=GFF,                     \
+      feature.type=mRNA,                      \
+      file=$(DATA).coding.maf.gz,             \
+      compression=gzip,                       \
+      verbose=yes),                           \
+  SequenceStatistics(                         \
+      statistics=(                            \
+          BlockLength,                        \
+          BlockCounts),                       \
+      ref_species=Umaydis,                    \
+      file=Umaydis.noncoding.statistics.csv), \
+  MinBlockLength(min_length=300),             \
+  Output(                                     \
+      file=$(DATA).noncoding.maf.gz,          \
+      compression=gzip,                       \
+      mask=yes)
+

@@ -1,0 +1,116 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- This is the manual of MafFilter, version 1.3.1.
+
+Copyright (C) 2018 Julien Y. Dutheil -->
+<!-- Created by GNU Texinfo 6.1, http://www.gnu.org/software/texinfo/ -->
+<head>
+<title>MafFilter Manual 1.3.1: Description</title>
+
+<meta name="description" content="MafFilter Manual 1.3.1: Description">
+<meta name="keywords" content="MafFilter Manual 1.3.1: Description">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Introduction.html#Introduction" rel="up" title="Introduction">
+<link href="Run.html#Run" rel="next" title="Run">
+<link href="Introduction.html#Introduction" rel="prev" title="Introduction">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="http://www.w3.org/StyleSheets/Core/Steely">
+
+
+</head>
+
+<body lang="en">
+<a name="Description"></a>
+<div class="header">
+<p>
+Next: <a href="Run.html#Run" accesskey="n" rel="next">Run</a>, Previous: <a href="Introduction.html#Introduction" accesskey="p" rel="prev">Introduction</a>, Up: <a href="Introduction.html#Introduction" accesskey="u" rel="up">Introduction</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>]</p>
+</div>
+<a name="Description-of-the-program"></a>
+<h3 class="section">1.1 Description of the program</h3>
+
+<p>The main goal of MafFilter is to apply a series of &quot;filters&quot; to the original input file.
+A &ldquo;filter&rdquo; can be seen as a small program that takes as input one or several maf blocks, and outputs one or several maf block, after performing some actions on them:
+</p>
+<pre class="verbatim">                         +--------+
+   Alignment block(s)    |        |   Alignment block(s)
+------------------------&gt;+ Filter +------------------------&gt;
+                         |        |
+                         +--------+
+</pre>
+<p>We can roughly distinguish four types of filters:
+</p>
+<ul>
+<li> Filters that take one block as input, and output one single block, possibly after removing some sequences, or even the full block if it did not match a certain criterion,
+</li><li> Filters that take one block as input, and split them into several smaller blocks, for instance of a fixed size,
+</li><li> Filters that take several blocks as input and output a larger one, typically after concatenating the input blocks,
+</li><li> Filters that do not modify the input block and simply forward it, yet after having performed some computations, for instance calculating various statistics.
+</li></ul>
+
+<p>A run of MafFilter typically consists in a workflow of filters, applied in a serial way, the output of one filter being taken as input as the next one.
+In the current version of MafFilter, only linear workflows are possible, without branching:
+</p>
+<pre class="verbatim">    +----------+    +----------+    +----------+
+    |          |    |          |    |          |
+---&gt;+ Filter 1 +---&gt;+ Filter 2 +---&gt;+ Filter 3 +---&gt; Etc.
+    |          |    |          |    |          |
+    +----------+    +----------+    +----------+
+</pre>
+<p>Branching processes can however be achieved by outputing the alignment blocks at the branching point, and run various instances of MafFilter on the resulting files:
+</p>
+<pre class="verbatim">     Run 1
+    +----------+    +----------+    +----------+
+    |          |    |          |    |          |
+---&gt;+ Filter 1 +---&gt;+ Filter 2 +---&gt;+ Filter 3 +---&gt; Etc.
+    |          |    |          |    |          |
+    +----------+    +----+-----+    +----------+
+                         |
+                         |    +------------+
+                         |    |            |
+     Run 2               +---&gt;+ Filter 2.1 +---&gt; Etc.
+                              |            |
+                              +------------+
+</pre>
+<p>Some filters allow to generate additional data associated to each alignment block, such as phylogenetic trees.
+Such data cannot be written to file together with the blocks, as the MAF format does not support this.
+These data are however stored in memory by MafFilter together with the block, as &ldquo;extra-data&rdquo;.
+Extra-data are associated with a special tag which is used for refering to them, including for writting them in appropriate output files.
+</p>
+<p>The next section describes how to specify the series of filters to be applied, and the next chapter provides an exhaustive list of available filters.
+</p>
+
+
+
+
+</body>
+</html>

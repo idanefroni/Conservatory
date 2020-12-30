@@ -1,5 +1,5 @@
 ### ---- Parameters ----
 UpstreamLength=50000
 DownstreamLength=5000
-maffilterDirectory=./scripts/programs/maffilter/MafFilter/
-avidDirectory=./scripts/programs/
+maffilterDirectory=scripts/programs/maffilter/MafFilter/
+avidDirectory=scripts/programs/

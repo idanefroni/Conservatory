@@ -1,0 +1,18 @@
+# For benchmarking purpose only.
+# Run with maffilter param=MafFilterTest.bpp
+
+CHR=22
+DATA=chr$(CHR)
+input.file=/mnt/dd3/jdutheil/Data/Genomes/UCSC_46ways/maf/$(DATA).maf.gz
+input.file.compression=gzip
+input.format=Maf
+output.log=$(DATA).maffilter.log
+maf.filter=\
+    MinBlockLength(min_length=1000),\
+    SequenceStatistics(\
+      statistics=(\
+        BlockSize(),\
+        BlockLength()),\
+      ref_species=hg19,\
+      file=$(DATA).statistics.csv)
+

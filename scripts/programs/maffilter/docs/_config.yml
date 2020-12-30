@@ -1,0 +1,5 @@
+theme: jekyll-theme-tactile
+title: MafFilter
+description: a genome alignment processor
+show_downloads: true
+share: true

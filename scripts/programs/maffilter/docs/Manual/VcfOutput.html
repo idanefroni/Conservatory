@@ -1,0 +1,115 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- This is the manual of MafFilter, version 1.3.1.
+
+Copyright (C) 2018 Julien Y. Dutheil -->
+<!-- Created by GNU Texinfo 6.1, http://www.gnu.org/software/texinfo/ -->
+<head>
+<title>MafFilter Manual 1.3.1: VcfOutput</title>
+
+<meta name="description" content="MafFilter Manual 1.3.1: VcfOutput">
+<meta name="keywords" content="MafFilter Manual 1.3.1: VcfOutput">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Exporting.html#Exporting" rel="up" title="Exporting">
+<link href="MsmcOutput.html#MsmcOutput" rel="next" title="MsmcOutput">
+<link href="OutputAsTable.html#OutputAsTable" rel="prev" title="OutputAsTable">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="http://www.w3.org/StyleSheets/Core/Steely">
+
+
+</head>
+
+<body lang="en">
+<a name="VcfOutput"></a>
+<div class="header">
+<p>
+Next: <a href="MsmcOutput.html#MsmcOutput" accesskey="n" rel="next">MsmcOutput</a>, Previous: <a href="OutputAsTable.html#OutputAsTable" accesskey="p" rel="prev">OutputAsTable</a>, Up: <a href="Exporting.html#Exporting" accesskey="u" rel="up">Exporting</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>]</p>
+</div>
+<a name="Call-SNPs-from-alignment-blocks-and-export-to-VCF-file"></a>
+<h4 class="subsection">2.4.4 Call SNPs from alignment blocks and export to VCF file</h4>
+
+<p>The <code>VcfOutput</code> filter call SNPs from each block and output them to a VCF file.
+Only substitutions are called for now.
+</p>
+<a name="Synopsis_003a-37"></a>
+<h3 class="heading">Synopsis:</h3>
+
+<table class="cartouche" border="1"><tr><td>
+<div class="example">
+<pre class="example">maf.filter=                                 \
+    [...],
+    VcfOutput(                              \
+        file=snp.vcf.gz,                    \
+        compression=gzip,                   \
+        reference=Ref,                      \
+        genotypes=(sample1,sample2),        \
+        all=no),                            \
+    [...]
+</pre></div>
+</td></tr></table>
+
+<a name="Arguments_003a-37"></a>
+<h3 class="heading">Arguments:</h3>
+
+<dl compact="compact">
+<dt><code>file={none|{path}}</code></dt>
+<dd><p>A file path for the output VCF file.
+</p>
+</dd>
+<dt><code>compression={none|gzip|zip|bzip2}</code></dt>
+<dd><p>Compression format for output file.
+</p>
+</dd>
+<dt><code>reference={species name}</code></dt>
+<dd><p>A species name corresponding to the sequence to use as reference.
+</p>
+</dd>
+<dt><code>genotypes={list of species}</code></dt>
+<dd><p>A list of species for which genotypes informations should be written. If not, void, a &rsquo;FORMAT&rsquo; column will be added to the output, as well as oneextra column per species to genotype.
+If the species is not present in this particular, or if a N or Gap is present, a dot (&rsquo;.&rsquo;) will be written in the column.
+Please note that species should be unique in each block, otherwise an error will occur.
+</p>
+</dd>
+<dt><code>all={boolean}</code></dt>
+<dd><p>If set to &rsquo;yes&rsquo;, also output non-variable positions in the VCF file.
+</p>
+</dd>
+</dl>
+
+
+
+
+
+</body>
+</html>
