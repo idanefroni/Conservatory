@@ -89,8 +89,8 @@ while(my $curgenomeline= <$genomedb>) {
 		
 		#### First, genome sanity check. See that we have all files.
 		print localtime() . ": START processing conservation for $family (reference genome $curgenomeName)\n";
-		$geneListFileName = "$conservatoryDir/genomes/$curgenomeName.orthologs.csv";
-		die localtime() . ": ABORT Cannot find orthologs file ($geneListFileName). Was processGenomes run?\n" unless -e $geneListFileName;
+		$geneListFileName = "$conservatoryDir/genomes/$curgenomeName.footprint.gff3";
+		die localtime() . ": ABORT Cannot find footprint file ($geneListFileName). Was processGenomes run?\n" unless -e $geneListFileName;
 		### Start threads
 		my @alignmentThreads = map { threads->new(\&processAlignmentThread, $_) } 1 .. $threads;
 		$_->join for @alignmentThreads;
@@ -125,7 +125,11 @@ sub processAlignmentThread {
 		my $curLocus;
 		if (1) {
 	   	  lock $threadlock;
-	   	  ($curLocus) = split /,/,$geneline;
+	   	  chomp $geneline;
+	   	  my @array = split /\t/, $geneline;
+	   	  my %geneparam = split/[;=]/, $array[8];
+	   	  
+	   	  ($curLocus) = $geneparam{'Name'};
 	   	  if(!( -e "$outputDir/$curLocus.lock")) {
 			open(my $lock, ">","$outputDir/$curLocus.lock");
 			close($lock);
@@ -137,7 +141,7 @@ sub processAlignmentThread {
 		if($goodtogo) {
 	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam";
 	   		if($force) { $alignmentParams = "alignmentParams --force"; }
-	   		system("$conservatoryDir/scripts/buildAlignmentForFamily $alignmentParams");
+	   		system("$conservatoryDir/scripts/buildAlignmentForFamily2 $alignmentParams");
 			$goodtogo=0;
 		} 
 	}

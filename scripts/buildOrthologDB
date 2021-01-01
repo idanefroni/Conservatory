@@ -68,10 +68,22 @@ die "ERROR: Cannot file genome $genome in database.\n" unless $referenceGenome n
 my $genome2refFileName = "$conservatoryDir/genomes/tmpblast/$genome" . "2" . "$referenceGenome" . ".txt";
 my $ref2genomeFileName = "$conservatoryDir/genomes/tmpblast/$referenceGenome" . "2" . "$genome" . ".txt";
 my $outputOrthologFileName = "$conservatoryDir/genomes/$genome.orthologs.csv";
+my $footprintGFFFileName = "$conservatoryDir/genomes/$genome.footprint.gff3";
+
+open (my $gffFile, "<", $footprintGFFFileName ) or die "ERROR: Cannot open footprint file $footprintGFFFileName.\n";
 
 open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
 open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
 open (my $output, ">", $outputOrthologFileName);
+
+my @genesWithFootprint;
+while(my $line = <$gffFile>) {
+	chomp($line);
+	my @array = split /\t/, $line;
+	my %genename = split /[;=]/, $array[8];
+	push (@genesWithFootprint, $genename{'Name'});
+}
+close($gffFile);
 
 #load the whole b2a table into a hash
 
@@ -186,7 +198,11 @@ while(my $curline = <$g2ref>) {
 							if($geneProcessingREGEX ne "") {
 				    			eval '$cursolocus =~ s/$geneProcessingREGEX//g;'; 
 							}
-							print $output ($cursolocus . "," . $refinedhitname . "," . ($recp_eval{$solocus} + $blasthits_eval{$curhit})  . "\n");
+							#### Check that we have a foot print for that gene.
+							# This really should not be, but some genomes are only partially annotated.
+							if($cursolocus ~~ @genesWithFootprint) {
+								print $output ($cursolocus . "," . $refinedhitname . "," . ($recp_eval{$solocus} + $blasthits_eval{$curhit})  . "\n");
+							}
 						}
 					}
 				}

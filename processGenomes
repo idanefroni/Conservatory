@@ -106,7 +106,7 @@ while(my $curgenomeline= <$genomedb>) {
 		
 		if(! -e "$conservatoryDir/genomes/blastdb/$curgenomeName.phr" || $force) {
 			print localtime() . ": $curgenomeName : START building protein blast database\n";
-			system("makeblastdb -in $genomeProteinFile -input_type fasta -dbtype prot -parse_seqids -out \"$conservatoryDir/genomes/blastdb/$curgenomeName\" >>processGenome.log 2>&1 ");
+			system("makeblastdb -in $genomeProteinFile -input_type fasta -dbtype prot -out \"$conservatoryDir/genomes/blastdb/$curgenomeName\" >>processGenome.log 2>&1 ");
 			print localtime() . ": $curgenomeName : END building protein blast database\n";
 		} else { print localtime() . ": SKIP Blast database already exists (use --force to rebuild)\n"; }
 		
