@@ -22,24 +22,21 @@ my $verbose=0;
 my $help=0;
 my $genomeWasProcessed=0;
 my $threads=16;
-my $version=2;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"family=s" => \$family,
 			"threads=i" => \$threads,
-			"version=i" => \$version,
 			"force" => \$force,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
 
 			
-if($help || $family eq "" || ($version != 1 && $version !=2)) {
+if($help || $family eq "") {
 	print "Conservatory version 0.0.1\n\n";
 	
 	print "processConservation --family <family>\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
 	print "\t--family\t\tFamily for which to process conservation (MANDATORY).\n";
-	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";
 	print "\t--force\t\tForce rebuilding alignments.\n";
 	print "\t--threads\t\tNumber of threads to use.\n";
 	print "\t--verbose\t\tOutput extra progress messages.\n";
@@ -59,8 +56,8 @@ die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e 
 die "ERROR: Cannot find file conservatory parameter file ($parameter_file)\n" unless -e $parameter_file;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
 
-my $samtools = `sh -c 'command -v samtools'`;
-die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" unless ($samtools ne "");  
+my $bamtools = `sh -c 'command -v bamtools'`;
+die "ERROR: Cannot find bamtools in path. Please make sure it is installed.\n" unless ($bamtools ne "");  
 
 ##################### Read Parameters
 if($verbose) { print localtime(). ": Loading parameter file $parameter_file.\n"; }
@@ -99,23 +96,13 @@ while(my $curgenomeline= <$genomedb>) {
 		$_->join for @alignmentThreads;
 		## Merge all BAM, sort and index
 		unlink("$family.bam");
-		system("ulimit -n 200000");
-		system("ls $outputDir/*.bam > $outputDir/$family.bams.txt");
-		system("samtools merge -b $outputDir/$family.bam.tmp -list $outputDir/$family.bams.txt");
-		unlink("$outputDir/$family.bams.txt");
-		
-		system("samtools sort $outputDir/$family.bam.tmp > $outputDir/$family.bam.sort");
-		unlink("$outputDir/$family.bam.tmp");
-
-		# Mark snps and indels
-		system("samtools calmd -@ $threads -b $outputDir/$family.bam.sort $conservatoryDir/genomes/$curgenomeReference.fasta.gz > $outputDir/$family.bam");
-		unlink("$outputDir/$family.bam.sort");
-		system("samtools index $outputDir/$family.bam");
-		
-		## move to final directory
-		system("move $outputDir/$family.bam $conservatoryDir/alignments");
-		system("move $outputDir/$family.bam.bai $conservatoryDir/alignments");
-
+		system("ls *.bam > $family.bams.txt");
+		system("bamtools merge -list $family.bams.txt -out $family.bam.tmp"); 
+		system("samtools sort $family.bam.tmp > $family.bam");
+		system("samtools index $family.bam");
+		unlink("$family.bam.tmp");
+		#remove all small bams ?
+		#
 		print localtime() . ": END processing conservation for $family (reference genome $curgenomeName)\n";
 	}
 }
@@ -154,7 +141,7 @@ sub processAlignmentThread {
 		if($goodtogo) {
 	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam";
 	   		if($force) { $alignmentParams = "alignmentParams --force"; }
-	   		system("$conservatoryDir/scripts/buildAlignmentForFamily$version $alignmentParams");
+	   		system("$conservatoryDir/scripts/buildAlignmentForFamily2 $alignmentParams");
 			$goodtogo=0;
 		} 
 	}

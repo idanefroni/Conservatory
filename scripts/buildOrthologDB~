@@ -1,0 +1,207 @@
+#!/usr/bin/perl
+use POSIX;
+use List::MoreUtils qw(uniq);
+use List::MoreUtils qw(first_index);
+use strict;
+use Cwd 'abs_path';
+use Getopt::Long;
+
+my $MAX_ORTH=8;
+my $MIN_EVAL= 10;
+my $EVAL_CUTOFF_FOR_FAMILY=0.33;
+my $conservatoryDir=abs_path(".");
+my $help=0;
+my $genome="";
+my $genomefound = 0;
+
+my $line;
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"genome=s" => \$genome,
+			"help" => \$help) or die("Error in command line arguments\n");
+			
+			
+if( $genome eq "" || $help) {
+	print "Conservatory version 0.0.1\n\n";
+	
+	print "buildOrthologDB\n\n";
+	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
+	print "\t--genome\t\tGenome name for which to build putative ortholog databse (MANDATORY). \n\n";
+    exit();
+}
+my $genomedb_file = $conservatoryDir . "/genome_database.csv";
+
+##### Sanity checks.
+die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e $genomedb_file;
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes/tmpblast");
+
+######### Find out what is the reference genome and the processing REGEX
+open(my $genomedb, "<", $genomedb_file);
+my $header=<$genomedb>;
+my $referenceGenome="";
+my $geneProcessingREGEX="";
+my $referenceGeneProcessingREGEX="";
+
+while(<$genomedb>) {
+	chomp;
+	my @genomeDBLine = split /,/;
+	if($genomeDBLine[0] eq $genome) {
+		$referenceGenome = $genomeDBLine[3];
+		$geneProcessingREGEX = $genomeDBLine[8];
+	}
+}
+
+#move back to the begining of the genome databse file
+seek $genomedb,0, SEEK_SET;
+
+# Now find the processing REGEX for the reference genome
+while(<$genomedb>) {
+	chomp;
+	my @genomeDBLine = split /,/;
+	if($genomeDBLine[0] eq $referenceGenome) {
+		$referenceGeneProcessingREGEX = $genomeDBLine[8];
+	}
+}
+close($genomedb);
+
+die "ERROR: Cannot file genome $genome in database.\n" unless $referenceGenome ne "";
+
+my $genome2refFileName = "$conservatoryDir/genomes/tmpblast/$genome" . "2" . "$referenceGenome" . ".txt";
+my $ref2genomeFileName = "$conservatoryDir/genomes/tmpblast/$referenceGenome" . "2" . "$genome" . ".txt";
+my $outputOrthologFileName = "$conservatoryDir/genomes/$genome.orthologs.csv";
+
+open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
+open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
+open (my $output, ">", $outputOrthologFileName);
+
+#load the whole b2a table into a hash
+
+my $curlocus = "";
+my @blasthits;
+my %blasthits_eval;
+
+my %b2a_blast;
+my %b2a_blast_eval;
+my $linecounter=0;
+
+while(my $curline = <$ref2g>) {
+	$linecounter++;
+	chomp($curline);
+
+	my @line_s = split(/\t/, $curline);
+	my $locus = $line_s[0];
+	my $solocus = $line_s[1];
+	my $eval = $line_s[10];
+	if($locus eq $curlocus) {
+		if(scalar @blasthits < $MAX_ORTH && $eval < $MIN_EVAL) {
+			if (! grep( /^$solocus$/, @blasthits ) ) {
+				push(@blasthits, $solocus);
+				if($eval ==0) { 
+					$blasthits_eval{$solocus} = 400;
+				} else {
+					$blasthits_eval{$solocus} = -log($eval);
+				}
+			}
+		}
+	} else {
+
+			if($curlocus ne "") {
+				#save to hash and output		
+				$b2a_blast{$curlocus} = [@blasthits];
+				$b2a_blast_eval{$curlocus} = [%blasthits_eval];
+			}
+			$curlocus = $locus;
+			@blasthits= ($solocus);
+			%blasthits_eval = ();
+			if($eval ==0) { 
+				$blasthits_eval{$solocus} = 400;
+				} else {
+				$blasthits_eval{$solocus} = -log($eval);
+				}
+		}
+}
+
+my $cursolocus = "";
+
+@blasthits=();
+%blasthits_eval = ();
+
+while(my $curline = <$g2ref>) {
+
+	chomp($curline);
+	my @line_s = split(/\t/, $curline);
+	my $solocus = $line_s[0];
+	my $locus = $line_s[1];
+	my $eval = $line_s[10];
+
+
+	if($solocus eq $cursolocus) {
+		if(scalar @blasthits < $MAX_ORTH && $eval < $MIN_EVAL) {
+		if (! grep( /^$locus$/, @blasthits ) ) {
+				push(@blasthits, $locus);
+				if($eval ==0) { 
+					$blasthits_eval{$locus} = 400;
+				} else {
+					$blasthits_eval{$locus} = -log($eval);
+				}
+			}
+		}
+	} else {
+		if($cursolocus ne "") {
+			#first, establish the distribution of reciprocal evals.
+
+			my @allevals;
+			foreach(@blasthits) {
+				my $curhit = $_;
+			
+				if (exists $b2a_blast{$curhit}) {		
+					my %recp_eval = @{%b2a_blast_eval{$curhit}};
+
+					if(exists $recp_eval{$cursolocus}) {
+						push(@allevals, ($recp_eval{$solocus} + $blasthits_eval{$curhit}));
+					}
+				}
+			}
+			# now, determine acut off (currently a fixed percentage of max eval. Could be more sophisticated in the future)
+			
+			@allevals = reverse sort {$a <=> $b}  @allevals;
+			my $cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;		
+
+			foreach(@blasthits) {
+				my $curhit = $_;
+				
+				## If we have that gene in the reciprocal db
+				if (exists $b2a_blast{$curhit}) {		
+					my %recp_eval = @{%b2a_blast_eval{$curhit}};
+
+					if(exists $recp_eval{$cursolocus}) {
+						if( ($recp_eval{$solocus} + $blasthits_eval{$curhit})> $cutoff) {
+							# get rid of weird embelishments
+							my $refinedhitname = $curhit;
+							
+							if($referenceGeneProcessingREGEX ne "") {
+				    			eval '$refinedhitname =~ s/$referenceGeneProcessingREGEX//g;'; 
+							}
+
+							
+							if($geneProcessingREGEX ne "") {
+				    			eval '$cursolocus =~ s/$geneProcessingREGEX//g;'; 
+							}
+							print $output ($cursolocus . "," . $refinedhitname . "," . ($recp_eval{$solocus} + $blasthits_eval{$curhit})  . "\n");
+						}
+					}
+				}
+			}
+		}
+		$cursolocus = $solocus;
+		@blasthits= ($locus);
+		%blasthits_eval = ();
+		
+		if($eval ==0) { 
+			$blasthits_eval{$locus} = 400;
+		} else {
+			$blasthits_eval{$locus} = -log($eval);
+		}
+	}
+}
+
+close($output);
