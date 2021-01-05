@@ -51,6 +51,7 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 my $genomedb_file = "$conservatoryDir/genome_database.csv";
 my $parameter_file = "$conservatoryDir/conservatory.parameters.txt";
 my $outputDir = "$conservatoryDir/alignments/$family";
+my $conservationDir = "$conservatoryDir/CNS/";
 my $geneListFileName;
 
 ####### First, sanity checks. Check to see if blast is installed and if directory structure is OK.
@@ -115,7 +116,20 @@ while(my $curgenomeline= <$genomedb>) {
 		## move to final directory
 		system("move $outputDir/$family.bam $conservatoryDir/alignments");
 		system("move $outputDir/$family.bam.bai $conservatoryDir/alignments");
-
+		
+		##### Now merge conservation data
+		unlink("$conservationDir/$family.cns.csv");
+		unlink("$conservationDir/$family.bed");
+		unlink("$conservationDir/$family.bw");
+		
+		# merge gene files for entire genome
+		system("for a in $conservationDir/$family/*.csv; do cat $a >> $conservationDir/$family.csv; done");
+		system("for a in $conservationDir/$family/*.bed; do cat $a >> $conservationDir/$family.bed; done");
+		
+		# sort both files
+		system("sort -k1,1 -k2,2n -o $conservationDir/$family.csv $conservationDir/$family.csv");
+		system("sort -k1,1 -k2,2n -o $conservationDir/$family.bed $conservationDir/$family.bed");
+		
 		print localtime() . ": END processing conservation for $family (reference genome $curgenomeName)\n";
 	}
 }

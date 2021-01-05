@@ -175,10 +175,10 @@ if(!(-e "$outputDir/$locus.up.maf" && -e "$outputDir/$locus.down.maf") || $force
 			chomp($orth_line);
 			(my $curPutativeOrtholog, my $curRefLocus, my $score) = split /,/,$orth_line;
 			if($curRefLocus eq $locus) {
-				my $upstreamFastaName ="$tmpDir/$curGenome.$curPutativeOrtholog.up.fasta";
-				my $downstreamFastaName = "$tmpDir/$curGenome.$curPutativeOrtholog.down.fasta";
-				extractFastaToFile("$genomeDir/$curGenome" . ".upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
-				extractFastaToFile("$genomeDir/$curGenome" . ".downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
+				my $upstreamFastaName ="$tmpDir/$locus.$curGenome.$curPutativeOrtholog.up.fasta";
+				my $downstreamFastaName = "$tmpDir/$locus.$curGenome.$curPutativeOrtholog.down.fasta";
+				extractFastaToFile("$genomeDir/$curGenome.upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
+				extractFastaToFile("$genomeDir/$curGenome.downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
 
 				my $MAFUpFileName = "$locus.$curPutativeOrtholog.up.maf";
 				system("lastz --format=maf $lastzParameters $upstreamRefFastaName $upstreamFastaName > $MAFUpFileName");
@@ -439,25 +439,8 @@ while(<$geneMAF_down>) {
 }
 close($geneMAF_down);
 close($speciesMAF_down);
-#### Now run phyloP 
-my $treeFileName = "$conservatoryDir/genomes/$family.mod";
 
-die localtime() . "ERROR : Cannot find fitted phylogenetic tree for family $family ($treeFileName)\n" unless -e $treeFileName;
-
-system("phyloP --seed 123 --wig-scores --no-prune --mode CON --method SCORE $treeFileName $speciesMAFFileName_up 2> /dev/null | wig2bed | sort -k1,1 -k2,2n | awk '{ if( \$5 > 1 ) { print \$0;} }' > $tmpDir/$locus.up.bed");
-system("phyloP --seed 123 --wig-scores --no-prune --mode CON --method SCORE $treeFileName $speciesMAFFileName_down  2> /dev/null | wig2bed | sort -k1,1 -k2,2n | awk '{ if( \$5 > 1 ) { print \$0;} }' > $tmpDir/$locus.down.bed");
-unlink($speciesMAFFileName_up);
-unlink($speciesMAFFileName_down);
-
-### Build CNS and convert to table
-system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed | bedtools merge -d 25 -c 5 -o mean -i - | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4); }' > $tmpDir/$locus.cns.csv");
-system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed | bedtools merge -d 25 -c 5 -o mean -i - | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1,\$2,\$3,\$4);}' >> $tmpDir/$locus.cns.csv");
-system("cp $tmpDir/$locus.cns.csv $outputCNSDir");
-unlink("$tmpDir/$locus.cns.csv");
-
-
-### Now convert coordinates and dump a CNS file for merging
-### For that, figure out the coordinate of the file
+### Extract the absolute coordinates of the locus
 my $refFootprintFileName = "$conservatoryDir/genomes/$refGenome.footprint.gff3";
 my ($refGeneStart, $refGeneEnd, $refGeneChr, $refGeneDir) = ("","","","");
 
@@ -476,27 +459,81 @@ while ((my $line = <$refFootprintFile>) && $refGeneChr eq "" ){
 }
 close($refFootprintFile);
 
-if($refGeneDir eq "+") {
-	system("awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-$upstreamLength+\$2,$refGeneStart-$upstreamLength+\$3,\"$locus\",\$5);}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.phylop.bed");
-	system("awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+\$2,$refGeneEnd+\$3,\"$locus\",\$5);}}' $tmpDir/$locus.down.bed >> $tmpDir/$locus.phylop.bed");
-} else {
-	system("awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+$upstreamLength-\$3,$refGeneEnd+$upstreamLength-\$2,\"$locus\",\$5);}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.phylop.bed");
-	system("awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2,\"$locus\",\$5);}}' $tmpDir/$locus.down.bed >> $tmpDir/$locus.phylop.bed");
+my $coordinateTranslateAwkUp;
+my $coordinateTranslateStrUp;
+my $coordinateTranslateAwkDown;
+my $coordinateTranslateStrDown;
 
+if($refGeneDir eq "+") {
+	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-$upstreamLength+\$2,$refGeneStart-$upstreamLength+\$3,\"$locus\",\$5);}}'";
+	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneStart-$upstreamLength+\$2, $refGeneStart-$upstreamLength+\$3";
+	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+\$2,$refGeneEnd+\$3,\"$locus\",\$5);}}'"; 
+	$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd+\$2, $refGeneEnd+\$3";
+	
+} else { 
+	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+$upstreamLength-\$3,$refGeneEnd+$upstreamLength-\$2,\"$locus\",\$5);}}'";
+	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLength-\$3, $refGeneEnd+$upstreamLength-\$2";
+	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2,\"$locus\",\$5);}}'";
+	$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2";
 }
+	
+#### Now run phyloP 
+my $treeFileName = "$conservatoryDir/genomes/$family.mod";
+
+die localtime() . "ERROR : Cannot find fitted phylogenetic tree for family $family ($treeFileName)\n" unless -e $treeFileName;
+
+if(-s $speciesMAFFileName_up > $EMPTY_FILE) {
+	system("phyloP --seed 123 --wig-scores --no-prune --mode CON --method SCORE $treeFileName $speciesMAFFileName_up 2> /dev/null | wig2bed | sort -k1,1 -k2,2n | awk '{ if( \$5 > 1 ) { print \$0;} }' > $tmpDir/$locus.up.bed");
+	unlink($speciesMAFFileName_up);
+	if(-s "$tmpDir/$locus.up.bed"> $EMPTY_FILE) { 
+		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.bed.tmp");
+		if(-s "$tmpDir/$locus.up.bed.tmp" > $EMPTY_FILE) {
+			if($verbose) { print localtime() . ": Found upstream CNS.\n"; }
+			system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.bed.tmp | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
+		}
+		unlink("$tmpDir/$locus.up.bed.tmp");
+	}
+}
+if(-s $speciesMAFFileName_down > $EMPTY_FILE) {
+	system("phyloP --seed 123 --wig-scores --no-prune --mode CON --method SCORE $treeFileName $speciesMAFFileName_down  2> /dev/null | wig2bed | sort -k1,1 -k2,2n | awk '{ if( \$5 > 1 ) { print \$0;} }' > $tmpDir/$locus.down.bed");
+	unlink($speciesMAFFileName_down);
+	if(-s "$tmpDir/$locus.down.bed"> $EMPTY_FILE) { 
+		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.bed.tmp");
+		if(-s "$tmpDir/$locus.down.bed.tmp" > $EMPTY_FILE) {
+			if($verbose) { print localtime() . ": Found downstream CNS.\n"; }
+			system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.bed.tmp | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
+		}
+		unlink("$tmpDir/$locus.down.bed.tmp");
+	}
+}
+### Build CNS and convert to table
+if( (-e "$tmpDir/$locus.cns.csv") && (-s "$tmpDir/$locus.cns.csv" > $EMPTY_FILE)) {
+	system("cp $tmpDir/$locus.cns.csv $outputCNSDir");
+	unlink("$tmpDir/$locus.cns.csv");
+}
+
+### Now convert coordinates and dump a CNS file for merging
+
+
+if(-e "$tmpDir/$locus.up.bed") {
+	system("$coordinateTranslateAwkUp $tmpDir/$locus.up.bed > $tmpDir/$locus.phylop.bed");
+}
+if(-e "$tmpDir/$locus.down.bed") {
+	system("$coordinateTranslateAwkDown $tmpDir/$locus.down.bed > $tmpDir/$locus.phylop.bed");
+}
+
+
 unlink("$tmpDir/$locus.up.bed");
 unlink("$tmpDir/$locus.down.bed");
-system("cp $tmpDir/$locus.phylop.bed $outputCNSDir");
-unlink("$tmpDir/$locus.phylop.bed");
+if( -e "$tmpDir/$locus.phylop.bed") {
+	system("cp $tmpDir/$locus.phylop.bed $outputCNSDir");
+	unlink("$tmpDir/$locus.phylop.bed");
+}
 
 
 if($verbose) { print "PROGRESS: End conservation analysis for $locus.\n"; }
 #### Go back to the original directory, and we are done!
 chdir $curDir;	
-
-
-
-
 
 ################################################################################
 ###### utility functions #######################################################
