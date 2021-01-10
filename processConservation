@@ -23,11 +23,13 @@ my $help=0;
 my $genomeWasProcessed=0;
 my $threads=16;
 my $version=2;
+my $identity=60;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"family=s" => \$family,
 			"threads=i" => \$threads,
 			"version=i" => \$version,
+			"identity=i" => \$identity,
 			"force" => \$force,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
@@ -39,6 +41,7 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 	print "processConservation --family <family>\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
 	print "\t--family\t\tFamily for which to process conservation (MANDATORY).\n";
+    print "\t--identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
 	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";
 	print "\t--force\t\tForce rebuilding alignments.\n";
 	print "\t--threads\t\tNumber of threads to use.\n";
@@ -51,7 +54,8 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 my $genomedb_file = "$conservatoryDir/genome_database.csv";
 my $parameter_file = "$conservatoryDir/conservatory.parameters.txt";
 my $outputDir = "$conservatoryDir/alignments/$family";
-my $conservationDir = "$conservatoryDir/CNS/";
+my $conservationDir = "$conservatoryDir/CNS";
+my $alignmentDir = "$conservatoryDir/alignments";
 my $geneListFileName;
 
 ####### First, sanity checks. Check to see if blast is installed and if directory structure is OK.
@@ -99,24 +103,20 @@ while(my $curgenomeline= <$genomedb>) {
 		my @alignmentThreads = map { threads->new(\&processAlignmentThread, $_) } 1 .. $threads;
 		$_->join for @alignmentThreads;
 		## Merge all BAM, sort and index
-		unlink("$family.bam");
+		unlink("$alignmentDir/$family.bam");
 		system("ulimit -n 200000");
 		system("ls $outputDir/*.bam > $outputDir/$family.bams.txt");
-		system("samtools merge -b $outputDir/$family.bam.tmp -list $outputDir/$family.bams.txt");
+		system("samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");
 		unlink("$outputDir/$family.bams.txt");
 		
-		system("samtools sort $outputDir/$family.bam.tmp > $outputDir/$family.bam.sort");
-		unlink("$outputDir/$family.bam.tmp");
+		system("samtools sort $alignmentDir/$family.tmp.bam > $alignmentDir/$family.sort.bam");
+		unlink("$alignmentDir/$family.tmp.bam");
 
 		# Mark snps and indels
-		system("samtools calmd -@ $threads -b $outputDir/$family.bam.sort $conservatoryDir/genomes/$curgenomeReference.fasta.gz > $outputDir/$family.bam");
-		unlink("$outputDir/$family.bam.sort");
-		system("samtools index $outputDir/$family.bam");
-		
-		## move to final directory
-		system("move $outputDir/$family.bam $conservatoryDir/alignments");
-		system("move $outputDir/$family.bam.bai $conservatoryDir/alignments");
-		
+		system("samtools calmd -@ $threads -b $alignmentDir/$family.sort.bam $conservatoryDir/genomes/$curgenomeReference.fasta.gz > $alignmentDir/$family.bam");
+		unlink("$alignmentDir/$family.sort.bam");
+		system("samtools index $alignmentDir/$family.bam");
+			
 		##### Now merge conservation data
 		unlink("$conservationDir/$family.cns.csv");
 		unlink("$conservationDir/$family.bed");
@@ -135,11 +135,9 @@ while(my $curgenomeline= <$genomedb>) {
 }
 close($genomedb);
 
-
 if(! $genomeWasProcessed) { die ("ERROR: No family $family or no reference genome was found in $genomedb_file.\n"); }
 
 print localtime() . ": END conservation processing run.\n";
-
 
 sub processAlignmentThread {
 	my $goodtogo=0;
@@ -166,9 +164,9 @@ sub processAlignmentThread {
 		  }
 		}
 		if($goodtogo) {
-	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam";
-	   		if($force) { $alignmentParams = "alignmentParams --force"; }
-	   		system("$conservatoryDir/scripts/buildAlignmentForFamily$version $alignmentParams");
+	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam --identity $identity";
+	   		if($force) { $alignmentParams = "$alignmentParams --force"; }
+	   		system("$conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
 			$goodtogo=0;
 		} 
 	}

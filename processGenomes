@@ -114,7 +114,7 @@ while(my $curgenomeline= <$genomedb>) {
 			my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReference.proteins.fasta";
 			die localtime(). ": ABORT Can not find protein file for reference genome $genomeReferenceProteinFile.\n" unless -e $genomeReferenceProteinFile;
 			print localtime() . ": $curgenomeName : START building protein blast database for reference genome\n";
-			system("makeblastdb -in $genomeReferenceProteinFile -input_type fasta -dbtype prot -parse_seqids -out \"$conservatoryDir/genomes/blastdb/$curgenomeReference\" >>processGenome.log 2>&1 ");
+			system("makeblastdb -in $genomeReferenceProteinFile -input_type fasta -dbtype prot -parse_seqids -out \"$conservatoryDir/genomes/blastdb/$curgenomeReference\" >/dev/null 2>&1 ");
 			$rebuiltReferenceBlastDB = $curgenomeReference;
 			print localtime() . ": $curgenomeName : END building protein blast database for reference genome\n";		
 		} 

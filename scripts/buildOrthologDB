@@ -6,6 +6,7 @@ use strict;
 use Cwd 'abs_path';
 use Getopt::Long;
 
+
 my $MAX_ORTH=8;
 my $MIN_EVAL= 10;
 my $EVAL_CUTOFF_FOR_FAMILY=0.33;
@@ -76,6 +77,7 @@ open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast res
 open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
 open (my $output, ">", $outputOrthologFileName);
 
+### Set up the list of acceptable genes (those that have promoter sequences) 
 my @genesWithFootprint;
 while(my $line = <$gffFile>) {
 	chomp($line);
@@ -85,7 +87,7 @@ while(my $line = <$gffFile>) {
 }
 close($gffFile);
 
-#load the whole b2a table into a hash
+#load the whole genome to reference blast table into a hash
 
 my $curlocus = "";
 my @blasthits;
@@ -93,24 +95,23 @@ my %blasthits_eval;
 
 my %b2a_blast;
 my %b2a_blast_eval;
-my $linecounter=0;
 
-while(my $curline = <$ref2g>) {
-	$linecounter++;
+while(my $curline = <$g2ref>) {
+
 	chomp($curline);
-
 	my @line_s = split(/\t/, $curline);
 	my $locus = $line_s[0];
-	my $solocus = $line_s[1];
+	my $refLocus = $line_s[1];
 	my $eval = $line_s[10];
+
 	if($locus eq $curlocus) {
 		if(scalar @blasthits < $MAX_ORTH && $eval < $MIN_EVAL) {
-			if (! grep( /^$solocus$/, @blasthits ) ) {
-				push(@blasthits, $solocus);
+			if (! grep( /^$refLocus$/, @blasthits ) ) {
+				push(@blasthits, $refLocus);
 				if($eval ==0) { 
-					$blasthits_eval{$solocus} = 400;
+					$blasthits_eval{$refLocus} = 400;
 				} else {
-					$blasthits_eval{$solocus} = -log($eval);
+					$blasthits_eval{$refLocus} = -log($eval);
 				}
 			}
 		}
@@ -122,32 +123,33 @@ while(my $curline = <$ref2g>) {
 				$b2a_blast_eval{$curlocus} = [%blasthits_eval];
 			}
 			$curlocus = $locus;
-			@blasthits= ($solocus);
+			@blasthits= ($refLocus);
 			%blasthits_eval = ();
 			if($eval ==0) { 
-				$blasthits_eval{$solocus} = 400;
+				$blasthits_eval{$refLocus} = 400;
 				} else {
-				$blasthits_eval{$solocus} = -log($eval);
+				$blasthits_eval{$refLocus} = -log($eval);
 				}
 		}
 }
 
-my $cursolocus = "";
+my $curRefLocus = "";
 
 @blasthits=();
 %blasthits_eval = ();
 
-while(my $curline = <$g2ref>) {
+while(my $curline = <$ref2g>) {
 
 	chomp($curline);
 	my @line_s = split(/\t/, $curline);
-	my $solocus = $line_s[0];
+	my $refLocus = $line_s[0];
 	my $locus = $line_s[1];
 	my $eval = $line_s[10];
+	
 
-
-	if($solocus eq $cursolocus) {
-		if(scalar @blasthits < $MAX_ORTH && $eval < $MIN_EVAL) {
+	if($refLocus eq $curRefLocus) {
+		if((scalar @blasthits < $MAX_ORTH) && ($eval < $MIN_EVAL)) {
+		
 		if (! grep( /^$locus$/, @blasthits ) ) {
 				push(@blasthits, $locus);
 				if($eval ==0) { 
@@ -158,7 +160,7 @@ while(my $curline = <$g2ref>) {
 			}
 		}
 	} else {
-		if($cursolocus ne "") {
+		if($curRefLocus ne "") {
 			#first, establish the distribution of reciprocal evals.
 
 			my @allevals;
@@ -168,47 +170,50 @@ while(my $curline = <$g2ref>) {
 				if (exists $b2a_blast{$curhit}) {		
 					my %recp_eval = @{%b2a_blast_eval{$curhit}};
 
-					if(exists $recp_eval{$cursolocus}) {
-						push(@allevals, ($recp_eval{$solocus} + $blasthits_eval{$curhit}));
+					if(exists $recp_eval{$curRefLocus}) {
+						push(@allevals, ($recp_eval{$refLocus} + $blasthits_eval{$curhit}));
 					}
 				}
 			}
-			# now, determine acut off (currently a fixed percentage of max eval. Could be more sophisticated in the future)
+			# now, determine the cutoff (currently a fixed percentage of max eval. Could be more sophisticated in the future)
 			
 			@allevals = reverse sort {$a <=> $b}  @allevals;
 			my $cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;		
 
+			
 			foreach(@blasthits) {
 				my $curhit = $_;
 				
 				## If we have that gene in the reciprocal db
 				if (exists $b2a_blast{$curhit}) {		
+
 					my %recp_eval = @{%b2a_blast_eval{$curhit}};
 
-					if(exists $recp_eval{$cursolocus}) {
-						if( ($recp_eval{$solocus} + $blasthits_eval{$curhit})> $cutoff) {
+					if(exists $recp_eval{$curRefLocus}) {
+
+						if( ($recp_eval{$refLocus} + $blasthits_eval{$curhit})> $cutoff) {
 							# get rid of weird embelishments
 							my $refinedhitname = $curhit;
 							
 							if($referenceGeneProcessingREGEX ne "") {
-				    			eval '$refinedhitname =~ s/$referenceGeneProcessingREGEX//g;'; 
+				    			eval '$curRefLocus =~ s/$referenceGeneProcessingREGEX//g;'; 
 							}
 
 							
 							if($geneProcessingREGEX ne "") {
-				    			eval '$cursolocus =~ s/$geneProcessingREGEX//g;'; 
+				    			eval '$refinedhitname =~ s/$geneProcessingREGEX//g;'; 
 							}
 							#### Check that we have a foot print for that gene.
 							# This really should not be, but some genomes are only partially annotated.
-							if($cursolocus ~~ @genesWithFootprint) {
-								print $output ($cursolocus . "," . $refinedhitname . "," . ($recp_eval{$solocus} + $blasthits_eval{$curhit})  . "\n");
+							if($refinedhitname ~~ @genesWithFootprint) {
+								print $output ("$refinedhitname,$curRefLocus," . ($recp_eval{$refLocus} + $blasthits_eval{$curhit})  . "\n");
 							}
 						}
 					}
 				}
 			}
 		}
-		$cursolocus = $solocus;
+		$curRefLocus = $refLocus;
 		@blasthits= ($locus);
 		%blasthits_eval = ();
 		
