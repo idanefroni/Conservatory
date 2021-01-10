@@ -22,7 +22,6 @@ my $conservatoryDir=abs_path(".");
 my $curDir;
 my $locus;
 my $family;
-my $MIN_QUALITY = 0; # the minimum alignment quality score from vista to be consideted a legit alignment
 my $MIN_ALIGNMENTS = 4; # The minimum number of aligned promoters that is required to generate a MAF file
 my $EMPTY_FILE = 35; # The size of an empty MAF file, containing no alignments
 my $IDENTITY= 60;
@@ -33,7 +32,7 @@ my $dump_bam = 0;
 my $help = 0;
 my $skipPhyloP=0;
 my $skipAlignment=0;
-my $minPhyloPscore=2;
+my $minPhyloPscore=1;
 
 ########### Parameters
 my $upstreamLength;
@@ -489,30 +488,31 @@ if(-e $treeFileName) {
 	}
 	
 	#### Now run phyloP 
-
+	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CONACC";
+	
 	if(-s $speciesMAFFileName_up > $EMPTY_FILE) {
 		if($verbose) { print localtime() . ": PROGRESS: START phyloP analysis for upstream CNS.\n"; }
-
-		system("phyloP --seed 123 --wig-scores --no-prune --mode CON --method SCORE $treeFileName $speciesMAFFileName_up | wig2bed | sort -k1,1 -k2,2n | awk '{ if( \$5 > 1 ) { print \$0;} }' > $tmpDir/$locus.up.bed");
+		
+		system("phyloP $phyloPParameters $treeFileName $speciesMAFFileName_up | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
 
 		if(-s "$tmpDir/$locus.up.bed"> $EMPTY_FILE) { 
-			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.bed.tmp");
-			if(-s "$tmpDir/$locus.up.bed.tmp" > $EMPTY_FILE) {
+			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
+			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print localtime() . ": Found upstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.bed.tmp | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
 			}
-			unlink("$tmpDir/$locus.up.bed.tmp");
+			unlink("$tmpDir/$locus.up.fil.bed");
 		}
 	}
 	if(-s $speciesMAFFileName_down > $EMPTY_FILE) {
-		system("phyloP --seed 123 --wig-scores --no-prune --mode CON --method SCORE $treeFileName $speciesMAFFileName_down | wig2bed | sort -k1,1 -k2,2n | awk '{ if( \$5 > 1 ) { print \$0;} }' > $tmpDir/$locus.down.bed");
+		system("phyloP $phyloPParameters $treeFileName $speciesMAFFileName_down | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
 		if(-s "$tmpDir/$locus.down.bed"> $EMPTY_FILE) { 
-			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.bed.tmp");
-			if(-s "$tmpDir/$locus.down.bed.tmp" > $EMPTY_FILE) {
+			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
+			if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print localtime() . ": Found downstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.bed.tmp | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
 			}
-			unlink("$tmpDir/$locus.down.bed.tmp");
+			unlink("$tmpDir/$locus.down.fil.bed");
 		}
 	}
 	if(!$keep_tmp) { unlink($speciesMAFFileName_down); }
