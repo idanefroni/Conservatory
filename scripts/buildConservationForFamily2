@@ -50,7 +50,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
 			"dump-bam" => \$dump_bam,
-			"skip-alignmnet" => \$skipAlignment,
+			"skip-alignment" => \$skipAlignment,
 			"skip-phyloP" => \$skipPhyloP,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
@@ -488,7 +488,7 @@ if(-e $treeFileName) {
 	}
 	
 	#### Now run phyloP 
-	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CONACC";
+	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
 	
 	if(-s $speciesMAFFileName_up > $EMPTY_FILE) {
 		if($verbose) { print localtime() . ": PROGRESS: START phyloP analysis for upstream CNS.\n"; }

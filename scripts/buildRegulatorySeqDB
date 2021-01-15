@@ -28,7 +28,7 @@ sub clean_chr {
 	if(index($chr, " ")!= -1 || index($chr, "\t") != -1) {
 		$chr = (split(' ', $chr))[0];
 	}
-	return $chr;
+	return "C" . $chr;
 }
 
 my $cur_line;
@@ -67,7 +67,7 @@ if($mode eq "upstream") {
 		my $genename = $geneinfo{"Name"};
 								
 		if($genefields[2] eq "Footprint") {
-			my $chromosome = $genefields[0];
+			my $chromosome = "C" . $genefields[0];
 			if((exists $index{$chromosome})) {
 				my $chromosome_num = $index{$chromosome};
 				my $dir = $genefields[6];
@@ -122,6 +122,8 @@ if($mode eq "upstream") {
 				}
 				print  $output ('N' x ($seq_len - length($prom)) . $prom . "\n");
 				$mylastgeneend_pos = max($genefields[3], $genefields[4]);
+			} else {
+				#print ("ERROR when processing line $gffline.\n Chromosome $chromosome does not exists\n"); 
 			}
 		}
 	  }
@@ -136,7 +138,7 @@ if($mode eq "upstream") {
 			my $genename = $geneinfo{"Name"};
 				
 			if($genefields[2] eq "Footprint") {
-				my $chromosome = $genefields[0];
+				my $chromosome = "C" . $genefields[0];
 				if((exists $index{$chromosome})) {
 					my $chromosome_num = $index{$chromosome};
 					my $dir = $genefields[6];

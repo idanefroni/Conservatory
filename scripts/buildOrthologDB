@@ -75,7 +75,7 @@ open (my $gffFile, "<", $footprintGFFFileName ) or die "ERROR: Cannot open footp
 
 open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
 open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
-open (my $output, ">", $outputOrthologFileName);
+open (my $output, ">", "$outputOrthologFileName.tmp");
 
 ### Set up the list of acceptable genes (those that have promoter sequences) 
 my @genesWithFootprint;
@@ -226,3 +226,7 @@ while(my $curline = <$ref2g>) {
 }
 
 close($output);
+## Finally filter for possible duplicates. This shouldn't happen, but sometimes does with odd annotation of spliceforms
+system("awk -F ',' '!seen[\$1\$2]++' $outputOrthologFileName.tmp > $outputOrthologFileName");
+unlink("$outputOrthologFileName.tmp");
+
