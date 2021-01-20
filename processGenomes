@@ -25,12 +25,13 @@ my $genomeWasProcessed=0;
 my $threads=16;
 my $rebuiltReferenceBlastDB="";
 
+
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"genome=s" => \$genome,
 			"family=s" => \$family,
 			"threads=i" => \$threads,
 			"force" => \$force,
-			"forceOrthology" => \$forceOrthology,
+			"force-orthology" => \$forceOrthology,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
 
@@ -42,8 +43,9 @@ if($help) {
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
 	print "\t--family\t\tLimit genome processing to a specific family (DEFAULT: process all families).\n";
 	print "\t--genome\t\tLimit genome processing to a specific genome (DEFAULT process all genomes). \n";
+	print "\t--threads\t\tNumber of threads to use (DEAFULT: 16). \n";
 	print "\t--force\t\tForce rebuilding of all databases file (expect orthology).\n";
-	print "\t--forceOrthology\t\tForce rebuilding orthology database.\n";
+	print "\t--force-orthology\t\tForce rebuilding orthology database.\n";
 	print "\t--verbose\t\tOutput extra progress messages.\n";
 	print "\t--help\t\t\tPrints this message.\n\n";
 	exit(0);
@@ -90,14 +92,13 @@ while(my $curgenomeline= <$genomedb>) {
 	
 	if(($genome ne "" && $genome eq $curgenomeName) || ($family ne "" && $family eq $curgenomeFamily) || ($genome eq "" && $family eq "")) {
 		$genomeWasProcessed=1;
-		
 		#### First, genome sanity check. See that we have all files.
 		print localtime() . ": START processing genome $curgenomeName\n";
-		my $genomeFastaFile = "$conservatoryDir/genomes/$curgenomeName.fasta.gz";
+		my $genomeFastaFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta.gz";
 		die localtime() . ": ABORT Cannot find genome fasta file ($genomeFastaFile)\n" unless -e $genomeFastaFile;
-		my $genomeProteinFile = "$conservatoryDir/genomes/$curgenomeName.proteins.fasta";
+		my $genomeProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.proteins.fasta";
 		die localtime() . ": ABORT Cannot find proteins fasta file ($genomeFastaFile)\n" unless -e $genomeProteinFile;
-		my $genomeGFFFile = "$conservatoryDir/genomes/$curgenomeName.genes.gff3";
+		my $genomeGFFFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.genes.gff3";
 		die localtime() . ": ABORT Cannot find genome GFF3 file ($genomeGFFFile)\n" unless -e $genomeGFFFile;
 		if($verbose) { print localtime() . ": $curgenomeName : OK Found all genome files.\n"; }
 		
@@ -111,7 +112,7 @@ while(my $curgenomeline= <$genomedb>) {
 		} else { print localtime() . ": SKIP Blast database already exists (use --force to rebuild)\n"; }
 		
 		if((! -e "$conservatoryDir/genomes/blastdb/$curgenomeReference.phr" || $forceOrthology) && $rebuiltReferenceBlastDB ne $curgenomeReference) {
-			my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReference.proteins.fasta";
+			my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeReference.proteins.fasta";
 			die localtime(). ": ABORT Can not find protein file for reference genome $genomeReferenceProteinFile.\n" unless -e $genomeReferenceProteinFile;
 			print localtime() . ": $curgenomeName : START building protein blast database for reference genome\n";
 			system("makeblastdb -in $genomeReferenceProteinFile -input_type fasta -dbtype prot -parse_seqids -out \"$conservatoryDir/genomes/blastdb/$curgenomeReference\" >/dev/null 2>&1 ");
@@ -131,8 +132,8 @@ while(my $curgenomeline= <$genomedb>) {
 		} else { print localtime() . ": SKIP Footprint database already exists (use --force to rebuild)\n"; }
 		
 		######### Stage 3: Build regulatory sequence database
-		my $upstreamDB = "$conservatoryDir/genomes/$curgenomeName.upstream.fasta";
-		my $downstreamDB = "$conservatoryDir/genomes/$curgenomeName.downstream.fasta";
+		my $upstreamDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.upstream.fasta";
+		my $downstreamDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.downstream.fasta";
 		## Introns would be here...
 		
 		if(! -e "$upstreamDB.gz" || $force) {
@@ -168,7 +169,7 @@ while(my $curgenomeline= <$genomedb>) {
 		######## Stage 4: Perform reciprocal blast
 		#make room for blast temporary files
 		mkdir "$conservatoryDir/genomes/tmpblast/";
-		my $orthologFilename = "$conservatoryDir/genomes/$curgenomeName.orthologs.csv";
+		my $orthologFilename = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.orthologs.csv";
 		
 		my $blastG2REF = "$conservatoryDir/genomes/tmpblast/$curgenomeName" . "2" ."$curgenomeReference.txt";
 		my $blastREF2G = "$conservatoryDir/genomes/tmpblast/$curgenomeReference" . "2" ."$curgenomeName.txt";
@@ -191,7 +192,7 @@ while(my $curgenomeline= <$genomedb>) {
 				if(! -e $blastG2REF) {
 					print localtime() . ": $curgenomeName : START reciprocal blast.\n";
 					my $blastthreads = $threads;
-					my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReference.proteins.fasta";
+					my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeReference.proteins.fasta";
 					system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
 					system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
 					print localtime() . ": $curgenomeName : END reciprocal blast.\n";
@@ -200,7 +201,7 @@ while(my $curgenomeline= <$genomedb>) {
 				system("$conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome $curgenomeName");
 				print localtime() . ": $curgenomeName : END Building ortholog database.\n";
 			} 
-		} else { print localtime(). ": SKIP Ortholog database already exists (use --forceOrthology to rebuild)\n"; }
+		} else { print localtime(). ": SKIP Ortholog database already exists (use --force-orthology to rebuild)\n"; }
 		print localtime() . ": END processing genome $curgenomeName\n-------------------------------------------------------------------------------------------------------------\n";
 	}
 }

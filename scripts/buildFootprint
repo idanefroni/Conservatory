@@ -8,6 +8,7 @@ use List::Util qw(min max);
 my $conservatoryDir=abs_path(".");
 my $help=0;
 my $genome="";
+my $family;
 my $genomefound = 0;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
@@ -38,7 +39,8 @@ while(my $curgenomeline= <$genomedb>) {
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $minScore, $GeneNameField, $GeneNameProcessREGEX,$GeneNameIdentifierREGEX) = split /,/, $curgenomeline;
 	if($curgenomeName eq $genome) {
 		$genomefound=1;
-		my $genomeGFFFileName = "$conservatoryDir/genomes/$genome.genes.gff3";
+		$family = $curgenomeFamily;
+		my $genomeGFFFileName = "$conservatoryDir/genomes/$family/$genome.genes.gff3";
 		open(my $inGFF, "<", $genomeGFFFileName) || die "ERROR: Cannot find GFF3 file $genomeGFFFileName\n";
 		while (my $line = <$inGFF>) {
 		    chomp $line;
@@ -88,7 +90,7 @@ close($genomedb);
 
 die "ERROR: cannot find genome $genome in database.\n" unless $genomefound;
 ### Now dump footprint file
-my $footprintGFFFileName = "$conservatoryDir/genomes/$genome" . ".footprint.gff3";
+my $footprintGFFFileName = "$conservatoryDir/genomes/$family/$genome" . ".footprint.gff3";
 open (my $outFootprint, ">", $footprintGFFFileName ) || die "ERROR: Cannot create output footprint GFF3 file $footprintGFFFileName\n";
 
 # Sort

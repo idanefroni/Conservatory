@@ -1,0 +1,35 @@
+#!/usr/bin/perl
+use strict;
+
+my %regex = ();
+
+open(DICT,'<',$ARGV[0]) || die "couldn't open DICT file: $!\n";
+while(<DICT>) {
+ 	s/#.*// unless (m/\\#/); # remove comments, unless escaped.
+                             # easily fooled if there is an escaped 
+                             # '#' and a comment on the same line.
+
+    s/^\s*|\s*$//g ;         # remove leading & trailing spaces
+    next if (/^$/) ;         # skip empty lines
+    chomp;
+    my($search, $tmp, $replace) = split /\b/;
+    $search .= ".v2";
+    $regex{qr/$search/} = $replace;
+};
+close(DICT);
+
+open(GFF,'<',$ARGV[1]) || die "couldn't open GFFFile: $!\n";
+
+while (my $line= <GFF>) {
+	chomp $line;
+	  my @array = split /\t/,$line;
+	  my %name = split /[=;]/, $array[8];
+	  if(exists $name{"Parent"}) {
+	  	my $genename = $name{"Parent"}; 
+	  	my $translatedname = $regex{qr/$genename/};
+	  	if($translatedname ne "") {
+           	$line =~ s/$genename/$translatedname/g;
+          }
+      }
+      print $line. "\n";
+}

@@ -3,23 +3,44 @@
 use POSIX;
 use strict;
 
+
+########### This script order the MAF file so the reference sequence is always the first in each block
+#### It also does it best to filter out sporious alignments
+
 my $reference = $ARGV[0];
 my $inblock=0;
 my $blockLineCounter=0;
 my $blockReferenceSp=0;
 my @blockLines;
+my $refBlockLength=0;
+my $minAlignmentBlock=4;
+my $minAlignmentRelative=0.2;
 
 while(my $line = <STDIN>) {
 	chomp($line);
 	if(substr($line,0,1) eq "a") {
 		if($inblock) {  ## DUMP BLOCK AND START a new one
-			print $blockLines[0] . "\n";
-			if($blockReferenceSp != 0) {
-				print $blockLines[$blockReferenceSp] . "\n";
+			
+			### First, see if we have enough alignments in the block
+			my $alignmentSpCounter=0;
+			for(my $i =0; $i< $blockLineCounter; $i++) {
+				my @mafLine = split ' ',$blockLines[$i];
+				my $alignmentLength = $mafLine[3];
+				if(($alignmentLength > $minAlignmentBlock) && (($alignmentLength / $refBlockLength) > $minAlignmentRelative)) {
+					$alignmentSpCounter++;
+				}					
 			}
-			for(my $i =1; $i < $blockLineCounter; $i++) {
-				if($i!=$blockReferenceSp) {
-					print $blockLines[$i] ."\n";
+			if($alignmentSpCounter >= $minAlignmentBlock) { 
+				print $blockLines[0] . "\n";
+				if($blockReferenceSp != 0) { print $blockLines[$blockReferenceSp] . "\n"; }
+				for(my $i =1; $i < $blockLineCounter; $i++) {
+					if($i!=$blockReferenceSp) {
+						my @mafLine = split ' ',$blockLines[$i];
+						my $alignmentLength = $mafLine[3];
+						if(($alignmentLength > $minAlignmentBlock) && (($alignmentLength / $refBlockLength) > $minAlignmentRelative)) {
+							print $blockLines[$i] ."\n";
+						}
+					}
 				}
 			}
 			$blockLineCounter=0;
@@ -33,6 +54,8 @@ while(my $line = <STDIN>) {
 		}
 	} elsif(substr($line,0,1) eq "s") {
 		if($line =~ /$reference/) {
+			my @mafLine = split ' ',$line;
+			$refBlockLength = $mafLine[3];
 			$blockReferenceSp = $blockLineCounter;
 		}
 		$blockLines[$blockLineCounter++] = $line;

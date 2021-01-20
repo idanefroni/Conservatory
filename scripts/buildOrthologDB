@@ -13,6 +13,7 @@ my $EVAL_CUTOFF_FOR_FAMILY=0.33;
 my $conservatoryDir=abs_path(".");
 my $help=0;
 my $genome="";
+my $family="";
 my $genomefound = 0;
 
 my $line;
@@ -26,7 +27,7 @@ if( $genome eq "" || $help) {
 	
 	print "buildOrthologDB\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
-	print "\t--genome\t\tGenome name for which to build putative ortholog databse (MANDATORY). \n\n";
+	print "\t--genome\t\tGenome name for which to build putative ortholog databse (REQUIRED). \n\n";
     exit();
 }
 my $genomedb_file = $conservatoryDir . "/genome_database.csv";
@@ -47,6 +48,7 @@ while(<$genomedb>) {
 	my @genomeDBLine = split /,/;
 	if($genomeDBLine[0] eq $genome) {
 		$referenceGenome = $genomeDBLine[3];
+		$family = $genomeDBLine[2];
 		$geneProcessingREGEX = $genomeDBLine[8];
 	}
 }
@@ -68,8 +70,8 @@ die "ERROR: Cannot file genome $genome in database.\n" unless $referenceGenome n
 
 my $genome2refFileName = "$conservatoryDir/genomes/tmpblast/$genome" . "2" . "$referenceGenome" . ".txt";
 my $ref2genomeFileName = "$conservatoryDir/genomes/tmpblast/$referenceGenome" . "2" . "$genome" . ".txt";
-my $outputOrthologFileName = "$conservatoryDir/genomes/$genome.orthologs.csv";
-my $footprintGFFFileName = "$conservatoryDir/genomes/$genome.footprint.gff3";
+my $outputOrthologFileName = "$conservatoryDir/genomes/$family/$genome.orthologs.csv";
+my $footprintGFFFileName = "$conservatoryDir/genomes/$family/$genome.footprint.gff3";
 
 open (my $gffFile, "<", $footprintGFFFileName ) or die "ERROR: Cannot open footprint file $footprintGFFFileName.\n";
 

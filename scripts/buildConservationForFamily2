@@ -24,7 +24,7 @@ my $locus;
 my $family;
 my $MIN_ALIGNMENTS = 4; # The minimum number of aligned promoters that is required to generate a MAF file
 my $EMPTY_FILE = 35; # The size of an empty MAF file, containing no alignments
-my $IDENTITY= 60;
+my $minIdentity= 60;
 my $keep_tmp = 0;
 my $verbose = 0;
 my $force=0;
@@ -32,6 +32,7 @@ my $dump_bam = 0;
 my $help = 0;
 my $skipPhyloP=0;
 my $skipAlignment=0;
+my $skipConservation=0;
 my $minPhyloPscore=1.2;
 
 ########### Parameters
@@ -43,7 +44,7 @@ my $avidDir;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
 			"family=s" => \$family,
-			"identity=i" => \$IDENTITY,
+			"min-identity=i" => \$minIdentity,
 			"min-species=i" => \$MIN_ALIGNMENTS,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"force" => \$force,
@@ -51,6 +52,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"verbose" => \$verbose,
 			"dump-bam" => \$dump_bam,
 			"skip-alignment" => \$skipAlignment,
+			"skip-conservation" => \$skipConservation,
 			"skip-phyloP" => \$skipPhyloP,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
@@ -59,22 +61,22 @@ if( $locus eq "" or $family eq "" or $help) {
 	print "Conservatory version 0.0.1\n\n";
 
    print "buildAlignmentForFamily --family <familyName> --locus <Locus>\n\n\n";
-   print "\t--family\tFamily name (MANDATORY).\n";
-   print "\t--locus\t\t\tLocus in the reference genome for the family (MANDATORY).\n";
+   print "\t--family\tFamily name (REQUIRED).\n";
+   print "\t--locus\t\t\tLocus in the reference genome for the family (REQUIRED).\n";
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
    print "\n\t\tAlignment options\n\n";
-   print "\t--identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
+   print "\t--min-identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
-   print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 2).\n";
+   print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.2).\n";
    print "\t--skip-phylop\t\tJust do alignments. Do not compute conservation using phyloP.\n";
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
-   
+   print "\t--skip-conservation\t\tDo not compute phyloP scores.\n";
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
-   print "\t--dump-bam\t\tExport a bam of all pair-wise alignment, translated to absoluted coordinates. For JBrowse tracks.\n";
-   
+   print "\t--dump-bam\t\tExport a bam of all pair-wise alignment, translated to absolute coordinates. For JBrowse tracks.\n";
+ 
    print "\n\t\tGeneral options\n\n";
-   print "\t--force\t\tComputer alignments and CNS even if files exist.\n";
-   print "\t--verbose\t\tOutput extra progress messages.\n";
+   print "\t--force\t\tRecompute alignments and CNS even if files exist.\n";
+   print "\t--verbose\t\tOutput extra messages.\n";
    print "\t--help\t\t\tPrints this message.\n\n";
    
    exit();
@@ -87,14 +89,14 @@ my $parameterFile = $conservatoryDir . "/conservatory.parameters.txt";
 my $outputDir = "$conservatoryDir/alignments/$family/";
 my $outputCNSDir = "$conservatoryDir/CNS/$family/";
 my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
-my $genomeDir ="$conservatoryDir/genomes";
-my $lastzParameters = "--gap=400,50 --nochain --seed=match3 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$IDENTITY --ydrop=500 --hspthreshold=2500 --gappedthresh=2500 --inner=1800";
+my $genomeDir ="$conservatoryDir/genomes/$family";
+my $lastzParameters = "--gap=400,50 --nochain --seed=match3 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=500 --hspthreshold=2500 --gappedthresh=2500 --inner=1800";
 
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 
 die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
 die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
-die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes/$family" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
 
 my $t_multiz = `sh -c 'command -v multiz'`;
 die "ERROR: Cannot find multiz in path. Please make sure it is installed.\n" unless ($t_multiz ne "");  
@@ -344,7 +346,7 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 
 		my $finalMafUpFileName = "$locus.up.maf";
 		my $finalMafDownFileName = "$locus.down.maf";
-
+#		if($verbose) { print "PROGRESS: Combining MAF file " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " quality (" . $orthologsToProcessSorted[0]->{'UpQuality'} .")\n"; } 
 		system("multiz " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " 1 | uniq >$finalMafUpFileName");
 		system("multiz " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " 1 | uniq >$finalMafDownFileName");
 
@@ -360,9 +362,15 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 				system("mv $finalMafDownFileName.tmp $finalMafDownFileName");
 			}
 		}
+		my $allOrthologsString ="$locus,";
+		foreach my $curOrtholog (@orthologsToProcessSorted) {
+			$allOrthologsString .= $curOrtholog->{'Name'} . ",";
+		}
+		$allOrthologsString =~ s/,$//;
 
 		### Wrap up. Filter and clean up MAF file
-		my $command= "$maffilterDir/maffilter \"input.file=$finalMafUpFileName\" \"maf.filter=Concatenate(),Merge(species=($locus), dist_max=4),MinBlockSize(min_size=$MIN_ALIGNMENTS),EntropyFilter(species=($locus)),QualFilter(species=($locus)),MinBlockLength(min_length=8),Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+
+		my $command= "$maffilterDir/maffilter \"input.file=$finalMafUpFileName\" \"maf.filter=Merge(species=($locus), dist_max=4),MinBlockSize(min_size=$MIN_ALIGNMENTS),EntropyFilter(species=($locus), window.size=5, ignore_gaps=no),QualFilter(species=($locus), window.size=5, min.qual=1),RemoveEmptySequences(),MinBlockLength(min_length=8),Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
 		system ($command);
 		unlink($finalMafUpFileName);
 		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafUpFileName.fil | sed 's/\\.c1//' > $finalMafUpFileName");
@@ -412,7 +420,7 @@ if(!$keep_tmp) {
 		
 	}
 }
-if($verbose) { my $finalQuality = getMAFQuality("$outputDir/$locus.up.maf"); print "PROGRESS: Done alignment for $locus. Quality $finalQuality.\n"; }
+if($verbose) { if(-e "$outputDir/$locus.up.maf") { my $finalQuality = getMAFQuality("$outputDir/$locus.up.maf"); print "PROGRESS: Done alignment for $locus. Quality $finalQuality.\n"; } }
 
 } else { print localtime() . " SKIP: Alignment files for $locus already exists. Use --force remake.\n"; }
 
@@ -421,7 +429,7 @@ my $treeFileName = "$conservatoryDir/genomes/$family.mod";
 
 ### Make sure we have the tree information. If not, just say so and skip
 
-if(-e $treeFileName) {
+if(-e $treeFileName && !$skipConservation) {
 	# First, convert from a gene MAF to a species MAF
 	if($verbose) { print "PROGRESS: Begin conservation analysis for $locus.\n"; }
 	if (! -e $outputCNSDir) { mkdir($outputCNSDir); }
@@ -451,7 +459,7 @@ if(-e $treeFileName) {
 	if($verbose) { printf (localtime() . ": PROGRESS: Converted MAF downstream file. Size %d.\n", -s $speciesMAFFileName_down); }
 	
 	### Extract the absolute coordinates of the locus
-	my $refFootprintFileName = "$conservatoryDir/genomes/$refGenome.footprint.gff3";
+	my $refFootprintFileName = "$conservatoryDir/genomes/$family/$refGenome.footprint.gff3";
 	my ($refGeneStart, $refGeneEnd, $refGeneChr, $refGeneDir) = ("","","","");
 	
 	open (my $refFootprintFile, "<", $refFootprintFileName);
@@ -540,7 +548,7 @@ if(-e $treeFileName) {
 		system("cp $tmpDir/$locus.phylop.bed $outputCNSDir");
 	}
 	unlink("$tmpDir/$locus.phylop.bed");
-} else { print "WARANING : Cannot find model for family $family ($treeFileName). Skipping phyloP analysis.\n"; }
+} else { print "WARNING : Skipping phyloP analysis...\n"; }
 
 if($verbose) { print localtime() . ": PROGRESS: End conservation analysis for $locus.\n"; }
 #### Go back to the original directory, and we are done!

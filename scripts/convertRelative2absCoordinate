@@ -51,11 +51,11 @@ if($genome eq "" || $format eq "" || $relPosition eq "" || $help || ($format ne 
 	print "Conservatory version 0.0.1\n\n";
 	
 	print "convertRelative2absCoordinate --genome <genomeName> --format <SAM|MAF> --relPos <UP|DOWN>\n\n\n";
-	print "\t--genome\t\tName of the reference genome (MANDATORY).\n";
-	print "\t--format\t\tInput format (SAM or MAF) (MANDATORY).\n";
 	print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
+	print "\t--genome\t\tName of the reference genome (REQUIRED).\n";
+	print "\t--format\t\tInput format (SAM or MAF) (REQUIRED).\n";
 	print "\t\t\t\t(Currently only SAM is implimented)\n";
-	print "\t--relPos\t\tCoordinates are relative to UPstream or DOWNstream (MANDATORY).\n";
+	print "\t--relPos\t\tCoordinates are relative to UPstream or DOWNstream (REQUIRED).\n";
 	print "\t--input\t\t\tInput file name (default:STDIN).\n";
 	print "\t--output\t\tOutput file name (default:STDOUT).\n";
 	exit();

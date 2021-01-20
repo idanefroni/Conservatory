@@ -23,13 +23,22 @@ my $help=0;
 my $genomeWasProcessed=0;
 my $threads=16;
 my $version=2;
-my $identity=60;
+
+my $skipAlignment=0;
+my $skipConservation=0;
+my $minIdentity=0;
+my $minSpeciesNum= 0;
+my $minPhyloPscore=0;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"family=s" => \$family,
 			"threads=i" => \$threads,
 			"version=i" => \$version,
-			"identity=i" => \$identity,
+			"min-identity=i" => \$minIdentity,
+			"min-species=i" => \$minSpeciesNum,
+			"min-phylop-score=f" => \$minPhyloPscore,
+			"skip-alignment" => \$skipAlignment,
+			"skip-conservation" => \$skipConservation,
 			"force" => \$force,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
@@ -40,9 +49,13 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 	
 	print "processConservation --family <family>\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
-	print "\t--family\t\tFamily for which to process conservation (MANDATORY).\n";
-    print "\t--identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
-	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";
+	print "\t--family\t\tFamily for which to process conservation (REQUIRED).\n";
+    print "\t--min-identity\t\tMinimum identity for LASTZ alignments.\n";
+	print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS.\n";
+	print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS.\n";
+	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";	
+	print "\t--skip-alignmnet\t\tSkip the alignment step.\n";
+	print "\t--skip-conservation\t\tSkip phyloP conservation calculation step.\n";
 	print "\t--force\t\tForce rebuilding alignments.\n";
 	print "\t--threads\t\tNumber of threads to use.\n";
 	print "\t--verbose\t\tOutput extra progress messages.\n";
@@ -100,13 +113,14 @@ while(my $curgenomeline= <$genomedb>) {
 		$geneListFileName = "$conservatoryDir/genomes/$curgenomeName.footprint.gff3";
 		die localtime() . ": ABORT Cannot find footprint file ($geneListFileName). Was processGenomes run?\n" unless -e $geneListFileName;
 		### Start threads
-		my @alignmentThreads = map { threads->new(\&processAlignmentThread, $_) } 1 .. $threads;
-		$_->join for @alignmentThreads;
+		if(!($skipAlignment && $skipConservation)) {
+			my @alignmentThreads = map { threads->new(\&processAlignmentThread, $_) } 1 .. $threads;
+			$_->join for @alignmentThreads;
+		}
 		## Merge all BAM, sort and index
 		unlink("$alignmentDir/$family.bam");
-		system("ulimit -n 200000");
 		system("ls $outputDir/*.bam > $outputDir/$family.bams.txt");
-		system("samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");
+		system("ulimit -n 200000; samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");
 		unlink("$outputDir/$family.bams.txt");
 		
 		system("samtools sort $alignmentDir/$family.tmp.bam > $alignmentDir/$family.sort.bam");
@@ -123,8 +137,8 @@ while(my $curgenomeline= <$genomedb>) {
 		unlink("$conservationDir/$family.bw");
 		
 		# merge gene files for entire genome
-		system("for a in $conservationDir/$family/*.csv; do cat $a >> $conservationDir/$family.csv; done");
-		system("for a in $conservationDir/$family/*.bed; do cat $a >> $conservationDir/$family.bed; done");
+		system("for a in $conservationDir/$family/*.csv; do cat \$a >> $conservationDir/$family.csv; done");
+		system("for a in $conservationDir/$family/*.bed; do cat \$a >> $conservationDir/$family.bed; done");
 		
 		# sort both files
 		system("sort -k1,1 -k2,2n -o $conservationDir/$family.csv $conservationDir/$family.csv");
@@ -164,8 +178,13 @@ sub processAlignmentThread {
 		  }
 		}
 		if($goodtogo) {
-	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam --identity $identity";
-	   		if($force) { $alignmentParams = "$alignmentParams --force"; }
+	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam";
+	   		if($minIdentity>0) { $alignmentParams .= " --min-identity $identity"; }
+	   		if($minSpeciesNum>0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
+	   		if($minPhyloPscore>0) { $alignmentParams .= " --min-phylop-score $minPhyloPscore"; }   		
+	   		if($force) { $alignmentParams .= " --force"; }
+	   		if($skipAlignment) { $alignmentParams .= " --skip-alignment"; }
+	   		if($skipConservation) { $alignmentParams .= " --skip-conservation"; }
 	   		system("$conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
 			$goodtogo=0;
 		} 
