@@ -39,7 +39,6 @@ my $minPhyloPscore=1.2;
 my $upstreamLength;
 my $downstreamLength;
 my $maffilterDir;
-my $avidDir;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
@@ -288,7 +287,7 @@ foreach my $curOrthSpecies (keys %orthologs) {
 			}
 
 		} else {
-			#### Only one possible gene. pick the best genome based on AVID quality scores.
+			#### Only one possible gene. pick the best genome based on alignment quality scores.
 
 			my $topQuality = max( @qScores);
 			my $topQualityIdx = firstidx { $_ == $topQuality } @qScores;
@@ -317,7 +316,6 @@ my @species = keys %orthologs;
 my $numOfSpecies = scalar @species;
 
 if ($verbose) { print "PROGRESS: Done with ortholog selection. Collected $numOfSpecies Orthologs.\n"; }
-
 
 if ($numOfSpecies > $MIN_ALIGNMENTS) {
 	if($dump_bam) {
@@ -598,7 +596,6 @@ sub geneToSpecies {
 			my $geneToSpecies= $array[7] . "[a-zA-Z0-9\._]*";
 			my $editedLine = $inline;
 			if($array[7] ne "") {
-#				eval '$editedLine =~ s/ $geneToSpecies/ $speciesName\.$geneName/g';
 				eval '$editedLine =~ s/ $geneToSpecies/ $speciesName/g';
 				$inline = $editedLine;
 			}

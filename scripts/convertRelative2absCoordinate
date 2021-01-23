@@ -54,7 +54,7 @@ if($genome eq "" || $format eq "" || $relPosition eq "" || $help || ($format ne 
 	print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
 	print "\t--genome\t\tName of the reference genome (REQUIRED).\n";
 	print "\t--format\t\tInput format (SAM or MAF) (REQUIRED).\n";
-	print "\t\t\t\t(Currently only SAM is implimented)\n";
+	print "\t\t\t\t(Currently only SAM is implemented)\n";
 	print "\t--relPos\t\tCoordinates are relative to UPstream or DOWNstream (REQUIRED).\n";
 	print "\t--input\t\t\tInput file name (default:STDIN).\n";
 	print "\t--output\t\tOutput file name (default:STDOUT).\n";
@@ -64,14 +64,13 @@ if($genome eq "" || $format eq "" || $relPosition eq "" || $help || ($format ne 
 my $genomedbFile = $conservatoryDir . "/genome_database.csv";
 my $parameterFile = $conservatoryDir . "/conservatory.parameters.txt";
 my $genomeDir ="$conservatoryDir/genomes";
-my $footprintFile = "$genomeDir/$genome.footprint.gff3";
+my $footprintFile = "";
 
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 
 die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
 die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e $genomeDir);
-die "ERROR: Cannot find footprint file ($footprintFile)\n" unless (-e $footprintFile);
 die "ERROR: Cannot find input file ($infileName)\n" unless (-e $infileName || $infileName eq "");
 
 ##################### Read Parameters
@@ -86,6 +85,20 @@ while(my $curline = <$parameters>) {
 	}
 }
 close($parameters);
+
+################### Read Genome DB
+open(my $genomedb, "<", $genomedbFile);
+my $header=<$genomedb>;
+while(my $curgenomeline= <$genomedb>) {
+	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference) = split /,/, $curgenomeline;
+	
+	if($curgenomeName eq $genome) {
+		$footprintFile = "$genomeDir/$curgenomeFamily/$genome.footprint.gff3";
+	}
+}
+close($genomedb);
+die "ERROR: Cannot find genome $genome in genome database file.\n" unless ($footprintFile ne "");
+die "ERROR: Cannot find footprint file ($footprintFile)\n" unless (-e $footprintFile);
 
 if($infileName eq "") {
 	$infile = \*STDIN;

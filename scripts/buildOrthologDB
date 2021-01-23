@@ -207,6 +207,7 @@ while(my $curline = <$ref2g>) {
 							}
 							#### Check that we have a foot print for that gene.
 							# This really should not be, but some genomes are only partially annotated.
+
 							if($refinedhitname ~~ @genesWithFootprint) {
 								print $output ("$refinedhitname,$curRefLocus," . ($recp_eval{$refLocus} + $blasthits_eval{$curhit})  . "\n");
 							}
