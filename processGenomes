@@ -111,7 +111,7 @@ while(my $curgenomeline= <$genomedb>) {
 			print localtime() . ": $curgenomeName : END building protein blast database\n";
 		} else { print localtime() . ": SKIP Blast database already exists (use --force to rebuild)\n"; }
 		
-		if((! -e "$conservatoryDir/genomes/blastdb/$curgenomeReference.phr" || $forceOrthology) && $rebuiltReferenceBlastDB ne $curgenomeReference) {
+		if((! -e "$conservatoryDir/genomes/blastdb/$curgenomeReference.phr" || $force) && $rebuiltReferenceBlastDB ne $curgenomeReference) {
 			my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeReference.proteins.fasta";
 			die localtime(). ": ABORT Can not find protein file for reference genome $genomeReferenceProteinFile.\n" unless -e $genomeReferenceProteinFile;
 			print localtime() . ": $curgenomeName : START building protein blast database for reference genome\n";

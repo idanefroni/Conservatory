@@ -344,39 +344,40 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 
 		my $finalMafUpFileName = "$locus.up.maf";
 		my $finalMafDownFileName = "$locus.down.maf";
-#		if($verbose) { print "PROGRESS: Combining MAF file " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " quality (" . $orthologsToProcessSorted[0]->{'UpQuality'} .")\n"; } 
-		system("multiz " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " 1 | uniq >$finalMafUpFileName");
-		system("multiz " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " 1 | uniq >$finalMafDownFileName");
+		my $unfilMafUpFileName = "$locus.up.unfil.maf";
+		my $unfilMafDownFileName = "$locus.down.unfil.maf";
+
+		system("multiz " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " 1 | uniq >$unfilMafUpFileName");
+		system("multiz " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " 1 | uniq >$unfilMafDownFileName");
 
 		foreach my $curOrthologToMultiz (@orthologsToProcessSorted) {
+			
 			if($curOrthologToMultiz->{'UpQuality'} > $EMPTY_FILE) {
-				system("multiz $finalMafUpFileName " . $curOrthologToMultiz->{'MAFUpFileName'} . " 1 | uniq >$finalMafUpFileName.tmp");
-				unlink($finalMafUpFileName);
-				system("mv $finalMafUpFileName.tmp $finalMafUpFileName");
+				system("multiz $unfilMafUpFileName " . $curOrthologToMultiz->{'MAFUpFileName'} . " 1 | uniq >$unfilMafUpFileName.tmp");
+				unlink($unfilMafUpFileName);
+				system("mv $unfilMafUpFileName.tmp $unfilMafUpFileName");
 			}
 			if($curOrthologToMultiz->{'DownQuality'} > $EMPTY_FILE) {
-				system("multiz $finalMafDownFileName " . $curOrthologToMultiz->{'MAFDownFileName'} . " 1 | uniq >$finalMafDownFileName.tmp");
-				unlink($finalMafDownFileName);
-				system("mv $finalMafDownFileName.tmp $finalMafDownFileName");
+				system("multiz $unfilMafDownFileName " . $curOrthologToMultiz->{'MAFDownFileName'} . " 1 | uniq >$unfilMafDownFileName.tmp");
+				unlink($unfilMafDownFileName);
+				system("mv $unfilMafDownFileName.tmp $unfilMafDownFileName");
 			}
+			if($verbose) { print "PROGRESS: Adding " . $curOrthologToMultiz->{'Name'} . " to MAF file $unfilMafUpFileName quality (" . getMAFQuality($unfilMafUpFileName) .")\n"; } 
+
 		}
-		my $allOrthologsString ="$locus,";
-		foreach my $curOrtholog (@orthologsToProcessSorted) {
-			$allOrthologsString .= $curOrtholog->{'Name'} . ",";
-		}
-		$allOrthologsString =~ s/,$//;
 
 		### Wrap up. Filter and clean up MAF file
 
-		my $command= "$maffilterDir/maffilter \"input.file=$finalMafUpFileName\" \"maf.filter=Merge(species=($locus), dist_max=4),MinBlockSize(min_size=$MIN_ALIGNMENTS),EntropyFilter(species=($locus), window.size=5, ignore_gaps=no),QualFilter(species=($locus), window.size=5, min.qual=1),RemoveEmptySequences(),MinBlockLength(min_length=8),Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+		my $command= "$maffilterDir/maffilter \"input.file=$unfilMafUpFileName\" \"maf.filter=Merge(species=($locus), dist_max=4),WindowSplit(preferred_size=100), EntropyFilter(species=($locus), window.size=5),QualFilter(species=($locus), window.size=5),RemoveEmptySequences(),MinBlockLength(min_length=8),MinBlockSize(min_size=$MIN_ALIGNMENTS), Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
 		system ($command);
-		unlink($finalMafUpFileName);
-		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafUpFileName.fil | sed 's/\\.c1//' > $finalMafUpFileName");
+		if(!$keep_tmp) { unlink($unfilMafUpFileName); }
+		###  Remove the .c1 we added for maffilter and restore the underscores to periods (which maffilter does not like).
+		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafUpFileName.fil | sed 's/\\.c1//' | sed 's/_/\./g' > $finalMafUpFileName");
 		unlink("$finalMafUpFileName.fil");
-		$command= "$maffilterDir/maffilter \"input.file=$finalMafDownFileName\" \"maf.filter=Concatenate(),Merge(species=($locus), dist_max=4),MinBlockSize(min_size=$MIN_ALIGNMENTS),EntropyFilter(species=($locus)),QualFilter(species=($locus)),MinBlockLength(min_length=8),Output(file=$finalMafDownFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+		$command= "$maffilterDir/maffilter \"input.file=$unfilMafDownFileName\" \"maf.filter=Merge(species=($locus), dist_max=4),WindowSplit(preferred_size=100),EntropyFilter(species=($locus),window.size=5),QualFilter(species=($locus), window.size=5),RemoveEmptySequences(),MinBlockLength(min_length=8),MinBlockSize(min_size=$MIN_ALIGNMENTS),Output(file=$finalMafDownFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
 		system ($command);
-		unlink($finalMafDownFileName);
-		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafDownFileName.fil | sed 's/\\.c1//' > $finalMafDownFileName");
+		if(!$keep_tmp) { unlink($unfilMafDownFileName); }
+		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafDownFileName.fil | sed 's/\\.c1//' | sed 's/_/\./g'  > $finalMafDownFileName");
 		unlink("$finalMafDownFileName.fil");
 
 		####### Move final files to output directories
@@ -562,9 +563,10 @@ sub extractFastaToFile {
 	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
 	
 	my $maskseq = " sed -r 's/[A|T]{10}/XXXXXXXXXX/g' | sed 's/NNN/XXX/g'";
+	my $removeDot ="sed 's/\\./_/g'";  ### MAFfilter does not like dots in gene names
 	my $addc1 = "awk '{if(NR==1) {print(\$0\".c1\"); } else {print \$0;}}'";
 	
-	system("samtools faidx $fastaFile $locus | $maskseq | $addc1 >$outputFastaFile");
+	system("samtools faidx $fastaFile $locus | $maskseq | $removeDot | $addc1 >$outputFastaFile");
 }
 
 sub getMAFQuality {

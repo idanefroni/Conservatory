@@ -7,7 +7,7 @@ use Cwd 'abs_path';
 use Getopt::Long;
 
 
-my $MAX_ORTH=8;
+my $MAX_ORTH=12;
 my $MIN_EVAL= 10;
 my $EVAL_CUTOFF_FOR_FAMILY=0.33;
 my $conservatoryDir=abs_path(".");
@@ -79,7 +79,7 @@ open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast res
 open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
 open (my $output, ">", "$outputOrthologFileName.tmp");
 
-### Set up the list of acceptable genes (those that have promoter sequences) 
+### Set up the filter of acceptable genes (those that have promoter sequences) 
 my @genesWithFootprint;
 while(my $line = <$gffFile>) {
 	chomp($line);
@@ -92,11 +92,11 @@ close($gffFile);
 #load the whole genome to reference blast table into a hash
 
 my $curlocus = "";
-my @blasthits;
-my %blasthits_eval;
-
-my %b2a_blast;
-my %b2a_blast_eval;
+my $curRefLocus ="";
+my %genome2RefHits;
+my $orthologCounts;
+my %ref2GenomeHits;
+my @possibleOrthologPairs;
 
 while(my $curline = <$g2ref>) {
 
@@ -105,40 +105,35 @@ while(my $curline = <$g2ref>) {
 	my $locus = $line_s[0];
 	my $refLocus = $line_s[1];
 	my $eval = $line_s[10];
+	if($referenceGeneProcessingREGEX ne "") { eval '$refLocus =~ s/$referenceGeneProcessingREGEX//g;'; }
+	if($geneProcessingREGEX ne "") { eval '$locus =~ s/$geneProcessingREGEX//g;'; }
 
-	if($locus eq $curlocus) {
-		if(scalar @blasthits < $MAX_ORTH && $eval < $MIN_EVAL) {
-			if (! grep( /^$refLocus$/, @blasthits ) ) {
-				push(@blasthits, $refLocus);
-				if($eval ==0) { 
-					$blasthits_eval{$refLocus} = 400;
-				} else {
-					$blasthits_eval{$refLocus} = -log($eval);
+	if($eval < $MIN_EVAL) {
+		if($eval ==0) { 
+			$eval = 400;
+		} else {
+			$eval = -log($eval);
+		}
+		if($locus ne $curlocus) { $orthologCounts=0};
+		$curlocus = $locus;
+
+		if($orthologCounts < $MAX_ORTH) {
+		
+			my $key = "$locus;$refLocus";
+			if(defined $genome2RefHits{$key}) {
+				if($eval > $genome2RefHits{$key}) {
+					$genome2RefHits{$key} = $eval;
 				}
+			} else {
+				$orthologCounts++;
+				$genome2RefHits{$key} = $eval;
 			}
 		}
-	} else {
-
-			if($curlocus ne "") {
-				#save to hash and output		
-				$b2a_blast{$curlocus} = [@blasthits];
-				$b2a_blast_eval{$curlocus} = [%blasthits_eval];
-			}
-			$curlocus = $locus;
-			@blasthits= ($refLocus);
-			%blasthits_eval = ();
-			if($eval ==0) { 
-				$blasthits_eval{$refLocus} = 400;
-				} else {
-				$blasthits_eval{$refLocus} = -log($eval);
-				}
-		}
+	}
 }
+print localtime() . ": PROGRESS : Done reading genome to reference blast. Read " . (scalar (keys %genome2RefHits)) . " pairs.\n";
 
-my $curRefLocus = "";
 
-@blasthits=();
-%blasthits_eval = ();
 
 while(my $curline = <$ref2g>) {
 
@@ -147,88 +142,72 @@ while(my $curline = <$ref2g>) {
 	my $refLocus = $line_s[0];
 	my $locus = $line_s[1];
 	my $eval = $line_s[10];
+	if($referenceGeneProcessingREGEX ne "") { eval '$refLocus =~ s/$referenceGeneProcessingREGEX//g;'; }
+	if($geneProcessingREGEX ne "") { eval '$locus =~ s/$geneProcessingREGEX//g;'; }
 	
+	if($eval < $MIN_EVAL) {
+		if($eval ==0) { 
+			$eval = 400;
+		} else {
+			$eval = -log($eval);
+		}	
+		if($refLocus ne $curRefLocus) {
 
-	if($refLocus eq $curRefLocus) {
-		if((scalar @blasthits < $MAX_ORTH) && ($eval < $MIN_EVAL)) {
-		
-		if (! grep( /^$locus$/, @blasthits ) ) {
-				push(@blasthits, $locus);
-				if($eval ==0) { 
-					$blasthits_eval{$locus} = 400;
-				} else {
-					$blasthits_eval{$locus} = -log($eval);
-				}
-			}
-		}
-	} else {
-		if($curRefLocus ne "") {
-			#first, establish the distribution of reciprocal evals.
-
-			my @allevals;
-			foreach(@blasthits) {
-				my $curhit = $_;
-			
-				if (exists $b2a_blast{$curhit}) {		
-					my %recp_eval = @{%b2a_blast_eval{$curhit}};
-
-					if(exists $recp_eval{$curRefLocus}) {
-						push(@allevals, ($recp_eval{$refLocus} + $blasthits_eval{$curhit}));
-					}
-				}
-			}
-			# now, determine the cutoff (currently a fixed percentage of max eval. Could be more sophisticated in the future)
-			
-			@allevals = reverse sort {$a <=> $b}  @allevals;
-			my $cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;		
-
-			
-			foreach(@blasthits) {
-				my $curhit = $_;
+			if($curRefLocus ne "") {  ### We are done reading. Lets compute best putative orthologs and dump them to file
+				# first, compute cut off
+				my @allevals;
 				
-				## If we have that gene in the reciprocal db
-				if (exists $b2a_blast{$curhit}) {		
+				foreach(@possibleOrthologPairs) {
+					push(@allevals, ($ref2GenomeHits{$_} + $genome2RefHits{$_}));
+				}
+				# now, determine the cutoff (currently a fixed percentage of max eval. Could be more sophisticated in the future)
 
-					my %recp_eval = @{%b2a_blast_eval{$curhit}};
+				@allevals = reverse sort {$a <=> $b}  @allevals;
+				my $cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;
 
-					if(exists $recp_eval{$curRefLocus}) {
-
-						if( ($recp_eval{$refLocus} + $blasthits_eval{$curhit})> $cutoff) {
-							# get rid of weird embelishments
-							my $refinedhitname = $curhit;
+				foreach(@possibleOrthologPairs) {
+					if( ($ref2GenomeHits{$_} + $genome2RefHits{$_}) > $cutoff) {
+						# get rid of weird embelishments
+						my $outLocus = $_;
+						my $outRefLocus = $_;
+						$outLocus =~ s/;.*//;
+						$outRefLocus =~ s/.*;//;
 							
-							if($referenceGeneProcessingREGEX ne "") {
-				    			eval '$curRefLocus =~ s/$referenceGeneProcessingREGEX//g;'; 
-							}
+						#### Check that we have a foot print for that gene.
+						# This really should not be, but some genomes are only partially annotated.
 
-							
-							if($geneProcessingREGEX ne "") {
-				    			eval '$refinedhitname =~ s/$geneProcessingREGEX//g;'; 
-							}
-							#### Check that we have a foot print for that gene.
-							# This really should not be, but some genomes are only partially annotated.
-
-							if($refinedhitname ~~ @genesWithFootprint) {
-								print $output ("$refinedhitname,$curRefLocus," . ($recp_eval{$refLocus} + $blasthits_eval{$curhit})  . "\n");
-							}
+						if($outLocus ~~ @genesWithFootprint) {
+							print $output ("$outLocus,$outRefLocus," . ($ref2GenomeHits{$_} + $genome2RefHits{$_})  . "\n");
 						}
 					}
 				}
 			}
+			$orthologCounts=0;
+			@possibleOrthologPairs=();
 		}
 		$curRefLocus = $refLocus;
-		@blasthits= ($locus);
-		%blasthits_eval = ();
-		
-		if($eval ==0) { 
-			$blasthits_eval{$locus} = 400;
-		} else {
-			$blasthits_eval{$locus} = -log($eval);
+	
+		if($orthologCounts < $MAX_ORTH) {
+			my $key = "$locus;$refLocus";
+			if(defined $ref2GenomeHits{$key}) {
+				if($eval > $ref2GenomeHits{$key}) {
+					$ref2GenomeHits{$key} = $eval;
+				}
+			} else {
+				$orthologCounts++;
+				$ref2GenomeHits{$key} = $eval;
+			}
+			if(defined $ref2GenomeHits{$key} && defined $genome2RefHits{$key}) {
+				push(@possibleOrthologPairs, $key);
+			}
 		}
 	}
 }
 
+			
 close($output);
+print localtime() . ": PROGRESS : Done reading reference to genome blast. Read " . (scalar (keys %ref2GenomeHits)) . " pairs.\n";
+
 ## Finally filter for possible duplicates. This shouldn't happen, but sometimes does with odd annotation of spliceforms
 system("awk -F ',' '!seen[\$1\$2]++' $outputOrthologFileName.tmp > $outputOrthologFileName");
 unlink("$outputOrthologFileName.tmp");

@@ -13,7 +13,7 @@ my $blockLineCounter=0;
 my $blockReferenceSp=0;
 my @blockLines;
 my $refBlockLength=0;
-my $minAlignmentBlock=4;
+my $minAlignmentBlock=1;
 my $minAlignmentRelative=0.2;
 
 while(my $line = <STDIN>) {
