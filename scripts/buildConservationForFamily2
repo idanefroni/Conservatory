@@ -14,7 +14,6 @@ use Getopt::Long;
 use experimental 'smartmatch';
 
 
-
 ################################################################################
 ######### Setup
 
@@ -23,8 +22,9 @@ my $curDir;
 my $locus;
 my $family;
 my $MIN_ALIGNMENTS = 4; # The minimum number of aligned promoters that is required to generate a MAF file
-my $EMPTY_FILE = 35; # The size of an empty MAF file, containing no alignments
+my $EMPTY_FILE = 0; # The size of an empty MAF file, containing no alignments
 my $minIdentity= 60;
+my $minCNSLength=6;
 my $keep_tmp = 0;
 my $verbose = 0;
 my $force=0;
@@ -89,7 +89,7 @@ my $outputDir = "$conservatoryDir/alignments/$family/";
 my $outputCNSDir = "$conservatoryDir/CNS/$family/";
 my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
 my $genomeDir ="$conservatoryDir/genomes/$family";
-my $lastzParameters = "--gap=400,50 --nochain --seed=match3 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=500 --hspthreshold=2500 --gappedthresh=2500 --inner=1800";
+my $lastzParameters = "--gap=400,100 --nochain --seed=match3 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=2500 --hspthreshold=2500 --gappedthresh=2500 --inner=1800";
 
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 
@@ -367,14 +367,16 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 		}
 
 		### Wrap up. Filter and clean up MAF file
+		my $mafFilterCmd = "maf.filter=Merge(species=($locus), dist_max=2),WindowSplit(preferred_size=30),EntropyFilter(species=($locus), window.size=5),RemoveEmptySequences(),MinBlockLength(min_length=$minCNSLength),MinBlockSize(min_size=$MIN_ALIGNMENTS),Merge(species=($locus),dist_max=0)";
 
-		my $command= "$maffilterDir/maffilter \"input.file=$unfilMafUpFileName\" \"maf.filter=Merge(species=($locus), dist_max=4),WindowSplit(preferred_size=100), EntropyFilter(species=($locus), window.size=5),QualFilter(species=($locus), window.size=5),RemoveEmptySequences(),MinBlockLength(min_length=8),MinBlockSize(min_size=$MIN_ALIGNMENTS), Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+		my $command= "$maffilterDir/maffilter \"input.file=$unfilMafUpFileName\" \"$mafFilterCmd,Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+
 		system ($command);
 		if(!$keep_tmp) { unlink($unfilMafUpFileName); }
 		###  Remove the .c1 we added for maffilter and restore the underscores to periods (which maffilter does not like).
 		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafUpFileName.fil | sed 's/\\.c1//' | sed 's/_/\./g' > $finalMafUpFileName");
 		unlink("$finalMafUpFileName.fil");
-		$command= "$maffilterDir/maffilter \"input.file=$unfilMafDownFileName\" \"maf.filter=Merge(species=($locus), dist_max=4),WindowSplit(preferred_size=100),EntropyFilter(species=($locus),window.size=5),QualFilter(species=($locus), window.size=5),RemoveEmptySequences(),MinBlockLength(min_length=8),MinBlockSize(min_size=$MIN_ALIGNMENTS),Output(file=$finalMafDownFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+		$command= "$maffilterDir/maffilter \"input.file=$unfilMafDownFileName\" \"$mafFilterCmd,Output(file=$finalMafDownFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
 		system ($command);
 		if(!$keep_tmp) { unlink($unfilMafDownFileName); }
 		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafDownFileName.fil | sed 's/\\.c1//' | sed 's/_/\./g'  > $finalMafDownFileName");
@@ -506,9 +508,9 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print localtime() . ": Found upstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
 			}
-			unlink("$tmpDir/$locus.up.fil.bed");
+			if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
 		}
 	}
 	if(-s $speciesMAFFileName_down > $EMPTY_FILE) {
@@ -517,9 +519,9 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 			if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print localtime() . ": Found downstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=10) print(\$1, \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\$1, \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
 			}
-			unlink("$tmpDir/$locus.down.fil.bed");
+			if(!$keep_tmp) {unlink("$tmpDir/$locus.down.fil.bed"); }
 		}
 	}
 	if(!$keep_tmp) { unlink($speciesMAFFileName_down); }
@@ -528,7 +530,7 @@ if(-e $treeFileName && !$skipConservation) {
 	### Build CNS and convert to table
 	if( (-e "$tmpDir/$locus.cns.csv") && (-s "$tmpDir/$locus.cns.csv" > $EMPTY_FILE)) {
 		system("cp $tmpDir/$locus.cns.csv $outputCNSDir");
-		unlink("$tmpDir/$locus.cns.csv");
+		if(!$keep_tmp) {unlink("$tmpDir/$locus.cns.csv");}
 	}
 
 	### Now convert coordinates and dump a BEDGRAPH file for merging
