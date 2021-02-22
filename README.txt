@@ -1,8 +1,8 @@
-*********************************************************************************************************************************************************************
+**********************************************************************************************************************************************************
 Conservatory v1.0
 
 Last update: 2/22/2021
-*********************************************************************************************************************************************************************
+**********************************************************************************************************************************************************
 
   Conservatory is structural variants and polyploidization-aware program for identification of conserved non-coding sequences.
 	conservatory is based on identification of cis-elements and protein sequence microsynteny to assembled multiple alignments
@@ -12,12 +12,13 @@ Last update: 2/22/2021
 	annotation problems.
 	
 	The program is described in:
-	Hendelman A., Zebell S., Rodriguez-Leal D., Dukler N., Robitaille G., Wu X., Kostyun J., Tal L., Wang P., Bartlett M.E., Eshed Y., Efroni I*, Lippman ZB. (2021) 
-		Conserved pleiotropy of an ancient plant homeobox gene uncovered by cisregulatory dissection. Cell () 
+	Hendelman A., Zebell S., Rodriguez-Leal D., Dukler N., Robitaille G., Wu X., Kostyun J., Tal L., Wang P., Bartlett M.E.,
+		Eshed Y., Efroni I*, Lippman ZB.* (2021) Conserved pleiotropy of an ancient plant homeobox gene uncovered by cisregulatory dissection. 
+			Cell,10.1016/j.cell.2021.02.001
 
 	For questions\comments email Idan Efroni @ idan.efroni@mail.huji.ac.il
 	
-*********************************************************************************************************************************************************************
+**********************************************************************************************************************************************************
 
 Setup
 
@@ -31,8 +32,8 @@ Setup
 	* phyloP
 	* samtools
 	
-3. Install vista (http://genome.lbl.gov/vista/downloads.shtml) and MafFilter (https://jydu.github.io/maffilter/) to the program subdirectory.
-    if these programs are installed at a different path, update the conservatory.parameters.txt file
+3. The vista aligner (http://genome.lbl.gov/vista/downloads.shtml) and MafFilter program (https://jydu.github.io/maffilter/) are included in the repository and
+	are located in the scripts/programs directory. If these programs are installed at a different path on your system, update the conservatory.parameters.txt file
 
 4. Update regulatory sequence length paramters in conservatory.parameters.txt file (default is 50K upstream and 5K downstream)
     the program can easily process longer sequences, but it will require additional diskspace.
@@ -80,7 +81,7 @@ The genome specification for all genomes used in Hendelman et al. are already in
 	
 At the end, the alignment directory contains the multiple alignments for the cis elements of each gene (as MAF files) and the conserved non-coding regions as a BED file and a CSV table in the CNS directory.
 
-*********************************************************************************************************************************************************************
+**********************************************************************************************************************************************************
 
 Update 2/22/2021:
 
