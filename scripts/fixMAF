@@ -10,15 +10,17 @@ use strict;
 my $reference = $ARGV[0];
 my $inblock=0;
 my $blockLineCounter=0;
-my $blockReferenceSp=0;
+my $blockReferenceSp= -1;
 my @blockLines;
 my $refBlockLength=0;
 my $minAlignmentBlock=1;
 my $minAlignmentRelative=0.2;
-
-while(my $line = <STDIN>) {
+my $endoffile = 0;
+while(!$endoffile) {
+	my $line = <STDIN>;
 	chomp($line);
-	if(substr($line,0,1) eq "a") {
+	if( eof(STDIN)) { $endoffile=1; print "\n"; };
+	if(substr($line,0,1) eq "a" || $endoffile) {
 		if($inblock) {  ## DUMP BLOCK AND START a new one
 			
 			### First, see if we have enough alignments in the block
@@ -30,7 +32,7 @@ while(my $line = <STDIN>) {
 					$alignmentSpCounter++;
 				}					
 			}
-			if($alignmentSpCounter >= $minAlignmentBlock) { 
+			if($alignmentSpCounter >= $minAlignmentBlock && $blockReferenceSp > -1) { 
 				print $blockLines[0] . "\n";
 				if($blockReferenceSp != 0) { print $blockLines[$blockReferenceSp] . "\n"; }
 				for(my $i =1; $i < $blockLineCounter; $i++) {
@@ -44,7 +46,7 @@ while(my $line = <STDIN>) {
 				}
 			}
 			$blockLineCounter=0;
-			$blockReferenceSp=0;
+			$blockReferenceSp= -1;
 			$inblock=1;
 			$blockLines[$blockLineCounter++] = $line;
 

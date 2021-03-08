@@ -27,7 +27,7 @@ my $version=2;
 my $skipAlignment=0;
 my $skipConservation=0;
 my $minIdentity=0;
-my $minSpeciesNum= 0;
+my $minSpeciesNum= -1;
 my $minPhyloPscore=0;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
@@ -50,7 +50,7 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 	print "processConservation --family <family>\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
 	print "\t--family\t\tFamily for which to process conservation (REQUIRED).\n";
-    	print "\t--min-identity\t\tMinimum identity for LASTZ alignments.\n";
+    print "\t--min-identity\t\tMinimum identity for LASTZ alignments.\n";
 	print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS.\n";
 	print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS.\n";
 	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";	
@@ -180,7 +180,7 @@ sub processAlignmentThread {
 		if($goodtogo) {
 	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam";
 	   		if($minIdentity>0) { $alignmentParams .= " --min-identity $minIdentity"; }
-	   		if($minSpeciesNum>0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
+	   		if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
 	   		if($minPhyloPscore>0) { $alignmentParams .= " --min-phylop-score $minPhyloPscore"; }   		
 	   		if($force) { $alignmentParams .= " --force"; }
 	   		if($skipAlignment) { $alignmentParams .= " --skip-alignment"; }

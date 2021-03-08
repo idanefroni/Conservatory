@@ -34,6 +34,7 @@ my $skipPhyloP=0;
 my $skipAlignment=0;
 my $skipConservation=0;
 my $minPhyloPscore=1.2;
+my $onlyOneOrtholog=0;
 
 ########### Parameters
 my $upstreamLength;
@@ -46,6 +47,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-identity=i" => \$minIdentity,
 			"min-species=i" => \$MIN_ALIGNMENTS,
 			"min-phylop-score=f" => \$minPhyloPscore,
+			"only-one-ortholog" => \$onlyOneOrtholog,
 			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
@@ -67,6 +69,7 @@ if( $locus eq "" or $family eq "" or $help) {
    print "\t--min-identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.2).\n";
+   print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
    print "\t--skip-phylop\t\tJust do alignments. Do not compute conservation using phyloP.\n";
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
    print "\t--skip-conservation\t\tDo not compute phyloP scores.\n";
@@ -89,7 +92,7 @@ my $outputDir = "$conservatoryDir/alignments/$family/";
 my $outputCNSDir = "$conservatoryDir/CNS/$family/";
 my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
 my $genomeDir ="$conservatoryDir/genomes/$family";
-my $lastzParameters = "--gap=400,100 --nochain --seed=match3 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=2500 --hspthreshold=2500 --gappedthresh=2500 --inner=1800";
+my $lastzParameters = "--gap=200,100 --nochain --recoverseeds --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=1000 --hspthreshold=1100 --gappedthresh=2500";
 
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 
@@ -249,7 +252,8 @@ foreach my $curOrthSpecies (keys %orthologs) {
 		}
 		
 		if( (scalar @{ $orthologs{$curOrthSpecies} }) % ( scalar uniq ( @genomeNames )) == 0 &&
-			(scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 ) {
+			(scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 &&
+			!$onlyOneOrtholog ) {
 
 			my @bestOrthologsGroup;
 			my $bestQuality =0;
@@ -353,12 +357,12 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 		foreach my $curOrthologToMultiz (@orthologsToProcessSorted) {
 			
 			if($curOrthologToMultiz->{'UpQuality'} > $EMPTY_FILE) {
-				system("multiz $unfilMafUpFileName " . $curOrthologToMultiz->{'MAFUpFileName'} . " 1 | uniq >$unfilMafUpFileName.tmp");
+				system("multiz $unfilMafUpFileName " . $curOrthologToMultiz->{'MAFUpFileName'} . " 1 | uniq | maf-sort >$unfilMafUpFileName.tmp");
 				unlink($unfilMafUpFileName);
 				system("mv $unfilMafUpFileName.tmp $unfilMafUpFileName");
 			}
 			if($curOrthologToMultiz->{'DownQuality'} > $EMPTY_FILE) {
-				system("multiz $unfilMafDownFileName " . $curOrthologToMultiz->{'MAFDownFileName'} . " 1 | uniq >$unfilMafDownFileName.tmp");
+				system("multiz $unfilMafDownFileName " . $curOrthologToMultiz->{'MAFDownFileName'} . " 1 | uniq | maf-sort >$unfilMafDownFileName.tmp");
 				unlink($unfilMafDownFileName);
 				system("mv $unfilMafDownFileName.tmp $unfilMafDownFileName");
 			}
@@ -367,7 +371,7 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 		}
 
 		### Wrap up. Filter and clean up MAF file
-		my $mafFilterCmd = "maf.filter=Merge(species=($locus), dist_max=2),WindowSplit(preferred_size=30),EntropyFilter(species=($locus), window.size=5),RemoveEmptySequences(),MinBlockLength(min_length=$minCNSLength),MinBlockSize(min_size=$MIN_ALIGNMENTS),Merge(species=($locus),dist_max=0)";
+		my $mafFilterCmd = "maf.filter=Merge(species=($locus), dist_max=2),EntropyFilter(species=($locus)),RemoveEmptySequences(),MinBlockLength(min_length=$minCNSLength),MinBlockSize(min_size=$MIN_ALIGNMENTS),Merge(species=($locus),dist_max=0)";
 
 		my $command= "$maffilterDir/maffilter \"input.file=$unfilMafUpFileName\" \"$mafFilterCmd,Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
 
@@ -564,11 +568,12 @@ sub mean {
 sub extractFastaToFile {
 	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
 	
+	my $maskdinucrep = " sed -r 's/(AG|CT|CC|GG){6}/XXXXXXXXXXXX/g'";
 	my $maskseq = " sed -r 's/[A|T]{10}/XXXXXXXXXX/g' | sed 's/NNN/XXX/g'";
 	my $removeDot ="sed 's/\\./_/g'";  ### MAFfilter does not like dots in gene names
 	my $addc1 = "awk '{if(NR==1) {print(\$0\".c1\"); } else {print \$0;}}'";
 	
-	system("samtools faidx $fastaFile $locus | $maskseq | $removeDot | $addc1 >$outputFastaFile");
+	system("samtools faidx $fastaFile $locus | $maskdinucrep | $maskseq | $removeDot | $addc1 >$outputFastaFile");
 }
 
 sub getMAFQuality {

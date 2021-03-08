@@ -11,10 +11,11 @@ my $conservatoryDir=abs_path(".");
 my $locus;
 my $family;
 my $refGenome="";
-my $nolowcomplexityfilter = 0;
+my $lowcomplexityfilter = 0;
 my $flank =0;
 my $verbose = 0;
 my $force=0;
+my $mode="CNS";
 my $help = 0;
 
 ########### Parameters
@@ -24,22 +25,25 @@ my $downstreamLength;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
 			"family=s" => \$family,
+			"mode=s" => \$mode,
 			"flank=i" => \$flank,
-		   	"no-low-complexity-filter" => \$nolowcomplexityfilter,
+		   	"low-complexity-filter" => \$lowcomplexityfilter,
 			"force" => \$force,
 			"verbose" => \$verbose,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
-if( $locus eq "" or $family eq "" or $help) {
+if( $locus eq "" or $family eq "" or $help or ($mode ne "CNS" and $mode ne "REF" and $mode ne "ALLCNS") ) {
    print "Conservatory version 0.0.1\n\n";
 
-   print "buildConCNS --family <familyName> --locus <Locus>\n\n\nConstrcut a synthetic promoter make of CNS consensus sequences for a family.\n\n\n";
+   print "buildConCNS --family <familyName> --locus <Locus> --mode <CON|ALL>\n\n\nConstrcut a synthetic promoter make of CNS consensus sequences for a family.\n\n\n";
    print "\t--family\tFamily name (REQUIRED).\n";
    print "\t--locus\t\t\tLocus in the reference genome for the family (REQUIRED).\n";
+   print "\t--mode\t\tMode can be CNS consensus seqeunces (determined be plurality), REFerence, which output the entire reference seqeunce with consensus CNS\n";
+   print "\t\t\t\tor ALLCNS which output the CNS sequences for all species in the family (DEFAULT: CNS).\n";
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
    print "\t--flank\t\t\tNumber of flanking bp around CNS to include in consensus sequence (DEFAULT:0).\n";
-   print "\t--no-low-complexity-filter\t\tDisable the low complexity filter for CNS (DEFAULT: filter ON).\n";
+   print "\t--low-complexity-filter\t\tEnable the low complexity filter for CNS (DEFAULT: filter OFF).\n";
 
    print "\n\t\tGeneral options\n\n";
    print "\t--force\t\tRecompute core promoter even if files exist.\n";
@@ -141,7 +145,7 @@ if(-e $MAFFileNameUp) {
 					-format => "maf");
 	while(my $aln = $maffile->next_aln) {
 	   $cnsCount++;
-	   my $conces = uc($aln->consensus_string());
+	   my $conces = lc($aln->consensus_string());
     	   substr($upstreamSeq, $aln->get_seq_by_id($locus)->start(), $aln->get_seq_by_id($locus)->length()) = $conces;
 	}
 }
@@ -151,7 +155,7 @@ if(-e $MAFFileNameDown) {
 					-format => "maf");
 	while(my $aln = $maffile->next_aln) {
 	   $cnsCount++;
-	   my $conces = uc($aln->consensus_string());
+	   my $conces = lc($aln->consensus_string());
     	   substr($downstreamSeq, $aln->get_seq_by_id($locus)->start(), $aln->get_seq_by_id($locus)->length()) = $conces;
 	}
 }
@@ -161,8 +165,8 @@ if($verbose) { print localtime() . " : PROGRESS : Created concensus sequences fr
 ### Now, we have the consensus sequences in context. Load the CNS files
 
 open(my $CNSFile, "<", $CNSFileName);
-my $upCoreName=">$locus |$family|UP|";
-my $downCoreName=">$locus |$family|DOWN|";
+my $upCoreName=">$locus|$family|UP|";
+my $downCoreName=">$locus|$family|DOWN|";
 my $upCoreSeq="";
 my $downCoreSeq="";
 while(my $line = <$CNSFile>) {
@@ -175,7 +179,7 @@ while(my $line = <$CNSFile>) {
 	}
 	if($pos eq "DOWN") {
 	  if($downCoreSeq ne "") { $downCoreSeq .= ('X' x 10); }
-	  $upCoreName .= length($downCoreSeq) . ";" . ($end - $start + $flank *2) . ";$chr;" . ($absstart-$flank) . ";";
+	  $downCoreName .= length($downCoreSeq) . ";" . ($end - $start + $flank *2) . ";$chr;" . ($absstart-$flank) . ";";
 	  $downCoreSeq .= substr($downstreamSeq,$start -$flank, $end-$start + $flank*2+1);
 	}
 }
@@ -184,15 +188,26 @@ close($CNSFile);
 ###### Filter low complexity regions
 ######
 
-if(!$nolowcomplexityfilter) { 
+if($lowcomplexityfilter) { 
 	$upCoreSeq =~ s/[A|T]{7}/XXXXXXX/g;
 	$downCoreSeq =~ s/[A|T]{7}/XXXXXXX/g;
 }
 
 if($upCoreSeq ne "") {
-   print "$upCoreName\n$upCoreSeq\n";
+	if($mode eq "CNS") {
+		print "$upCoreName\n" . uc($upCoreSeq) ."\n";
+	} elsif($mode eq "REF") {
+		#cleanup seq
+		$upstreamSeq =~ s/^N*//;
+		print ">$locus|$family|UP\n$upstreamSeq\n";
+	}
 }
 if($downCoreSeq ne "") {
-   print "$downCoreName\n$downCoreSeq\n";
+	if($mode eq "CNS") {
+		print "$downCoreName\n" . uc($downCoreSeq) ."\n";
+   	} elsif($mode eq "REF") {
+   		$downstreamSeq =~ s/N*$//;
+		print ">$locus|$family|DOWN\n$downstreamSeq\n";
+	}
 }
 
