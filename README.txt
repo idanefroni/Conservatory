@@ -1,7 +1,7 @@
 **********************************************************************************************************************************************************
 Conservatory v1.0
 
-Last update: 2/22/2021
+Last update: 3/10/2021
 **********************************************************************************************************************************************************
 
   Conservatory is structural variants and polyploidization-aware program for identification of conserved non-coding sequences.
@@ -86,4 +86,10 @@ At the end, the alignment directory contains the multiple alignments for the cis
 Update 2/22/2021:
 
 The ortholog selection and alignment algorithm has been modified from the one used in the paper. To use the modified algorithm, use '--version 2' in processConservation.
+
+
+Update 3/10/2021:
+
+* Additional updates to the alignment parameters and small bug fixes. The default version is now 2. Version 1 is kept for archive purposes. Use '--version 1' in processConservation to use the old version.
+* Add REF mode to builcConCNS function to extract the family concensus CNS sequence within the context of the reference regulatory sequence.
 
