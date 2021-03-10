@@ -28,9 +28,11 @@ while(!$endoffile) {
 			for(my $i =0; $i< $blockLineCounter; $i++) {
 				my @mafLine = split ' ',$blockLines[$i];
 				my $alignmentLength = $mafLine[3];
-				if(($alignmentLength > $minAlignmentBlock) && (($alignmentLength / $refBlockLength) > $minAlignmentRelative)) {
-					$alignmentSpCounter++;
-				}					
+				if($refBlockLength >0 ) {
+					if(($alignmentLength > $minAlignmentBlock) && (($alignmentLength / $refBlockLength) > $minAlignmentRelative)) {
+						$alignmentSpCounter++;
+					}
+				}
 			}
 			if($alignmentSpCounter >= $minAlignmentBlock && $blockReferenceSp > -1) { 
 				print $blockLines[0] . "\n";
