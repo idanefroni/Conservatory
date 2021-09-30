@@ -38,6 +38,7 @@ my $onlyOneOrtholog=0;
 ########### Parameters
 my $upstreamLength;
 my $downstreamLength;
+my $maffilterDir;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
@@ -99,6 +100,9 @@ die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $
 die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes/$family" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
 
+my $t_multiz = `sh -c 'command -v multiz'`;
+die "ERROR: Cannot find multiz in path. Please make sure it is installed.\n" unless ($t_multiz ne "");  
+
 my $t_lastz = `sh -c 'command -v lastz'`;
 die "ERROR: Cannot find lastz in path. Please make sure it is installed.\n" unless ($t_lastz ne ""); 
 
@@ -118,12 +122,16 @@ while(my $curline = <$parameters>) {
 		(my $paramName, my $paramValue) = split /=/, $curline;
 		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
 		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
+		elsif(uc($paramName) eq "MAFFILTERDIRECTORY") { $maffilterDir = "$conservatoryDir/$paramValue"; }
 		elsif($paramName ne "") {  }
 	}
 }
 close($parameters);
 if($verbose) { print localtime() . ": Running parameters (upstreamLength $upstreamLength; downstreamLength $downstreamLength).\n"; } 
 
+####### Check presence of programs.
+
+die "ERROR: Cannot find file maffilter program ($maffilterDir/maffilter)\n" unless -e "$maffilterDir/maffilter";
 
 ###############################################
 ##### Now set things up
@@ -147,7 +155,7 @@ chdir $tmpDir;
 
  
 ### Mow check if alignment is already there
-if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $force ) && ! $skipAlignment) {
+if((!(-e "$outputDir/$locus.up.maf" && -e "$outputDir/$locus.down.maf") || $force ) && ! $skipAlignment) {
   ####### Set up the reference fasta files
   my $upstreamRefFastaName = "$tmpDir/$refGenome.$locus.up.fasta";
   my $downstreamRefFastaName = "$tmpDir/$refGenome.$locus.down.fasta";
@@ -325,7 +333,7 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 			}
 		}
 	}
-	#### Now all alignments were performed. Begin to combine MAF manually. 
+	#### Now all alignments were performed. Begin to combine MAF by multiz. 
 	### First, move everything to an array
 	my @orthologsToProcess;
 	foreach my $speciesToAlign (@species) {
@@ -337,39 +345,56 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 	}
 	if((scalar @orthologsToProcess) > 0) {
 		my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
-		
-		### First, load all MAF, collapse species-specific duplications and convert to FASTA.
-		
-		my %fastaUpstreamAlignment;
-		my %fastaDownstreamAlignment;
+
+		my $finalMafUpFileName = "$locus.up.maf";
+		my $finalMafDownFileName = "$locus.down.maf";
+		my $unfilMafUpFileName = "$locus.up.unfil.maf";
+		my $unfilMafDownFileName = "$locus.down.unfil.maf";
+
+		system("multiz " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFUpFileName'} . " 1 | uniq >$unfilMafUpFileName");
+		system("multiz " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " " . $orthologsToProcessSorted[0]->{'MAFDownFileName'} . " 1 | uniq >$unfilMafDownFileName");
+
 		foreach my $curOrthologToMultiz (@orthologsToProcessSorted) {
-			%fastaUpstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFUpFileName'}, $upstreamLength, %fastaUpstreamAlignment);
-			%fastaDownstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFDownFileName'}, $downstreamLength, %fastaDownstreamAlignment);
-		}
-		
-
-		my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
-		my $finalFASTADownFileName = "$outputDir/$locus.down.fasta";
-		
-		open (my $finalFASTAUpFile, ">$finalFASTAUpFileName");
-		open (my $finalFASTADownFile, ">$finalFASTADownFileName");
-
-		# and Dump fasta alignment
-		print $finalFASTAUpFile ">$refGenome\n" . $fastaUpstreamAlignment{$refGenome} . "\n";
-		print $finalFASTADownFile ">$refGenome\n" . $fastaDownstreamAlignment{$refGenome} . "\n";
-
-		for my $curspecies (keys %fastaUpstreamAlignment) {
-			if($curspecies ne $refGenome) {
-				print $finalFASTAUpFile ">$curspecies\n" . $fastaUpstreamAlignment{$curspecies} . "\n";
+			
+			if($curOrthologToMultiz->{'UpQuality'} > $EMPTY_FILE) {
+				system("multiz $unfilMafUpFileName " . $curOrthologToMultiz->{'MAFUpFileName'} . " 1 | uniq | maf-sort >$unfilMafUpFileName.tmp");
+				unlink($unfilMafUpFileName);
+				system("mv $unfilMafUpFileName.tmp $unfilMafUpFileName");
 			}
-		}
-		for my $curspecies (keys %fastaDownstreamAlignment) {
-			if($curspecies ne $refGenome) {
-				print $finalFASTADownFile ">$curspecies\n" . $fastaDownstreamAlignment{$curspecies} . "\n";
+			if($curOrthologToMultiz->{'DownQuality'} > $EMPTY_FILE) {
+				system("multiz $unfilMafDownFileName " . $curOrthologToMultiz->{'MAFDownFileName'} . " 1 | uniq | maf-sort >$unfilMafDownFileName.tmp");
+				unlink($unfilMafDownFileName);
+				system("mv $unfilMafDownFileName.tmp $unfilMafDownFileName");
 			}
+			if($verbose) { print "PROGRESS: Adding " . $curOrthologToMultiz->{'Name'} . " to MAF file $unfilMafUpFileName quality (" . getMAFQuality($unfilMafUpFileName) .")\n"; } 
+
 		}
-		close($finalFASTAUpFile);
-		close($finalFASTADownFile);
+
+		### Wrap up. Filter and clean up MAF file
+		my $mafFilterCmd = "maf.filter=Merge(species=($locus), dist_max=2),EntropyFilter(species=($locus)),RemoveEmptySequences(),MinBlockLength(min_length=$minCNSLength),MinBlockSize(min_size=$MIN_ALIGNMENTS),Merge(species=($locus),dist_max=0)";
+
+		my $command= "$maffilterDir/maffilter \"input.file=$unfilMafUpFileName\" \"$mafFilterCmd,Output(file=$finalMafUpFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+
+		system ($command);
+		if(!$keep_tmp) { unlink($unfilMafUpFileName); }
+		###  Remove the .c1 we added for maffilter and restore the underscores to periods (which maffilter does not like).
+		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafUpFileName.fil | sed 's/\\.c1//' | sed 's/_/\./g' > $finalMafUpFileName");
+		unlink("$finalMafUpFileName.fil");
+		$command= "$maffilterDir/maffilter \"input.file=$unfilMafDownFileName\" \"$mafFilterCmd,Output(file=$finalMafDownFileName.fil,compression=none)\" >/dev/null 2>/dev/null";
+		system ($command);
+		if(!$keep_tmp) { unlink($unfilMafDownFileName); }
+		system("$conservatoryDir/scripts/fixMAF $locus < $finalMafDownFileName.fil | sed 's/\\.c1//' | sed 's/_/\./g'  > $finalMafDownFileName");
+		unlink("$finalMafDownFileName.fil");
+
+		####### Move final files to output directories
+		if( (-s $finalMafUpFileName) > $EMPTY_FILE) {
+			system("cp $finalMafUpFileName $outputDir");	
+		}
+		if( (-s $finalMafDownFileName) > $EMPTY_FILE) {
+			system("cp $finalMafDownFileName $outputDir");
+		}
+		unlink($finalMafDownFileName);
+		unlink($finalMafUpFileName);
 	}
 } else { if($verbose) { print localtime() . " PROGRESS: Number of species with alignments ($numOfSpecies) below minimum ($MIN_ALIGNMENTS).\n"; }} 
 
@@ -400,7 +425,7 @@ if(!$keep_tmp) {
 		
 	}
 }
-if($verbose) { if(-e "$outputDir/$locus.up.fasta") { print "PROGRESS: Done alignment for $locus\n"; } }
+if($verbose) { if(-e "$outputDir/$locus.up.maf") { my $finalQuality = getMAFQuality("$outputDir/$locus.up.maf"); print "PROGRESS: Done alignment for $locus. Quality $finalQuality.\n"; } }
 
 } else { print localtime() . " SKIP: Alignment files for $locus already exists. Use --force remake.\n"; }
 
@@ -414,10 +439,43 @@ if(-e $treeFileName && !$skipConservation) {
 	if($verbose) { print "PROGRESS: Begin conservation analysis for $locus.\n"; }
 	if (! -e $outputCNSDir) { mkdir($outputCNSDir); }
 
+	my $geneMAFFileName_up = "$outputDir/$locus.up.maf";
+	my $geneMAFFileName_down = "$outputDir/$locus.down.maf";
+	my $speciesMAFFileName_up = "$tmpDir/$locus.up.sp.fasta";
+	my $speciesMAFFileName_down = "$tmpDir/$locus.down.sp.fasta";
 
-	my $speciesMAFFileName_up = "$outputDir/$locus.up.fasta";
-	my $speciesMAFFileName_down = "$outputDir/$locus.down.fasta";
-
+	if(-s $geneMAFFileName_up > $EMPTY_FILE) {
+		open(my $geneMAF_up, "<", $geneMAFFileName_up);
+		open(my $speciesMAF_up,">", "$speciesMAFFileName_up.tmp");
+		while(<$geneMAF_up>) {
+			my $mafline = geneToSpecies($_);
+			print $speciesMAF_up $mafline;
+		}
+		close($geneMAF_up);
+		close($speciesMAF_up);
+		#### Fix the phylop problems with overlapping regions.
+	
+		system("$conservatoryDir/scripts/MAFtoFASTA --conservatoryDirectory $conservatoryDir --regSeq UP --mafFile $speciesMAFFileName_up.tmp > $speciesMAFFileName_up");
+		if(!$keep_tmp) {
+			unlink("$speciesMAFFileName_up.tmp");
+		}
+		if($verbose) { printf (localtime() . ": PROGRESS: Converted MAF upstream file. Size %d.\n", -s $speciesMAFFileName_up); }
+	}
+	if(-s $geneMAFFileName_down > $EMPTY_FILE) {
+		open(my $geneMAF_down, "<", $geneMAFFileName_down);
+		open(my $speciesMAF_down, ">", "$speciesMAFFileName_down.tmp");
+		while(<$geneMAF_down>) {
+			my $mafline = geneToSpecies($_);
+			print $speciesMAF_down $mafline;
+		}
+		close($geneMAF_down);
+		close($speciesMAF_down);
+		system("$conservatoryDir/scripts/MAFtoFASTA --conservatoryDirectory $conservatoryDir --regSeq DOWN --mafFile $speciesMAFFileName_down.tmp > $speciesMAFFileName_down");
+		if(!$keep_tmp) {
+			unlink("$speciesMAFFileName_down.tmp");
+		}
+		if($verbose) { printf (localtime() . ": PROGRESS: Converted MAF downstream file. Size %d.\n", -s $speciesMAFFileName_down); }
+	}
 	
 	### Extract the absolute coordinates of the locus
 	my $refFootprintFileName = "$conservatoryDir/genomes/$family/$refGenome.footprint.gff3";
@@ -461,7 +519,7 @@ if(-e $treeFileName && !$skipConservation) {
 	
 	if(-s $speciesMAFFileName_up > $EMPTY_FILE) {
 		if($verbose) { print localtime() . ": PROGRESS: START phyloP analysis for upstream CNS.\n"; }
-
+		
 		system("phyloP $phyloPParameters $treeFileName $speciesMAFFileName_up | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
 
 		if(-s "$tmpDir/$locus.up.bed"> $EMPTY_FILE) { 
@@ -526,8 +584,10 @@ sub extractFastaToFile {
 	
 	my $maskdinucrep = " sed -r 's/(AG|CT|CC|GG){6}/XXXXXXXXXXXX/g'";
 	my $maskseq = " sed -r 's/[A|T]{10}/XXXXXXXXXX/g' | sed 's/NNN/XXX/g'";
+	my $removeDot ="sed 's/\\./_/g'";  ### MAFfilter does not like dots in gene names
+	my $addc1 = "awk '{if(NR==1) {print(\$0\".c1\"); } else {print \$0;}}'";
 	
-	system("samtools faidx $fastaFile $locus | $maskdinucrep | $maskseq  >$outputFastaFile");
+	system("samtools faidx $fastaFile $locus | $maskdinucrep | $maskseq | $removeDot | $addc1 >$outputFastaFile");
 }
 
 sub getMAFQuality {
@@ -545,89 +605,27 @@ sub getMAFQuality {
 
 # convert gene name to species name in input MAF line
 sub geneToSpecies {
-	my ($geneName) = @_;
-	my $gene2sp;
-	open(my $genomeDatabase, "<" , $genomedbFile);
-	my $header= <$genomeDatabase>;
-	while(<$genomeDatabase>) {
-		chomp;
-		my @array = split /,/;
-		my $speciesName= $array[1];
-		my $geneToSpecies= "^" . $array[7] . "[a-zA-Z0-9\._]*";
-		$gene2sp = $geneName;
-		if($array[7] ne "") {
-			eval '$gene2sp =~ s/$geneToSpecies/$speciesName/g';
-			if($gene2sp ne $geneName){
-				return $gene2sp;
+	my ($inline) = @_;
+	if(substr($inline,0,1) eq "s") {
+		my $editedLine;
+		my ($type, $geneName) = split ' ',$inline;
+ 		chomp($geneName);
+		open(my $genomeDatabase, "<" , $genomedbFile);
+		my $header= <$genomeDatabase>;
+		while(<$genomeDatabase>) {
+			chomp;
+			my @array = split /,/;
+			my $speciesName= $array[1];
+			my $geneToSpecies= $array[7] . "[a-zA-Z0-9\._]*";
+			my $editedLine = $inline;
+			if($array[7] ne "") {
+				eval '$editedLine =~ s/ $geneToSpecies/ $speciesName/g';
+				$inline = $editedLine;
 			}
 		}
+		close($genomeDatabase);
 	}
-	close($genomeDatabase);
+	return $inline;
 }
 
-################### Load MAF file and return a FASTA array
-sub MAFtoFASTA {
-	(my $mafFileName, my $seqLength, my %inFASTA) = @_;
 
-	my $refseqname;
-	my $refstart = -1;
-	my $reflen;
-
-	my $maffile = Bio::AlignIO->new(-file => $mafFileName,
-					-format => "maf") || die ("");
-
-	while(my $aln = $maffile->next_aln) {
-	   foreach my $alignseq ($aln->each_seq() ) {
-	   	   my $species = geneToSpecies($alignseq->id());
-			if(not defined $inFASTA{$species}) {
-				$inFASTA{$species} = "N" x $seqLength;
-			}
-			if($refseqname eq "") {
-				$refseqname = $species;
-			}
-			if($refstart == -1) {
-				$refstart = $alignseq->start();
-				$reflen = $alignseq->length();
-			}
-			my $newspseq = $alignseq->seq();
-			### Replace all gaps with N because phyloP doesn't handle gap correctly.
-			
-			$newspseq =~ s/-/N/g;
-			
-			# Check if we are over-riding sequences
-			my $curspseq = substr($inFASTA{$species}, $refstart, $reflen);
-			if( $curspseq eq  "N" x length($curspseq)) {
-				substr($inFASTA{$species}, $refstart, $reflen) = $newspseq;
-			} else {
-				# if there was something there, merge the sequences
-				if(substr($inFASTA{$species}, $refstart, $reflen) ne $newspseq) {
-					
-					my $curseq = substr($inFASTA{$species}, $refstart, $reflen);
-					my $refseq = substr($inFASTA{$refseqname}, $refstart, $reflen);
-					my $conseq;
-					for my $curchr (0 .. $reflen) {
-						my $selectedMergedNuc;
-						# if one is a gap, pick the nucleotide
-						if(substr($curseq, $curchr,1) eq "N") {
-							$selectedMergedNuc = substr($newspseq,$curchr,1);
-						} elsif (substr($newspseq, $curchr,1) eq "N") {
-							$selectedMergedNuc = substr($curseq,$curchr,1);
-						} else { #if we have a conflict - pick the one that is similar to the reference
-							if((substr($curseq,$curchr,1) eq substr($refseq,$curchr,1)) || (substr($curseq,$curchr,1) eq substr($refseq,$curchr,1))) {
-								$selectedMergedNuc = substr($refseq,$curchr,1);
-							} else {
-								$selectedMergedNuc = substr($curseq,$curchr,1); # or if not, the default is the first one.
-							}
-						}
-						$conseq .= $selectedMergedNuc;
-					}
-					substr($inFASTA{$species}, $refstart, $reflen) = $conseq;;
-				}
-			}
-			
-	   }
-	   $refstart = -1;
-	}
-	
-	return %inFASTA;
-}

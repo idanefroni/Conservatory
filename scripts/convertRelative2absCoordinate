@@ -4,7 +4,7 @@ use warnings;
 use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
-use Bio::Cigar;
+use Bio::Tradis::Parser::Cigar;
 use Cwd 'abs_path';
 use Getopt::Long;
 
@@ -135,7 +135,6 @@ if($format eq "SAM") {
 				my @fields = split /\t/, $line;
 				
 				my $genename = $fields[1];
-				$genename =~ s/\.c1//;
 				$genename =~ s/SN://;
 
 				while((my $feature = $gff->next_feature) && $genePos{'Chr'} eq "") {
@@ -162,12 +161,11 @@ if($format eq "SAM") {
 			my @fields= split /\t/,$line;
 	
 			my $orthname = $genePos{'Name'} . ":" . $fields[0];
-			$orthname =~ s/\.c1//;
 			$fields[0] = $orthname;
 			$fields[2] = $genePos{'Chr'};
 			my $aln_start = $fields[3];
-			my $cigar = Bio::Cigar->new($fields[5]);
-			my $aln_end = $fields[3] + $cigar->reference_length;
+			my $cigar = Bio::Tradis::Parser::Cigar->new(coordinate => 0, cigar => $fields[5]);
+			my $aln_end = $fields[3] + $cigar->end;
 			$fields[5] =~ s/[0-9]+H//g;
 			
 			if($genePos{'Strand'} eq "+") {
@@ -193,68 +191,4 @@ if($format eq "SAM") {
 		}
 	}
 }
-
-
-
-
-
-#if($format eq "MAF") {
-#	my $maf = Bio::AlignIO->new(-file => $infile,
-#								-format => "maf");
-#	while ( my $aln = $maf->next_aln) {
-#		my @seqs = $aln->each_seq;
-	
-#		my $sol = $seqs[0];
-#		my $other = $seqs[1];
-
-		#If its the first time, find the gene
-#		if($genechr eq "") {
-#			my $feature;
-#			$genename = $sol->id();
-#			$genename =~ s/\.c1//;
-#			$orthname = $other->id();
-		
-#			while(($feature = $gff->next_feature) && $genechr eq "") {
-#				my @tags = $feature->get_tag_values("Name");
-#				if( $tags[0] eq $genename) {
-#					$genechr=$feature->seq_id;
-#					$genestart=$feature->start;
-#					$geneend=$feature->end;
-#					$strand = $feature->strand;
-#					if ($strand == -1) {
-#						$strand = "-";
-#					} else {
-#						$strand = "+";
-#					}
-#				}
-#			}
-#		}
-#		my $aln_start = $sol->start;
-#		my $aln_end = $sol->end;
-#	
-#		if($strand eq "+") {
-#			if($upordownstream eq "U") {
-#				$sol->start($genestart - $length + $aln_start -1 );
-#				$sol->end($genestart - $length + $aln_end - 1);		
-#			} else { #if its downstream
-#				$sol->start($geneend + $aln_start );
-#				$sol->end($geneend + $aln_end );		
-#			}
-#			$sol->id($genechr);
-#		} else {
-#			if($upordownstream eq "U") {
-#				$sol->start($geneend + $length - $aln_end );
-#				$sol->end($geneend + $length - $aln_start );		
-#			} else {
-#				$sol->start($genestart - $aln_end );
-#				$sol->end($genestart - $aln_start );		
-#			}
-#			$sol->id($genechr);	
-#		}
-#		printf ( $sol->id . "\t" . $orthname . "\tCNS\t" . ($sol->start+1) . "\t" . ($sol->end+1) . "\t%.1f\t%s\t.\t" . "Name=" . $orthname . ";Gene=" . $genename . "\n", $aln->percentage_identity, ".");
-#	}
-#}
-
-
-
 

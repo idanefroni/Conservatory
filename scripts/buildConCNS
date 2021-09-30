@@ -104,6 +104,8 @@ die "ERROR: Cannot find reference genome files ($upstreamFileName, $downstreamFi
 die "DONE: Locus $locus in genome $refGenome does not have CNS.\n" unless (-e $CNSFileName);
 die "ERROR: Locus $locus in genome $refGenome has CNS but no matching MAF alignment files ($MAFFileNameUp, $MAFFileNameDown).\n" unless ((-e $MAFFileNameUp) || (-e $MAFFileNameDown));
 
+my $locusFixed = $locus;
+$locusFixed =~ s/\_/\./g;
 #################################################33
 #### Here, we extract the regulatory sequences from the reference genome, replace the regions where we have alignment to other genomes
 # with the consesus sequence and then cut out only the regions that have significant phyloP scores.
@@ -146,7 +148,7 @@ if(-e $MAFFileNameUp) {
 	while(my $aln = $maffile->next_aln) {
 	   $cnsCount++;
 	   my $conces = lc($aln->consensus_string());
-    	   substr($upstreamSeq, $aln->get_seq_by_id($locus)->start(), $aln->get_seq_by_id($locus)->length()) = $conces;
+   	   substr($upstreamSeq, $aln->get_seq_by_id($locusFixed)->start(), $aln->get_seq_by_id($locusFixed)->length()) = $conces;
 	}
 }
 
@@ -156,11 +158,11 @@ if(-e $MAFFileNameDown) {
 	while(my $aln = $maffile->next_aln) {
 	   $cnsCount++;
 	   my $conces = lc($aln->consensus_string());
-    	   substr($downstreamSeq, $aln->get_seq_by_id($locus)->start(), $aln->get_seq_by_id($locus)->length()) = $conces;
+       substr($downstreamSeq, $aln->get_seq_by_id($locusFixed)->start(), $aln->get_seq_by_id($locusFixed)->length()) = $conces;
 	}
 }
 
-if($verbose) { print localtime() . " : PROGRESS : Created concensus sequences from $cnsCount CNSs.\n"; }
+if($verbose) { print localtime() . ": PROGRESS : Created concensus sequences from $cnsCount CNSs.\n"; }
 ####################
 ### Now, we have the consensus sequences in context. Load the CNS files
 
@@ -175,12 +177,12 @@ while(my $line = <$CNSFile>) {
 	if($pos eq "UP") {
 	  if($upCoreSeq ne "") { $upCoreSeq .= ('X' x 10); }
 	  $upCoreName .= length($upCoreSeq) . ";" . ($end - $start + $flank *2) . ";$chr;" . ($absstart-$flank) . ";";
-	  $upCoreSeq .= substr($upstreamSeq, $upstreamLength + $start -$flank, $end-$start + $flank*2+1);
+	  $upCoreSeq .= substr($upstreamSeq, $upstreamLength + $start -$flank, abs($end - $start) + $flank*2+1);
 	}
 	if($pos eq "DOWN") {
 	  if($downCoreSeq ne "") { $downCoreSeq .= ('X' x 10); }
 	  $downCoreName .= length($downCoreSeq) . ";" . ($end - $start + $flank *2) . ";$chr;" . ($absstart-$flank) . ";";
-	  $downCoreSeq .= substr($downstreamSeq,$start -$flank, $end-$start + $flank*2+1);
+	  $downCoreSeq .= substr($downstreamSeq,$start -$flank, abs($end-$start) + $flank*2+1);
 	}
 }
 close($CNSFile);
@@ -188,9 +190,15 @@ close($CNSFile);
 ###### Filter low complexity regions
 ######
 
-if($lowcomplexityfilter) { 
-	$upCoreSeq =~ s/[A|T]{7}/XXXXXXX/g;
-	$downCoreSeq =~ s/[A|T]{7}/XXXXXXX/g;
+$upCoreSeq =~ s/\?/N/g;
+$downCoreSeq =~ s/\?/N/g;
+
+if($lowcomplexityfilter) {
+
+	$upCoreSeq =~ s/[A|T|a|t]{6}/XXXXXX/g;
+	$downCoreSeq =~ s/[A|T|a|t]{6}/XXXXXX/g;
+	$upCoreSeq =~ s/[C|G]{6}/XXXXXX/g;
+	$downCoreSeq =~ s/[C|G]{6}/XXXXXX/g;
 }
 
 if($upCoreSeq ne "") {
