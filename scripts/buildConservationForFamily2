@@ -157,7 +157,7 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
   if($verbose) { print localtime() . ": Done extracting reference sequences.\n";}
 
  	
-  # set up orthology hashes
+  # set up CRE-orthology hashes
   my %orthologs;
   ##############################################################################
   # Load Genomes
@@ -191,7 +191,7 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 					system("lastz --format=maf $lastzParameters $downstreamRefFastaName $downstreamFastaName > $MAFDownFileName");
 					my $downQuality = getMAFQuality($MAFDownFileName);
 	
-					if($verbose) { print "PROGRESS: Found possible ortholog ($curGenome:$curPutativeOrtholog). Quality: $upQuality.\n"; }
+					if($verbose) { print "PROGRESS: Found possible CRE-ortholog ($curGenome:$curPutativeOrtholog). Quality: $upQuality.\n"; }
 					if(not defined $orthologs{$curSpecies}) {
 						$orthologs{$curSpecies} = [ {
 							'Name' => $curPutativeOrtholog,
@@ -215,7 +215,7 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 								'DownQuality' => $downQuality});
 					}
 				} else {
-					if($verbose) { print "PROGRESS: Rejected possible ortholog ($curGenome:$curPutativeOrtholog). Quality: $upQuality.\n"; }
+					if($verbose) { print "PROGRESS: Rejected CRE-ortholog ($curGenome:$curPutativeOrtholog). Quality: $upQuality.\n"; }
 					unlink($MAFUpFileName);
 					unlink($upstreamFastaName);
 					unlink($downstreamFastaName);
@@ -229,7 +229,7 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
   close ($genomeDatabase);				
 
 #####################################################################################################
-###### Now we have assembled the list of putative orthologs. Select the best genome for each species
+###### Now we have assembled the list of putative CRE orthologs. Select the best genome for each species
 
 foreach my $curOrthSpecies (keys %orthologs) {
 		# first, check if we have a consistent duplication. if not, pick the best alignment.
@@ -277,9 +277,9 @@ foreach my $curOrthSpecies (keys %orthologs) {
 				push( @ { $orthologs{$curOrthSpecies} },
 					$tmporth{$curOrthSpecies}[$i]);
 			}
-			if($verbose) { print "PROGRESS: Picked ortholog genome " . $orthologs{$curOrthSpecies}[0]->{'Genome'} . ", " . (scalar @{ $orthologs{$curOrthSpecies} }) . " Genes:";
-					       foreach my $i ( @{ $orthologs{$curOrthSpecies} }) { print $i->{'Name'} . ","; }
-					       print ".\n";
+			if($verbose) { print "PROGRESS: Picked CRE-ortholog for " . $orthologs{$curOrthSpecies}[0]->{'Genome'} . ".\t" . (scalar @{ $orthologs{$curOrthSpecies} }) . " Genes: ";
+					       foreach my $i ( @{ $orthologs{$curOrthSpecies} }) { print $i->{'Name'} . ". "; }
+					       print "\n";
 			}
 
 		} else {
@@ -302,16 +302,16 @@ foreach my $curOrthSpecies (keys %orthologs) {
 			
 			## Now remove all the other genes
 			$orthologs{$curOrthSpecies} = [ $orthologs{$curOrthSpecies}[$topQualityIdx] ];
-			if($verbose) { print "PROGRESS: Picked ortholog genome " . $orthologs{$curOrthSpecies}[0]->{'Genome'} . ",Gene " . $orthologs{$curOrthSpecies}[0]->{'Name'} . "\n"; }
+			if($verbose) { print "PROGRESS: Picked CRE-ortholog for " . $orthologs{$curOrthSpecies}[0]->{'Genome'} . ".\t1 Gene: " . $orthologs{$curOrthSpecies}[0]->{'Name'} . ".\n"; }
 		}
 }
 ####################################################################################################################################
-##### At this point, we have selected our "orthologs" (%orthologs) and have all the filtered upstream and downstream sequences in fasta files 
+##### At this point, we have selected our "CRE orthologs" (%orthologs) and have all the filtered upstream and downstream sequences in fasta files 
 ##### Perform alignments to the reference genome
 my @species = keys %orthologs;
 my $numOfSpecies = scalar @species;
 
-if ($verbose) { print "PROGRESS: Done with ortholog selection. Collected $numOfSpecies Orthologs.\n"; }
+if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
 
 if ($numOfSpecies > $MIN_ALIGNMENTS) {
 	if($dump_bam) {
@@ -326,19 +326,27 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 		}
 	}
 	#### Now all alignments were performed. Begin to combine MAF manually. 
-	### First, move everything to an array
+	### First, move everything to an array. Dump a copy to the CRE-ortholog file
+	
+	my $finalCREorthologFileName = "$outputDir/$locus.CREorthologs.txt";
+	
+	open(my $finalCREorthologFile, ">$finalCREorthologFileName");
+	
 	my @orthologsToProcess;
 	foreach my $speciesToAlign (@species) {
 		foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
 			if($curOrtholog->{'UpQuality'} > $EMPTY_FILE || $curOrtholog->{'DownQuality'} > $EMPTY_FILE) {
 				push @orthologsToProcess, $curOrtholog;
+				print $finalCREorthologFile $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" .$curOrtholog->{'DownQuality'} ."\n"; 
 			}
 		}
 	}
+	close($finalCREorthologFile);
+	
 	if((scalar @orthologsToProcess) > 0) {
 		my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
 		
-		### First, load all MAF, collapse species-specific duplications and convert to FASTA.
+		### Load all MAF, collapse species-specific paralogs and convert to FASTA.
 		
 		my %fastaUpstreamAlignment;
 		my %fastaDownstreamAlignment;
@@ -371,7 +379,7 @@ if ($numOfSpecies > $MIN_ALIGNMENTS) {
 		close($finalFASTAUpFile);
 		close($finalFASTADownFile);
 	}
-} else { if($verbose) { print localtime() . " PROGRESS: Number of species with alignments ($numOfSpecies) below minimum ($MIN_ALIGNMENTS).\n"; }} 
+} else { if($verbose) { print "PROGRESS: Not enough CRE-orthologs for alignment ($numOfSpecies, minimum is:$MIN_ALIGNMENTS). Check --min-species parameter\n"; }} 
 
 ### Fix SAM (if we have one) and move to output
 if($dump_bam && $numOfSpecies > $MIN_ALIGNMENTS) {
@@ -400,9 +408,9 @@ if(!$keep_tmp) {
 		
 	}
 }
-if($verbose) { if(-e "$outputDir/$locus.up.fasta") { print "PROGRESS: Done alignment for $locus\n"; } }
+if($verbose) { if(-e "$outputDir/$locus.up.fasta") { print "PROGRESS: Done alignment for $locus.\n"; } }
 
-} else { print localtime() . " SKIP: Alignment files for $locus already exists. Use --force remake.\n"; }
+} else { print "SKIP: Alignment files for $locus already exists. Use --force remake.\n"; }
 
 ######## Now do phyloP.
 my $treeFileName = "$conservatoryDir/genomes/$family.mod";
@@ -410,13 +418,13 @@ my $treeFileName = "$conservatoryDir/genomes/$family.mod";
 ### Make sure we have the tree information. If not, just say so and skip
 
 if(-e $treeFileName && !$skipConservation) {
-	# First, convert from a gene MAF to a species MAF
+
+	
 	if($verbose) { print "PROGRESS: Begin conservation analysis for $locus.\n"; }
 	if (! -e $outputCNSDir) { mkdir($outputCNSDir); }
 
-
-	my $speciesMAFFileName_up = "$outputDir/$locus.up.fasta";
-	my $speciesMAFFileName_down = "$outputDir/$locus.down.fasta";
+	my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
+	my $finalFASTADownFileName = "$outputDir/$locus.down.fasta";
 
 	
 	### Extract the absolute coordinates of the locus
@@ -437,7 +445,7 @@ if(-e $treeFileName && !$skipConservation) {
 		}
 	}
 	close($refFootprintFile);
-	if($verbose) { print localtime() . ": PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd.\n"; }
+	if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd.\n"; }
 
 	my $coordinateTranslateAwkUp;
 	my $coordinateTranslateStrUp;
@@ -459,33 +467,31 @@ if(-e $treeFileName && !$skipConservation) {
 	#### Now run phyloP 
 	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
 	
-	if(-s $speciesMAFFileName_up > $EMPTY_FILE) {
-		if($verbose) { print localtime() . ": PROGRESS: START phyloP analysis for upstream CNS.\n"; }
+	if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
+		if($verbose) { print "PROGRESS: START phyloP analysis for upstream CNS.\n"; }
 
-		system("phyloP $phyloPParameters $treeFileName $speciesMAFFileName_up | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
+		system("phyloP $phyloPParameters $treeFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
 
 		if(-s "$tmpDir/$locus.up.bed"> $EMPTY_FILE) { 
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
-				if($verbose) { print localtime() . ": Found upstream CNS.\n"; }
+				if($verbose) { print "PROGRESS: Found upstream CNS.\n"; }
 				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
 		}
 	}
-	if(-s $speciesMAFFileName_down > $EMPTY_FILE) {
-		system("phyloP $phyloPParameters $treeFileName $speciesMAFFileName_down | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
+	if(-s $finalFASTADownFileName > $EMPTY_FILE) {
+		system("phyloP $phyloPParameters $treeFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
 		if(-s "$tmpDir/$locus.down.bed"> $EMPTY_FILE) { 
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 			if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
-				if($verbose) { print localtime() . ": Found downstream CNS.\n"; }
+				if($verbose) { print "PROGRESS: Found downstream CNS.\n"; }
 				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\$1, \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.down.fil.bed"); }
 		}
 	}
-	if(!$keep_tmp) { unlink($speciesMAFFileName_down); }
-	if(!$keep_tmp) { unlink($speciesMAFFileName_up); }
 	
 	### Build CNS and convert to table
 	if( (-e "$tmpDir/$locus.cns.csv") && (-s "$tmpDir/$locus.cns.csv" > $EMPTY_FILE)) {
@@ -511,7 +517,7 @@ if(-e $treeFileName && !$skipConservation) {
 	unlink("$tmpDir/$locus.phylop.bed");
 } else { print "WARNING : Skipping phyloP analysis...\n"; }
 
-if($verbose) { print localtime() . ": PROGRESS: End conservation analysis for $locus.\n"; }
+if($verbose) { print "PROGRESS: End conservation analysis for $locus (" .localtime() . ").\n"; }
 #### Go back to the original directory, and we are done!
 chdir $curDir;	
 
