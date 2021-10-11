@@ -4,7 +4,6 @@ use warnings;
 use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
-use Bio::Tradis::Parser::Cigar;
 use Cwd 'abs_path';
 use Getopt::Long;
 
@@ -164,10 +163,46 @@ if($format eq "SAM") {
 			$fields[0] = $orthname;
 			$fields[2] = $genePos{'Chr'};
 			my $aln_start = $fields[3];
-			my $cigar = Bio::Tradis::Parser::Cigar->new(coordinate => 0, cigar => $fields[5]);
-			my $aln_end = $fields[3] + $cigar->end;
-			$fields[5] =~ s/[0-9]+H//g;
 			
+			my $seq = $fields[9];
+			
+			## Remove all insertions in order to translate coordiantes to reference
+			my $curcigar = $fields[5];
+			my $newcigar ="";
+			my $curPosInReference=1;
+			my $curPosInTarget=0;
+			my $inserlen=0;
+			
+			my @cigar_parts = $curcigar =~ /(\d+[MIDNSHP=X])/g;
+			for my $cigar_item (@cigar_parts) {
+                if( $cigar_item =~ /(\d+)([MIDNSHP=X])/) {
+                        my $number = $1;
+                        my $action = $2;
+                         
+                        if($action eq 'M') {
+                        	$curPosInReference += $number;
+                        	$curPosInTarget += $number;
+                        	$newcigar .= $number . $action;
+                        } elsif($action eq 'D' || $action eq 'N') {
+                        	$curPosInReference += $number;
+                        	$newcigar .= $number . $action;
+                        	
+                        } elsif($action eq 'I' ) {
+                            # filter out insertion
+                            $inserlen += $number;
+                            
+                            substr($seq,$curPosInTarget, $number) = 'Z' x $number;
+                            $curPosInTarget += $number;
+                            
+                        }
+                }
+            }
+            
+            $seq =~ s/Z//g;          
+            my $aln_end = $curPosInReference;
+
+			$fields[5] = $newcigar;
+			$fields[9] = $seq;
 			if($genePos{'Strand'} eq "+") {
 				if($relPosition eq "UP") {
 					$fields[3] =  $genePos{'Start'}  - $length + $aln_start;
@@ -181,13 +216,14 @@ if($format eq "SAM") {
 				$fields[5] = revCigar($fields[5]);
 
 				if($relPosition eq "UP") {
-					$fields[3] =  $genePos{'End'} + $length - $aln_end +2;
+					$fields[3] =  $genePos{'End'} + $length - ($aln_start + $aln_end) +2;
 				} else {
-					$fields[3] = $genePos{'Start'} - $aln_end +2;	
+					$fields[3] = $genePos{'Start'} - ($aln_start + $aln_end) +2;	
 				}
 			}
 
 			printf ( join("\t", @fields) ."\n");
+
 		}
 	}
 }

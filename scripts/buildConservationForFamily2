@@ -29,7 +29,6 @@ my $verbose = 0;
 my $force=0;
 my $dump_bam = 0;
 my $help = 0;
-my $skipPhyloP=0;
 my $skipAlignment=0;
 my $skipConservation=0;
 my $minPhyloPscore=1.2;
@@ -52,7 +51,6 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"dump-bam" => \$dump_bam,
 			"skip-alignment" => \$skipAlignment,
 			"skip-conservation" => \$skipConservation,
-			"skip-phyloP" => \$skipPhyloP,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
@@ -68,7 +66,6 @@ if( $locus eq "" or $family eq "" or $help) {
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.2).\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
-   print "\t--skip-phylop\t\tJust do alignments. Do not compute conservation using phyloP.\n";
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
    print "\t--skip-conservation\t\tDo not compute phyloP scores.\n";
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
@@ -476,7 +473,7 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found upstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\$1, \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
 		}
@@ -487,7 +484,7 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 			if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found downstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\$1, \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpDir/$locus.cns.csv");
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.down.fil.bed"); }
 		}
