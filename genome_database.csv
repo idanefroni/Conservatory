@@ -1,6 +1,6 @@
 Genome,Species,Family,ReferenceGenome,MinQuality,GeneNameField,GeneProcessingRegEx,Gene2SpeciesIdentifierString,[ProteinProcessingRegEx]
 Slycopersicum,Slycopersicum,Solanaceae,Slycopersicum,1000,Parent,(mRNA:)|((\.[0-9])+$),Solyc,(\.[0-9]+)+$
-Slycoperscoides06,Slycoperscoides,Solanaceae,Slycopersicum,1000,Parent,(\.[0-9])+$,Solyd|Contig,
+Slycoperscoides06,Slycoperscoides,Solanaceae,Slycopersicum,1000,Parent,(\.[0-9])+$,(Solyd|Contig),
 Spennellii,Spennellii,Solanaceae,Slycopersicum,1000,Name,,SpL,
 Stuberosum,Stuberosum,Solanaceae,Slycopersicum,1000,Parent,,PGSC0,
 Schacoense,Schacoense,Solanaceae,Slycopersicum,1000,Parent,\.t[0-9]+$,g[0-9]+,\.t[0-9]+$
@@ -46,7 +46,7 @@ Rislandica,Rislandica,Brasicaceae,Athaliana,1000,Parent,\.[0-9]+\.v1\.1$,Roisl,\
 Sparvula,Sparvula,Brasicaceae,Athaliana,1000,Parent,\.[0-9]+\.v2\.2$,Sp[0-9]+g,\.[0-9]+$
 Spinnata,Spinnata,Brasicaceae,Athaliana,1000,Parent,\.[0-9]+\.v1\.1$,Stapi,\.[0-9]+\.p$
 Tarvense,Tarvense,Brasicaceae,Athaliana,1000,Parent,\.[0-9]+\.v1\.1$,Thlar,\.[0-9]+\.p$
-Mtruncatula,Medicago,Fabaceae,Mtruncatula,1000,Parent,\.[0-9]+\.JCVIMt4\.0v[0-9]$,Medr,
+Mtruncatula,Mtruncatula,Fabaceae,Mtruncatula,1000,Parent,\.[0-9]+\.JCVIMt4\.0v[0-9]$,Medt,
 Gmax,Gmax,Fabaceae,Mtruncatula,1000,Parent,(^glyma\.Wm82\.gnm4\.ann1\.)|(\.[0-9]+$),Glyma,(^glyma\.Wm82\.gnm4\.ann1\.)|(\.[0-9]+$)
 Gsoja,Gsoja,Fabaceae,Mtruncatula,1000,Parent,(^glyso\.PI483463\.gnm1\.ann1\.)|(\.[0-9]+$),Glyso,(^glyso\.PI483463\.gnm1\.ann1\.)|(\.[0-9]+$)
 Ccajan,Ccajan,Fabaceae,Mtruncatula,1000,Parent,(^cajca\.ICPL87119\.gnm1\.ann1\.C\.)|(\.[0-9]+$),cajan,(^cajca\.ICPL87119\.gnm1\.ann1\.C\.)|(\.[0-9]+$)

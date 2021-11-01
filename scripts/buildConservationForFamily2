@@ -33,6 +33,7 @@ my $skipAlignment=0;
 my $skipConservation=0;
 my $minPhyloPscore=1.2;
 my $onlyOneOrtholog=0;
+my $minHSPthreshold=2000;
 
 ########### Parameters
 my $upstreamLength;
@@ -42,6 +43,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
 			"family=s" => \$family,
 			"min-identity=i" => \$minIdentity,
+			"min-align-threshold=i" => \$minHSPthreshold,			
 			"min-species=i" => \$MIN_ALIGNMENTS,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"only-one-ortholog" => \$onlyOneOrtholog,
@@ -63,6 +65,7 @@ if( $locus eq "" or $family eq "" or $help) {
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
    print "\n\t\tAlignment options\n\n";
    print "\t--min-identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
+   print "\t--min-align-threshold\t\tMimimum hsp threshold for LASTZ alignments. Default is 2000 (lower threshold will identify smaller conserved sequences but alignments will be less reliable).\n";
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.2).\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
@@ -87,7 +90,7 @@ my $outputDir = "$conservatoryDir/alignments/$family/";
 my $outputCNSDir = "$conservatoryDir/CNS/$family/";
 my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
 my $genomeDir ="$conservatoryDir/genomes/$family";
-my $lastzParameters = "--gap=200,100 --nochain --recoverseeds --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=1000 --hspthreshold=1100 --gappedthresh=2500";
+my $lastzParameters = "--gap=200,100 --nochain --recoverseeds --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=1000 --hspthreshold=$minHSPthreshold --gappedthresh=2500";
 #my $lastzParameters = "--nogapped --nochain --recoverseeds --seed=match4 --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --hspthreshold=1100";
 
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
@@ -455,10 +458,10 @@ if(-e $treeFileName && !$skipConservation) {
 		$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+\$2,$refGeneEnd+\$3,\$5);}}'"; 
 		$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd+\$2, $refGeneEnd+\$3";		
 	} else { 
-		$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+$upstreamLength+1-\$3,$refGeneEnd+$upstreamLength+1-\$2,\$5);}}'";
-		$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLength+1-\$3, $refGeneEnd+$upstreamLength+1-\$2";
-		$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart+1-\$3,$refGeneStart+1-\$2,\$5);}}'";
-		$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart+1-\$3,$refGeneStart+1-\$2";
+		$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+$upstreamLength-\$3,$refGeneEnd+$upstreamLength-\$2,\$5);}}'";
+		$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLength+1-\$3, $refGeneEnd+$upstreamLength-\$2";
+		$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2,\$5);}}'";
+		$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2";
 	}
 	
 	#### Now run phyloP 
@@ -526,11 +529,10 @@ sub mean {
 
 sub extractFastaToFile {
 	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
-	
+	my $linearise = "perl -e ' { while (<>) { if(!/^>/) {chomp;} print; } print(\"\n\"); }'";
 	my $maskdinucrep = " sed -r 's/(AG|CT|CC|GG){6}/XXXXXXXXXXXX/g'";
 	my $maskseq = " sed -r 's/[A|T]{10}/XXXXXXXXXX/g' | sed 's/NNN/XXX/g'";
-	
-	system("samtools faidx $fastaFile $locus | $maskdinucrep | $maskseq  >$outputFastaFile");
+	system("samtools faidx $fastaFile $locus | $linearise | $maskdinucrep | $maskseq  >$outputFastaFile");
 }
 
 sub getMAFQuality {
@@ -583,6 +585,7 @@ sub MAFtoFASTA {
 	while(my $aln = $maffile->next_aln) {
 	   foreach my $alignseq ($aln->each_seq() ) {
 	   	   my $species = geneToSpecies($alignseq->id());
+#		   $species = $alignseq->id();
 	   	   my $newspseq = $alignseq->seq();
 	   	   
 		   if(not defined $inFASTA{$species}) {
@@ -608,7 +611,7 @@ sub MAFtoFASTA {
 		   $newspseq =~ s/-/N/g;
 		   
 		   if($refstart == -1) {
-			$refstart = $alignseq->start();
+			$refstart = $alignseq->start()-1;
 			$reflen = length($newspseq);
 		   }
 		   

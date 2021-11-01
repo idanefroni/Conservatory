@@ -88,7 +88,7 @@ if($mode eq "upstream") {
 					# get sequence until the previous gene
 					if($pstart < $mylastgeneend_pos) {
 						# one exterme case - overlapping genes. In this case, promoter is NULL. Maybe there is a better way of dealing with this. The problem
-						# of usign gene coding sequence as promoter is that coding sequences have much higher conservation rates that promoters which will confiuse downstream analysis
+						# of usign gene coding sequence as promoter is that coding sequences have much higher conservation rates that promoters which will confuse downstream analysis
 						if($mylastgeneend_pos >= $loc) {
 							$prom = "";
 						} else {
@@ -121,6 +121,7 @@ if($mode eq "upstream") {
 					$prom =~ tr/ACGT/TGCA/;
 				}
 				print  $output ('N' x ($seq_len - length($prom)) . $prom . "\n");
+
 				$mylastgeneend_pos = max($genefields[3], $genefields[4]);
 			} else {
 				#print ("ERROR when processing line $gffline.\n Chromosome $chromosome does not exists\n"); 
