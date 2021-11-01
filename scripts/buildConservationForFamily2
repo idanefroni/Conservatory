@@ -34,6 +34,7 @@ my $skipConservation=0;
 my $minPhyloPscore=1.2;
 my $onlyOneOrtholog=0;
 my $minHSPthreshold=2000;
+my $orthologSelectionStrategy = "bestmean";
 
 ########### Parameters
 my $upstreamLength;
@@ -47,6 +48,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-species=i" => \$MIN_ALIGNMENTS,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"only-one-ortholog" => \$onlyOneOrtholog,
+			"ortholog-selection-strategy" => \$orthologSelectionStrategy,
 			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
@@ -56,7 +58,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
-if( $locus eq "" or $family eq "" or $help) {
+if( $locus eq "" or $family eq "" or $help or ( $orthologSelectionStrategy ~~ ["bestmean","bestsum"]) ) {
 	print "Conservatory version 0.0.1\n\n";
 
    print "buildAlignmentForFamily --family <familyName> --locus <Locus>\n\n\n";
@@ -66,6 +68,7 @@ if( $locus eq "" or $family eq "" or $help) {
    print "\n\t\tAlignment options\n\n";
    print "\t--min-identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
    print "\t--min-align-threshold\t\tMimimum hsp threshold for LASTZ alignments. Default is 2000 (lower threshold will identify smaller conserved sequences but alignments will be less reliable).\n";
+   print "\t--ortholog-selection-strategy\t\tMethod to select the best set of CRE orthologs for a genomes. Can be bestmean (default) or bestsum. Bestmean will prefer better alignments, Bestsum, more possible orthologs.\n";
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.2).\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
@@ -243,7 +246,8 @@ foreach my $curOrthSpecies (keys %orthologs) {
 			push @qScores, $derefCurOrth{'UpQuality'};
 		}
 		
-		if( (scalar @{ $orthologs{$curOrthSpecies} }) % ( scalar uniq ( @genomeNames )) == 0 &&
+#		if( (scalar @{ $orthologs{$curOrthSpecies} }) % ( scalar uniq ( @genomeNames )) == 0 &&
+		if( 
 			(scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 &&
 			!$onlyOneOrtholog ) {
 
@@ -252,8 +256,13 @@ foreach my $curOrthSpecies (keys %orthologs) {
 			my @genomesToTest = uniq ( @genomeNames );
 			foreach my $curGenomeToTest ( @genomesToTest) {
 				my @indexes = grep { @genomeNames[$_] eq $curGenomeToTest } 0 ..(scalar @genomeNames);
-			
-				my $meanQuality = mean ( @qScores[@indexes] );
+				
+				my $meanQuality;
+				if($orthologSelectionStrategy eq "bestmean") {
+					$meanQuality = mean ( @qScores[@indexes] );
+				} else {
+					$meanQuality = sum ( @qScores[@indexes] );
+				}
 				if($meanQuality > $bestQuality) {
 					$bestQuality = $meanQuality;
 					@bestOrthologsGroup = @indexes;
