@@ -10,8 +10,13 @@ Last update: 3/10/2021
 	scores and assembled short regions of conservation.
 	Conservatory is also able to utilize multiple genome per species as pan genomes to account for genome-specific variants or
 	annotation problems.
-	
-	The program is described in:
+
+***********************************************************************************************************************************************************
+
+	Conservatory was developed as a collaboration between Efroni Lab (HUJI) and Lippman Lab (CSHL).
+
+	Version 1.0 is described in this publication:
+
 	Hendelman A., Zebell S., Rodriguez-Leal D., Dukler N., Robitaille G., Wu X., Kostyun J., Tal L., Wang P., Bartlett M.E.,
 		Eshed Y., Efroni I*, Lippman ZB.* (2021) Conserved pleiotropy of an ancient plant homeobox gene uncovered by cisregulatory dissection. 
 			Cell,10.1016/j.cell.2021.02.001
@@ -90,6 +95,6 @@ The ortholog selection and alignment algorithm has been modified from the one us
 
 Update 3/10/2021:
 
-* Additional updates to the alignment parameters and small bug fixes. The default version is now 2. Version 1 is kept for archive purposes. Use '--version 1' in processConservation to use the old version.
+* Additional updates to the alignment parameters and small bug fixes. The default version is now 2. Version 1 is kept for archival purposes. Use '--version 1' in processConservation to use the old version.
 * Add REF mode to builcConCNS function to extract the family concensus CNS sequence within the context of the reference regulatory sequence.
 
