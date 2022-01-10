@@ -4,12 +4,12 @@ Conservatory v1.0
 Last update: 3/10/2021
 *************************************************************************************************************************
 
-  Conservatory is structural variants and polyploidization-aware program for identification of conserved non-coding sequences.
-	conservatory is based on identification of cis-elements and protein sequence microsynteny to assembled multiple alignments
-	of upstream and downstream regulatory sequences. Conservatory then relies on phyloP to derive a model-based conservation
-	scores and assembled short regions of conservation.
-	Conservatory is also able to utilize multiple genome per species as pan genomes to account for genome-specific variants or
-	annotation problems.
+  Conservatory is structural variants and polyploidization-aware program for identification of conserved non-coding
+	sequences. Conservatory is based on identification of cis-elements and protein sequence microsynteny to assembled
+	multiple alignments of upstream and downstream regulatory sequences. Conservatory then relies on phyloP to derive
+	a model-based conservation scores and assembled short regions of conservation.
+	Conservatory is also able to utilize multiple genome per species as pan genomes to account for genome-specific
+	variants or annotation problems.
 
 **************************************************************************************************************************
 
@@ -17,9 +17,9 @@ Last update: 3/10/2021
 
 	Version 1.0 is described in this publication:
 
-	Hendelman A., Zebell S., Rodriguez-Leal D., Dukler N., Robitaille G., Wu X., Kostyun J., Tal L., Wang P., Bartlett M.E.,
-		Eshed Y., Efroni I*, Lippman ZB.* (2021) Conserved pleiotropy of an ancient plant homeobox gene uncovered by cisregulatory dissection. 
-			Cell,10.1016/j.cell.2021.02.001
+	Hendelman A., Zebell S., Rodriguez-Leal D., Dukler N., Robitaille G., Wu X., Kostyun J., Tal L., Wang P.,
+		Bartlett M.E., Eshed Y., Efroni I*, Lippman ZB.* (2021) Conserved pleiotropy of an ancient plant
+			omeobox gene uncovered by cisregulatory dissection. Cell, 184:1724-1739.
 
 	For questions\comments email Idan Efroni @ idan.efroni@mail.huji.ac.il
 	
