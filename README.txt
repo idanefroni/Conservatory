@@ -1,8 +1,8 @@
-**********************************************************************************************************************************************************
+*************************************************************************************************************************
 Conservatory v1.0
 
 Last update: 3/10/2021
-**********************************************************************************************************************************************************
+*************************************************************************************************************************
 
   Conservatory is structural variants and polyploidization-aware program for identification of conserved non-coding sequences.
 	conservatory is based on identification of cis-elements and protein sequence microsynteny to assembled multiple alignments
@@ -11,9 +11,9 @@ Last update: 3/10/2021
 	Conservatory is also able to utilize multiple genome per species as pan genomes to account for genome-specific variants or
 	annotation problems.
 
-***********************************************************************************************************************************************************
+**************************************************************************************************************************
 
-	Conservatory was developed as a collaboration between Efroni Lab (HUJI) and Lippman Lab (CSHL).
+	Conservatory was developed as a collaboration between the Efroni (HUJI) and Lippman (CSHL) labs.
 
 	Version 1.0 is described in this publication:
 
