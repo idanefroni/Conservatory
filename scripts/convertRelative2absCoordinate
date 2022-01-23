@@ -203,9 +203,10 @@ if($format eq "SAM") {
 
 			$fields[5] = $newcigar;
 			$fields[9] = $seq;
+		
 			if($genePos{'Strand'} eq "+") {
 				if($relPosition eq "UP") {
-					$fields[3] =  $genePos{'Start'}  - $length + $aln_start;
+					$fields[3] =  $genePos{'Start'}  - $length + $aln_start ;
 				} else { #if its downstream
 					$fields[3] = $genePos{'End'} + $aln_start + 1;	
 				}
@@ -216,15 +217,16 @@ if($format eq "SAM") {
 				$fields[5] = revCigar($fields[5]);
 
 				if($relPosition eq "UP") {
-					$fields[3] =  $genePos{'End'} + $length - ($aln_start + $aln_end) +2;
+					$fields[3] =  $genePos{'End'} + $length - ($aln_start + $aln_end) +3;
+					#adding 3, because the lastz sam format is starting with 1, the aln_end is +1.
 				} else {
-					$fields[3] = $genePos{'Start'} - ($aln_start + $aln_end) +2;	
+					$fields[3] = $genePos{'Start'} - ($aln_start + $aln_end) +3;	
 				}
 			}
 
 			printf ( join("\t", @fields) ."\n");
+			#			print "genePos:\t$genePos{'Strand'}\trelPosition:\t$relPosition\tlength:\t$length\taln_start:\t$aln_start\taln_end:\t$aln_end\n";
 
 		}
 	}
 }
-

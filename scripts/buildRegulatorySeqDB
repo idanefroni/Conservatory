@@ -74,7 +74,7 @@ if($mode eq "upstream") {
   		
 				if($chromosome_num != $mylastchromosome_num) {
 					$mylastchromosome_num = $chromosome_num;
-					$mylastgeneend_pos=0;
+					$mylastgeneend_pos= -99999999;
 				}
 
 				print $output ">". $genename . "\n";
@@ -83,9 +83,7 @@ if($mode eq "upstream") {
 				if($dir eq "+") {
 					my $loc = $genefields[3];
 					my $pstart = $loc - $seq_len;
-					if ($pstart <0 ) { $pstart=0; }
-
-					# get sequence until the previous gene
+				
 					if($pstart < $mylastgeneend_pos) {
 						# one exterme case - overlapping genes. In this case, promoter is NULL. Maybe there is a better way of dealing with this. The problem
 						# of usign gene coding sequence as promoter is that coding sequences have much higher conservation rates that promoters which will confuse downstream analysis
@@ -94,6 +92,9 @@ if($mode eq "upstream") {
 						} else {
 							$prom = substr($chromosomes[$chromosome_num], $mylastgeneend_pos, $seq_len - $mylastgeneend_pos + $pstart);
 						}
+					} elsif($pstart <0) {
+						## If this is at the start of the chromosome and we don't have enough upstream seq
+						$prom = substr($chromosomes[$chromosome_num], 0, $loc)
 					} else {
 						$prom = substr($chromosomes[$chromosome_num], $pstart, $seq_len);
 					}
