@@ -32,7 +32,7 @@ my $help = 0;
 my $skipAlignment=0;
 my $skipConservation=0;
 my $minPhyloPscore=2;
-my $noFilterORF=0;
+my $noFlagORF=0;
 my $minORFLength=300;
 my $onlyOneOrtholog=0;
 my $minHSPthreshold=2000;
@@ -49,7 +49,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-align-threshold=i" => \$minHSPthreshold,			
 			"min-species=i" => \$MIN_ALIGNMENTS,
 			"min-phylop-score=f" => \$minPhyloPscore,
-			"no-orf-filter" => \$noFilterORF,
+			"no-orf-flag" => \$noFlagORF,
 			"min-orf-length=i" => \$minORFLength,
 			"only-one-ortholog" => \$onlyOneOrtholog,
 			"ortholog-selection-strategy" => \$orthologSelectionStrategy,
@@ -81,7 +81,7 @@ if( $locus eq "" or $family eq "" or $help or !($orthologSelectionStrategy eq "b
    print "\t--ortholog-selection-strategy\t\tMethod to select the best set of CRE orthologs for a genomes. Can be bestmean (default) or bestsum. Bestmean will prefer better alignments, Bestsum, more possible orthologs.\n";
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 2).\n";
-   print "\t--no-orf-filter\t\tSkip flagging of ORF in CNS.\n";
+   print "\t--no-orf-flag\t\tSkip flagging of ORF in CNS.\n";
    print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS.\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
@@ -487,9 +487,9 @@ if(-e $treeFileName && !$skipConservation) {
 	
 	#### Now run phyloP 
 	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
-	my $filterORFCommand="";
-	if(!$noFilterORF) {
-		$filterORFCommand="| $conservatoryDir/scripts/flagORFCNS $finalFASTAUpFileName $finalFASTADownFileName $tmpDir $minORFLength";
+	my $flagORFCommand="";
+	if(!$noFlagORF) {
+		$flagORFCommand="| $conservatoryDir/scripts/flagORFCNS $finalFASTAUpFileName $finalFASTADownFileName $tmpDir $minORFLength";
 	}
 		
 	if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
@@ -501,7 +501,7 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found upstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' $filterORFCommand > $tmpDir/$locus.cns.csv");			
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' $flagORFCommand > $tmpDir/$locus.cns.csv");			
 				
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
@@ -513,7 +513,7 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 			if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found downstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' $filterORFCommand >> $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' $flagORFCommand >> $tmpDir/$locus.cns.csv");
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.down.fil.bed"); }
 		}
