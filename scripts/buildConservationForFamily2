@@ -584,7 +584,7 @@ sub geneToSpecies {
 		chomp;
 		my @array = split /,/;
 		my $speciesName= $array[1];
-		my $geneToSpecies= "^" . $array[7] . "[a-zA-Z0-9\._]*";
+		my $geneToSpecies= "^" . $array[7] . "[a-zA-Z0-9\._\-]*";
 		$gene2sp = $geneName;
 		if($array[7] ne "") {
 			eval '$gene2sp =~ s/$geneToSpecies/$speciesName/g';
