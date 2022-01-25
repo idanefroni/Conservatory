@@ -132,7 +132,7 @@ while(my $curgenomeline= <$genomedb>) {
 		system("samtools index $alignmentDir/$family.bam");
 			
 		##### Now merge conservation data
-		unlink("$conservationDir/$family.cns.csv");
+		unlink("$conservationDir/$family.csv");
 		unlink("$conservationDir/$family.bed");
 		unlink("$conservationDir/$family.bw");
 		

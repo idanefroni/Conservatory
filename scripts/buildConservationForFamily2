@@ -403,7 +403,7 @@ if ($numOfSpecies >= $MIN_ALIGNMENTS) {
 } else { if($verbose) { print "PROGRESS: Not enough CRE-orthologs for alignment ($numOfSpecies, minimum is:$MIN_ALIGNMENTS). Check --min-species parameter\n"; }} 
 
 ### Fix SAM (if we have one) and move to output
-if($dump_bam && $numOfSpecies > $MIN_ALIGNMENTS) {
+if($dump_bam && $numOfSpecies >= $MIN_ALIGNMENTS) {
 	system("mv $locus.sam $locus.sam.tmp");
 	system("grep \"@\" $locus.sam.tmp | sort | uniq >$locus.sam");
 	system("grep -v \"@\" $locus.sam.tmp | sort -k3,3 -k4,4n | uniq >>$locus.sam");
