@@ -31,7 +31,9 @@ my $dump_bam = 0;
 my $help = 0;
 my $skipAlignment=0;
 my $skipConservation=0;
-my $minPhyloPscore=1.2;
+my $minPhyloPscore=2;
+my $noFilterORF=0;
+my $minORFLength=300;
 my $onlyOneOrtholog=0;
 my $minHSPthreshold=2000;
 my $orthologSelectionStrategy = "bestmean";
@@ -47,6 +49,8 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-align-threshold=i" => \$minHSPthreshold,			
 			"min-species=i" => \$MIN_ALIGNMENTS,
 			"min-phylop-score=f" => \$minPhyloPscore,
+			"no-orf-filter" => \$filterORF,
+			"min-orf-length=i" => \$minORFLength,
 			"only-one-ortholog" => \$onlyOneOrtholog,
 			"ortholog-selection-strategy" => \$orthologSelectionStrategy,
 			"force" => \$force,
@@ -58,8 +62,14 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
-if( $locus eq "" or $family eq "" or $help or ( $orthologSelectionStrategy ~~ ["bestmean","bestsum"]) ) {
+if( $locus eq "" or $family eq "" or $help or !($orthologSelectionStrategy eq "bestmean" or $orthologSelectionStrategy eq "bestsum" ) ) {
 	print "Conservatory version 0.0.1\n\n";
+	if($locus eq "" or $family eq "") {
+		print "\n\nMissing parameter: must supply both family and locus.\n\n";
+	}
+	if (!($orthologSelectionStrategy eq "bestmean" or $orthologSelectionStrategy eq "bestsum")) {
+		print "\n\nBad parameter: ortholog-selection-strategy can be either bestsum or bestmean.\n\n";
+	}
 
    print "buildAlignmentForFamily --family <familyName> --locus <Locus>\n\n\n";
    print "\t--family\tFamily name (REQUIRED).\n";
@@ -322,7 +332,7 @@ my $numOfSpecies = scalar @species;
 
 if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
 
-if ($numOfSpecies > $MIN_ALIGNMENTS) {
+if ($numOfSpecies >= $MIN_ALIGNMENTS) {
 	if($dump_bam) {
 		foreach my $speciesToAlign (@species) {
 			foreach my $orthologToAlign (@{ $orthologs{$speciesToAlign} }) {
@@ -486,6 +496,11 @@ if(-e $treeFileName && !$skipConservation) {
 			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found upstream CNS.\n"; }
 				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpDir/$locus.cns.csv");
+				
+				### flag CNS with ORFs
+				
+				
+				#####################
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
 		}
