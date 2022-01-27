@@ -67,7 +67,7 @@ while(<STDIN>) {
 		if($t == 0) {
 			$minORFLength4CNS=1000;
 		} else {
-			$minORFLength4CNS = ceil(1/$t)*3*4;
+			$minORFLength4CNS = ceil(1/$t)*3*5;
 		}
 	}
 	
