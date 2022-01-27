@@ -2,13 +2,12 @@
 
 use POSIX;
 use strict;
-use Text::CSV;
-use Bio::AlignIO;
 use Cwd 'abs_path';
 use File::Basename;
 my $dirname = dirname(__FILE__);
 
-my $minORFLength=300;
+my $minORFLength="auto";
+my $minORFLength4CNS;
 my $inUpFastaFile;
 my $inDownFastaFile;
 my $tmpDirectory;
@@ -24,6 +23,7 @@ $tmpDirectory = $ARGV[2];
 
 if($ARGV[3] > 0) {
 	$minORFLength = $ARGV[3];
+	$minORFLength4CNS = $ARGV[3];
 }
 
 # read sequence of reference seq
@@ -53,6 +53,20 @@ while(<STDIN>) {
 	} else {
 		$cnsseq = substr($downseq, $cnsstart, $cnslength);	
 	}
+	##### determine the expected random ORF based on GC content of cns
+	### Oliver and Marin, Journal of Molecular Evolution, 1996 43:216-223.
+	###
+	if($minORFLength eq "auto") {
+		my $str = $cnsseq;
+		my $gcCNS = length($str =~ s/[A|T|N]//rg);
+		my $str = $cnsseq;
+		my $atCNS = length($str =~ s/[G|C|N]//rg);
+
+		my $q= (1-$gcCNS/($gcCNS+$atCNS))/2;
+		my $t= $q**2 - $q**3;
+		$minORFLength4CNS = ceil(1/$t)*3*4;
+	}
+	
 	push @CNSfields, "NC";
 	if($cnslength >= $minORFLength) {
 		# generate tmp fastafile
@@ -62,7 +76,7 @@ while(<STDIN>) {
 		close($tmpFastaFile);
 		
 		#begin orf scan
-		open my $orfscan, "$dirname" . "/ORFfinder -in $tmpFastaFileName -ml $minORFLength 2>/dev/null | ";
+		open my $orfscan, "$dirname" . "/ORFfinder -in $tmpFastaFileName -ml $minORFLength4CNS 2>/dev/null | ";
 		if(<$orfscan>) { $CNSfields[(scalar @CNSfields)-1] = "ORF"}
 		close($orfscan);
 		unlink($tmpFastaFileName);

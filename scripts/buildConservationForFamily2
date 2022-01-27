@@ -33,7 +33,7 @@ my $skipAlignment=0;
 my $skipConservation=0;
 my $minPhyloPscore=2;
 my $noFlagORF=0;
-my $minORFLength=300;
+my $minORFLength="auto";
 my $onlyOneOrtholog=0;
 my $minHSPthreshold=2000;
 my $orthologSelectionStrategy = "bestmean";
@@ -82,7 +82,7 @@ if( $locus eq "" or $family eq "" or $help or !($orthologSelectionStrategy eq "b
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 2).\n";
    print "\t--no-orf-flag\t\tSkip flagging of ORF in CNS.\n";
-   print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS.\n";
+   print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS. Deafult is \"auto\" which is automatically calculated based on expected random ORF occurance in data.\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
    print "\t--skip-conservation\t\tDo not compute phyloP scores.\n";
@@ -123,6 +123,7 @@ die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" u
 my $t_phyloP = `sh -c 'command -v phyloP'`;
 die "ERROR: Cannot find phyloP in path. Please make sure phast is installed.\n" unless ($t_phyloP ne "");  
 
+die "ERROR: Cannot find the ORFfinder executable utility at $conservatoryDir/scripts.\n" unless (-x "$conservatoryDir/scripts");
 
 ##################### Read Parameters
 if($verbose) { print localtime(). ": Loading parameter file $parameterFile.\n"; }
@@ -258,7 +259,6 @@ foreach my $curOrthSpecies (keys %orthologs) {
 			push @qScores, $derefCurOrth{'UpQuality'};
 		}
 		
-#		if( (scalar @{ $orthologs{$curOrthSpecies} }) % ( scalar uniq ( @genomeNames )) == 0 &&
 		if( 
 			(scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 &&
 			!$onlyOneOrtholog ) {
@@ -400,7 +400,7 @@ if ($numOfSpecies >= $MIN_ALIGNMENTS) {
 		close($finalFASTAUpFile);
 		close($finalFASTADownFile);
 	}
-} else { if($verbose) { print "PROGRESS: Not enough CRE-orthologs for alignment ($numOfSpecies, minimum is:$MIN_ALIGNMENTS). Check --min-species parameter\n"; }} 
+} else { if($verbose) { print "PROGRESS: Not enough CRE-orthologs for alignment ($numOfSpecies, minimum is:$MIN_ALIGNMENTS). Check --min-species parameter.\n"; }} 
 
 ### Fix SAM (if we have one) and move to output
 if($dump_bam && $numOfSpecies >= $MIN_ALIGNMENTS) {
