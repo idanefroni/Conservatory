@@ -64,7 +64,11 @@ while(<STDIN>) {
 
 		my $q= (1-$gcCNS/($gcCNS+$atCNS))/2;
 		my $t= $q**2 - $q**3;
-		$minORFLength4CNS = ceil(1/$t)*3*4;
+		if($t == 0) {
+			$minORFLength4CNS=1000;
+		} else {
+			$minORFLength4CNS = ceil(1/$t)*3*4;
+		}
 	}
 	
 	push @CNSfields, "NC";
