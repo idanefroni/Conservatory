@@ -158,9 +158,15 @@ if($mode eq "upstream") {
   						## peek at the next line to check when the next gene start. That's not nice programming.
   						my $curfilepos = tell $gfffile;
   						my $peekgene = <$gfffile>;
-  						my @peekgenefields = split(/\t/, $peekgene);
-  						my $nextgenestart = $peekgenefields[3];
   						seek($gfffile, $curfilepos,0);
+						my $nextgenestart=0;
+						# If this is not the last gene
+						if($peekgene ne "") {
+  							my @peekgenefields = split(/\t/, $peekgene);
+  							$nextgenestart = $peekgenefields[3];
+						} else {
+							$nextgenestart = $pstart+$seq_len;
+						}
   						$curseq_len = $seq_len;
 
   						# get sequence until the next gene

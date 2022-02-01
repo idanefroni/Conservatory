@@ -36,7 +36,10 @@ my $header=<$genomedb>;
 my %CDS;
 
 while(my $curgenomeline= <$genomedb>) {
-	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $minScore, $GeneNameField, $GeneNameProcessREGEX,$GeneNameIdentifierREGEX) = split /,/, $curgenomeline;
+	chomp $curgenomeline;
+	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
+
+#	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $minScore, $GeneNameField, $GeneNameProcessREGEX,$GeneNameIdentifierREGEX) = split /,/, $curgenomeline;
 	if($curgenomeName eq $genome) {
 		$genomefound=1;
 		$family = $curgenomeFamily;
@@ -49,11 +52,11 @@ while(my $curgenomeline= <$genomedb>) {
 		    	my $type = $array[2];
 		    	if($type eq "CDS") {
 		    		my %geneinfo = split /[;=]/, $array[8];
-		    		my $genenameRaw = $geneinfo{$GeneNameField};
-		    		die "ERROR: Cannot find gene name in $GeneNameField ($line)\n" unless $genenameRaw ne "";
+		    		my $genenameRaw = $geneinfo{$geneNameField};
+		    		die "ERROR: Cannot find gene name in $geneNameField ($line)\n" unless $genenameRaw ne "";
 		    		my $genenameProcessed = $genenameRaw;
-		    		if($GeneNameProcessREGEX ne "") {
-		    			eval '$genenameProcessed =~ s/$GeneNameProcessREGEX//g;';
+		    		if($geneProcessingRegEx ne "") {
+		    			eval '$genenameProcessed =~ s/$geneProcessingRegEx//g;';
 		    		}
 		    		
 		    		if( defined $CDS{$genenameProcessed}) {

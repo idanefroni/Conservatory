@@ -1,0 +1,10 @@
+#######
+### Make tree
+
+for f in *.csv; do cut -d ',' -f 1 $f | sort | uniq -c | grep "\b1" | cut -d ' ' -f 8 | grep -f - $f | sort -k2,2 -t"," >> ../Bra.singelton.csv; done
+cut -d',' -f2 Bra.singelton.csv | sort | uniq -c | grep "\b15" |  wc -l
+awk -F',' '{if($3 >350) {print $2;}}' Bra.singelton.csv | sort | uniq -c | grep "\b15" |  cut -d ' ' -f 7 | grep -f - Bra.singelton.csv | sort -t',' -k1,1 > Bra.singelton.all.csv
+cat Brasicaceae/*protein*.fasta | sed 's/\*//g' | awk '/^>/ {printf("\n%s\n",$0);next;} {printf("%s",$0);} END {printf("\n");}'  >Bra.proteins.fasta
+cut -d',' -f1 Bra.singelton.all.csv | grep --no-group-separator -A1 -f - Bra.proteins.fasta  | sed 's/AT[0-9]/ATT/' | sed 's/AL[0-9]/ALL/' | sed 's/Sp[0-9|U]/Spp/' | awk 'BEGIN{curSp="";} /^>/ {if(substr($0,2,3) != curSp) {if(curSp == "") { printf("%s\n",$0);} else {printf("\n%s\n",$0);} curSp = substr($0,2,3);} next; } {printf("%s",$0);} END {printf("\n");}' | awk '{print substr($0,0,100000); }' >Bra.proteins.singletons.fasta
+
+ muscle -maxiters 1 -diags -sv -in Solanaceae.proteins.singletons.fasta -out Solanaceae.align.fasta   

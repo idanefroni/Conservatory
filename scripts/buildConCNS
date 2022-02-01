@@ -8,14 +8,13 @@ use Cwd 'abs_path';
 ######### Setup
 
 my $conservatoryDir=abs_path(".");
-my $locus;
+my $CNSfileName;
 my $family;
 my $refGenome="";
 my $lowcomplexityfilter = 0;
 my $flank =0;
 my $verbose = 0;
 my $force=0;
-my $mode="CNS";
 my $help = 0;
 
 ########### Parameters
@@ -23,31 +22,18 @@ my $upstreamLength;
 my $downstreamLength;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
-			"locus=s" => \$locus,
 			"family=s" => \$family,
-			"mode=s" => \$mode,
-			"flank=i" => \$flank,
-		   	"low-complexity-filter" => \$lowcomplexityfilter,
-			"force" => \$force,
-			"verbose" => \$verbose,
+			"CNSfile=s" => \$CNSfileName,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
-if( $locus eq "" or $family eq "" or $help or ($mode ne "CNS" and $mode ne "REF" and $mode ne "ALLCNS") ) {
+if( $CNSfile eq "" or $family eq "" or $help or ($mode ne "CNS" and $mode ne "REF" and $mode ne "ALLCNS") ) {
    print "Conservatory version 0.0.1\n\n";
 
-   print "buildConCNS --family <familyName> --locus <Locus> --mode <CON|ALL>\n\n\nConstrcut a synthetic promoter make of CNS consensus sequences for a family.\n\n\n";
+   print "buildConCNS --family <familyName> --CNSfile <CNSfile>\n\n\nExtract CNS sequences.\n\n\n";
    print "\t--family\tFamily name (REQUIRED).\n";
-   print "\t--locus\t\t\tLocus in the reference genome for the family (REQUIRED).\n";
-   print "\t--mode\t\tMode can be CNS consensus seqeunces (determined be plurality), REFerence, which output the entire reference seqeunce with consensus CNS\n";
-   print "\t\t\t\tor ALLCNS which output the CNS sequences for all species in the family (DEFAULT: CNS).\n";
+   print "\t--CNSfile\t\t\tCNS CSV file (REQUIRED).\n";
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
-   print "\t--flank\t\t\tNumber of flanking bp around CNS to include in consensus sequence (DEFAULT:0).\n";
-   print "\t--low-complexity-filter\t\tEnable the low complexity filter for CNS (DEFAULT: filter OFF).\n";
-
-   print "\n\t\tGeneral options\n\n";
-   print "\t--force\t\tRecompute core promoter even if files exist.\n";
-   print "\t--verbose\t\tOutput extra messages.\n";
    print "\t--help\t\t\tPrints this message.\n\n";
    
    exit();

@@ -20,10 +20,9 @@ my $conservatoryDir=abs_path(".");
 my $curDir;
 my $locus;
 my $family;
-my $minAlignments = 4; # The minimum number of aligned promoters that is required to generate a MAF file
+my $MIN_ALIGNMENTS = 4; # The minimum number of aligned promoters that is required to generate a MAF file
 my $EMPTY_FILE = 0; # The size of an empty MAF file, containing no alignments
 my $minIdentity= 60;
-my $minQuality = 1000;
 my $minCNSLength=6;
 my $keep_tmp = 0;
 my $verbose = 0;
@@ -34,24 +33,21 @@ my $skipAlignment=0;
 my $skipConservation=0;
 my $minPhyloPscore=2;
 my $noFlagORF=0;
-my $minORFLength="auto";
+my $minORFLength=300;
 my $onlyOneOrtholog=0;
 my $minHSPthreshold=2000;
 my $orthologSelectionStrategy = "bestmean";
 
-########### Reg Seq lengths
+########### Parameters
 my $upstreamLength;
 my $downstreamLength;
-
-my $upstreamLengthReference;
-my $downstreamLengthReference;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
 			"family=s" => \$family,
 			"min-identity=i" => \$minIdentity,
 			"min-align-threshold=i" => \$minHSPthreshold,			
-			"min-species=i" => \$minAlignments,
+			"min-species=i" => \$MIN_ALIGNMENTS,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"no-orf-flag" => \$noFlagORF,
 			"min-orf-length=i" => \$minORFLength,
@@ -86,7 +82,7 @@ if( $locus eq "" or $family eq "" or $help or !($orthologSelectionStrategy eq "b
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 2).\n";
    print "\t--no-orf-flag\t\tSkip flagging of ORF in CNS.\n";
-   print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS. Deafult is \"auto\" which is automatically calculated based on expected random ORF occurance in data.\n";
+   print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS.\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
    print "\t--skip-conservation\t\tDo not compute phyloP scores.\n";
@@ -104,6 +100,7 @@ if( $locus eq "" or $family eq "" or $help or !($orthologSelectionStrategy eq "b
 
 ### Set up directory and file access
 my $genomedbFile = $conservatoryDir . "/genome_database.csv";
+my $parameterFile = $conservatoryDir . "/conservatory.parameters.txt";
 my $outputDir = "$conservatoryDir/alignments/$family/";
 my $outputCNSDir = "$conservatoryDir/CNS/$family/";
 my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
@@ -114,6 +111,7 @@ my $lastzParameters = "--gap=200,100 --nochain --recoverseeds --noytrim --seed=m
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 
 die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes/$family" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
 
 my $t_lastz = `sh -c 'command -v lastz'`;
@@ -127,19 +125,31 @@ die "ERROR: Cannot find phyloP in path. Please make sure phast is installed.\n" 
 
 die "ERROR: Cannot find the ORFfinder executable utility at $conservatoryDir/scripts.\n" unless (-x "$conservatoryDir/scripts");
 
+##################### Read Parameters
+if($verbose) { print localtime(). ": Loading parameter file $parameterFile.\n"; }
+open (my $parameters, "<", $parameterFile);
+while(my $curline = <$parameters>) {
+	chomp($curline);
+	if(substr($curline,1,1) ne "#") {
+		(my $paramName, my $paramValue) = split /=/, $curline;
+		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
+		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
+		elsif($paramName ne "") {  }
+	}
+}
+close($parameters);
+if($verbose) { print localtime() . ": Running parameters (upstreamLength $upstreamLength; downstreamLength $downstreamLength).\n"; } 
+
+
 ###############################################
 ##### Now set things up
 ##### Find out what is our reference genome
 my $refGenome="";
 open (my $genomeDatabase, "<", $genomedbFile);
 my $header = <$genomeDatabase>;
-while((my $curgenomeline = <$genomeDatabase>) && $refGenome eq "") {
-	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
-	if($curgenomeFamily eq $family && $curgenomeName eq $curgenomeReference) {
-		$refGenome = $curgenomeReference;
-		$upstreamLengthReference = $upstreamLength  * 1000;
-		$downstreamLengthReference = $downstreamLength * 1000;
-	}
+while((my $line = <$genomeDatabase>) && $refGenome eq "") {
+	(my $curGenome, my $curSpecies, my $curFamily, my $curRefGenome) = split /,/, $line;
+	if($curFamily eq $family && $curGenome eq $curRefGenome) { $refGenome = $curGenome; }
 }
 seek ($genomeDatabase,0,SEEK_SET);
 die "ERROR: Cannot find family ($family) or the reference genome for the family in the genome database file.\n" unless $refGenome ne "";
@@ -171,36 +181,37 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 
   while(<$genomeDatabase>) {
 	chomp;
-	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/;
+	(my $curGenome, my $curSpecies, my $curFamily, my $curRefGenome, my $curMinQuality) = split /,/;
 
-	if($curgenomeName ne $refGenome && $curgenomeFamily eq $family) { #if this is within our family (and not the reference)
+	if($curGenome ne $refGenome && $curFamily eq $family) { #if this is within our family (and not the reference)
 		### get ortholog sequences
-		open (my $orthologFile, "<", "$genomeDir/$curgenomeName.orthologs.csv") || die "ERROR: Can't open ortholog file $genomeDir/$curgenomeName.orthologs.csv.\n";
+		open (my $orthologFile, "<", "$genomeDir/$curGenome.orthologs.csv") || die "ERROR: Can't open ortholog file $genomeDir/$curGenome.orthologs.csv.\n";
 		while(my $orth_line = <$orthologFile>) {
 			chomp($orth_line);
 			(my $curPutativeOrtholog, my $curRefLocus, my $score) = split /,/,$orth_line;
 			if($curRefLocus eq $locus) {
-				my $upstreamFastaName ="$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.up.fasta";
-				my $downstreamFastaName = "$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.down.fasta";
-				extractFastaToFile("$genomeDir/$curgenomeName.upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
-				extractFastaToFile("$genomeDir/$curgenomeName.downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
+				my $upstreamFastaName ="$tmpDir/$locus.$curGenome.$curPutativeOrtholog.up.fasta";
+				my $downstreamFastaName = "$tmpDir/$locus.$curGenome.$curPutativeOrtholog.down.fasta";
+				extractFastaToFile("$genomeDir/$curGenome.upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
+				extractFastaToFile("$genomeDir/$curGenome.downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
 
 				my $MAFUpFileName = "$locus.$curPutativeOrtholog.up.maf";
 				system("lastz --format=maf $lastzParameters $upstreamRefFastaName $upstreamFastaName > $MAFUpFileName");
 				my $upQuality = getMAFQuality($MAFUpFileName);
+			
 
 				#############################################################
-				if($upQuality > $minQuality) {
+				if($upQuality > $curMinQuality) {
 					
 					my $MAFDownFileName = "$locus.$curPutativeOrtholog.down.maf";
 					system("lastz --format=maf $lastzParameters $downstreamRefFastaName $downstreamFastaName > $MAFDownFileName");
 					my $downQuality = getMAFQuality($MAFDownFileName);
 	
-					if($verbose) { print "PROGRESS: Found possible CRE-ortholog ($curgenomeName:$curPutativeOrtholog). Quality: $upQuality.\n"; }
-					if(not defined $orthologs{$curgenomeSpecies}) {
-						$orthologs{$curgenomeSpecies} = [ {
+					if($verbose) { print "PROGRESS: Found possible CRE-ortholog ($curGenome:$curPutativeOrtholog). Quality: $upQuality.\n"; }
+					if(not defined $orthologs{$curSpecies}) {
+						$orthologs{$curSpecies} = [ {
 							'Name' => $curPutativeOrtholog,
-							'Genome' => $curgenomeName,
+							'Genome' => $curGenome,
 							'upstreamFileName' => $upstreamFastaName,
 							'downstreamFileName' => $downstreamFastaName,
 							'MAFUpFileName' => $MAFUpFileName,
@@ -208,10 +219,10 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 							'UpQuality' => $upQuality,
 							'DownQuality' => $downQuality} ];		
 					} else {
-						push( @{ $orthologs{$curgenomeSpecies} },
+						push( @{ $orthologs{$curSpecies} },
 							{
 								'Name' => $curPutativeOrtholog,
-								'Genome' => $curgenomeName,
+								'Genome' => $curGenome,
 								'upstreamFileName' => $upstreamFastaName,
 								'downstreamFileName' => $downstreamFastaName,
 								'MAFUpFileName' => $MAFUpFileName,
@@ -220,7 +231,7 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 								'DownQuality' => $downQuality});
 					}
 				} else {
-					if($verbose) { print "PROGRESS: Rejected CRE-ortholog ($curgenomeName:$curPutativeOrtholog). Quality: $upQuality.\n"; }
+					if($verbose) { print "PROGRESS: Rejected CRE-ortholog ($curGenome:$curPutativeOrtholog). Quality: $upQuality.\n"; }
 					unlink($MAFUpFileName);
 					unlink($upstreamFastaName);
 					unlink($downstreamFastaName);
@@ -248,7 +259,9 @@ foreach my $curOrthSpecies (keys %orthologs) {
 			push @qScores, $derefCurOrth{'UpQuality'};
 		}
 		
-		if( (scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 &&
+#		if( (scalar @{ $orthologs{$curOrthSpecies} }) % ( scalar uniq ( @genomeNames )) == 0 &&
+		if( 
+			(scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 &&
 			!$onlyOneOrtholog ) {
 
 			my @bestOrthologsGroup;
@@ -322,7 +335,7 @@ my $numOfSpecies = scalar @species;
 
 if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
 
-if ($numOfSpecies >= $minAlignments) {
+if ($numOfSpecies >= $MIN_ALIGNMENTS) {
 	if($dump_bam) {
 		foreach my $speciesToAlign (@species) {
 			foreach my $orthologToAlign (@{ $orthologs{$speciesToAlign} }) {
@@ -351,16 +364,19 @@ if ($numOfSpecies >= $minAlignments) {
 		}
 	}
 	close($finalCREorthologFile);
+	
 	if((scalar @orthologsToProcess) > 0) {
 		my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
 		
 		### Load all MAF, collapse species-specific paralogs and convert to FASTA.
+		
 		my %fastaUpstreamAlignment;
 		my %fastaDownstreamAlignment;
 		foreach my $curOrthologToMultiz (@orthologsToProcessSorted) {
-			%fastaUpstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFUpFileName'}, $upstreamLengthReference, %fastaUpstreamAlignment);
-			%fastaDownstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFDownFileName'}, $downstreamLengthReference, %fastaDownstreamAlignment);
+			%fastaUpstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFUpFileName'}, $upstreamLength, %fastaUpstreamAlignment);
+			%fastaDownstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFDownFileName'}, $downstreamLength, %fastaDownstreamAlignment);
 		}
+		
 
 		my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
 		my $finalFASTADownFileName = "$outputDir/$locus.down.fasta";
@@ -385,10 +401,10 @@ if ($numOfSpecies >= $minAlignments) {
 		close($finalFASTAUpFile);
 		close($finalFASTADownFile);
 	}
-} else { if($verbose) { print "PROGRESS: Not enough CRE-orthologs for alignment ($numOfSpecies, minimum is:$minAlignments). Check --min-species parameter.\n"; }} 
+} else { if($verbose) { print "PROGRESS: Not enough CRE-orthologs for alignment ($numOfSpecies, minimum is:$MIN_ALIGNMENTS). Check --min-species parameter\n"; }} 
 
 ### Fix SAM (if we have one) and move to output
-if($dump_bam && $numOfSpecies >= $minAlignments) {
+if($dump_bam && $numOfSpecies >= $MIN_ALIGNMENTS) {
 	system("mv $locus.sam $locus.sam.tmp");
 	system("grep \"@\" $locus.sam.tmp | sort | uniq >$locus.sam");
 	system("grep -v \"@\" $locus.sam.tmp | sort -k3,3 -k4,4n | uniq >>$locus.sam");
@@ -451,7 +467,7 @@ if(-e $treeFileName && !$skipConservation) {
 		}
 	}
 	close($refFootprintFile);
-	if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd. Upsteam sequence $upstreamLengthReference bp. Downstream sequence $downstreamLengthReference bp.\n"; }
+	if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd.\n"; }
 
 	my $coordinateTranslateAwkUp;
 	my $coordinateTranslateStrUp;
@@ -459,13 +475,13 @@ if(-e $treeFileName && !$skipConservation) {
 	my $coordinateTranslateStrDown;
 
 	if($refGeneDir eq "+") {
-		$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-$upstreamLengthReference-1+\$2,$refGeneStart-$upstreamLengthReference-1+\$3,\$5);}}'";
-		$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneStart- $upstreamLengthReference-1+\$2, $refGeneStart- $upstreamLengthReference-1+\$3";
+		$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-$upstreamLength-1+\$2,$refGeneStart-$upstreamLength-1+\$3,\$5);}}'";
+		$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneStart-$upstreamLength-1+\$2, $refGeneStart-$upstreamLength-1+\$3";
 		$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+\$2,$refGeneEnd+\$3,\$5);}}'"; 
 		$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd+\$2, $refGeneEnd+\$3";		
 	} else { 
-		$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+ $upstreamLengthReference-\$3,$refGeneEnd+ $upstreamLengthReference-\$2,\$5);}}'";
-		$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLengthReference+1-\$3, $refGeneEnd+$upstreamLengthReference-\$2";
+		$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+$upstreamLength-\$3,$refGeneEnd+$upstreamLength-\$2,\$5);}}'";
+		$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLength+1-\$3, $refGeneEnd+$upstreamLength-\$2";
 		$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2,\$5);}}'";
 		$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2";
 	}
@@ -486,7 +502,7 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found upstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLengthReference, \$3-$upstreamLengthReference, \$4,\"UP\",$coordinateTranslateStrUp); }' $flagORFCommand > $tmpDir/$locus.cns.csv");			
+				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLength, \$3-$upstreamLength, \$4,\"UP\",$coordinateTranslateStrUp); }' $flagORFCommand > $tmpDir/$locus.cns.csv");			
 				
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
@@ -569,9 +585,9 @@ sub geneToSpecies {
 		chomp;
 		my @array = split /,/;
 		my $speciesName= $array[1];
-		my $geneToSpecies= "^" . $array[8] . "[a-zA-Z0-9\._\-]*";
+		my $geneToSpecies= "^" . $array[7] . "[a-zA-Z0-9\._\-]*";
 		$gene2sp = $geneName;
-		if($array[8] ne "") {
+		if($array[7] ne "") {
 			eval '$gene2sp =~ s/$geneToSpecies/$speciesName/g';
 			if($gene2sp ne $geneName){
 				return $gene2sp;
