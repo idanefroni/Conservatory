@@ -11,15 +11,13 @@ my $conservatoryDir=abs_path(".");
 my $CNSfileName;
 my $family;
 my $refGenome="";
-my $lowcomplexityfilter = 0;
 my $flank =0;
 my $verbose = 0;
 my $force=0;
 my $help = 0;
 
-########### Parameters
-my $upstreamLength;
-my $downstreamLength;
+my $upstreamConcensus;
+my $downstreamConcensus;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"family=s" => \$family,
@@ -27,7 +25,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
-if( $CNSfile eq "" or $family eq "" or $help or ($mode ne "CNS" and $mode ne "REF" and $mode ne "ALLCNS") ) {
+if( $CNSfileName eq "" or $family eq "" or $help ) {
    print "Conservatory version 0.0.1\n\n";
 
    print "buildConCNS --family <familyName> --CNSfile <CNSfile>\n\n\nExtract CNS sequences.\n\n\n";
@@ -39,169 +37,44 @@ if( $CNSfile eq "" or $family eq "" or $help or ($mode ne "CNS" and $mode ne "RE
    exit();
 }
 ##### Set up directories
-my $genomeDir = "$conservatoryDir/genomes";
 my $alignmentDir ="$conservatoryDir/alignments";
-my $CNSDir = "$conservatoryDir/CNS/";
-my $TMPDir = "$conservatoryDir/alignments/$family/tmp/";
 
 ### Set up files
-my $parameterFile = $conservatoryDir . "/conservatory.parameters.txt";
-my $genomedbFile = "$conservatoryDir/genome_database.csv";
-die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
-die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless ((-e $genomeDir) && (-e $alignmentDir) && (-e $CNSDir) && (-e $TMPDir));
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e $alignmentDir);
 
-##################### Read Parameters
-open (my $parameters, "<", $parameterFile);
-while(my $curline = <$parameters>) {
-	chomp($curline);
-	if(substr($curline,1,1) ne "#") {
-		(my $paramName, my $paramValue) = split /=/, $curline;
-		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
-		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
-		elsif($paramName ne "") {  }
+open (my $CNSfile, "<$CNSfileName");
+my $curlocus="";
+my $CNS;
+while(my $curCNSline = <$CNSfile>) {
+	my ($locus,$relstart,$relend,$logpVal,$upordown) = split /,/, $curCNSline;
+
+	if($locus ne $curlocus) {  ### read the concensus sequences
+		my $upstreamFileName = $alignmentDir . "/$family/$locus.up.fasta";
+		my $downstreamFileName = $alignmentDir . "/$family/$locus.down.fasta";
+  		die "ERROR: Cannot find alignment files $upstreamFileName and $downstreamFileName.\n" unless ((-e $upstreamFileName) && (-e $downstreamFileName)) ;
+		$downstreamConcensus = getConcensusSequence($downstreamFileName);
+		$upstreamConcensus = getConcensusSequence($upstreamFileName);
+		$curlocus = $locus;
 	}
+	if($upordown eq "UP") {
+		$CNS = substr($upstreamConcensus, length($upstreamConcensus) + $relstart, $relend - $relstart);
+	} else {
+		$CNS = substr($downstreamConcensus, $relstart, $relend - $relstart);
+	}
+	print ">$locus.$upordown.$relstart\n$CNS\n";
 }
-close($parameters);
 
+close($CNSfile);
 
-#### Get the file names from the genome database
-my $upstreamFileName;
-my $downstreamFileName;
-my ($MAFFileNameUp, $MAFFileNameDown);
-my $CNSFileName;
-
-open(my $genomedb, "<", $genomedbFile);
-my $header=<$genomedb>;
-while(my $curgenomeline= <$genomedb>) {
-	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference) = split /,/, $curgenomeline;
+sub getConcensusSequence {
+	my ($inFileName) = @_;
 	
-	if($curgenomeFamily eq $family) {
-		$refGenome = $curgenomeReference;
-		$upstreamFileName = "$genomeDir/$curgenomeFamily/$refGenome.upstream.fasta.gz";
-		$downstreamFileName = "$genomeDir/$curgenomeFamily/$refGenome.downstream.fasta.gz";
-		$MAFFileNameUp = "$alignmentDir/$curgenomeFamily/$locus.up.maf";
-		$MAFFileNameDown = "$alignmentDir/$curgenomeFamily/$locus.down.maf";
-		$CNSFileName = "$CNSDir/$curgenomeFamily/$locus.cns.csv";
-	}
+	my $in  = Bio::AlignIO->new(-file => "$inFileName" ,
+        	                 -format => 'fasta');
+	my $aln = $in->next_aln();
+#	$aln->missing_char("N");
+	$aln->gap_char('N');
+	my $conc = $aln->consensus_string();
+	$conc =~ tr/\?/-/;
+	return($conc);
 }
-close($genomedb);
-die "ERROR: Cannot find the reference genome for $family in genome database file.\n" unless ($refGenome ne "");
-die "ERROR: Cannot find reference genome files ($upstreamFileName, $downstreamFileName)\n" unless ((-e $upstreamFileName) && (-e $downstreamFileName));
-die "DONE: Locus $locus in genome $refGenome does not have CNS.\n" unless (-e $CNSFileName);
-die "ERROR: Locus $locus in genome $refGenome has CNS but no matching MAF alignment files ($MAFFileNameUp, $MAFFileNameDown).\n" unless ((-e $MAFFileNameUp) || (-e $MAFFileNameDown));
-
-my $locusFixed = $locus;
-$locusFixed =~ s/\_/\./g;
-#################################################33
-#### Here, we extract the regulatory sequences from the reference genome, replace the regions where we have alignment to other genomes
-# with the consesus sequence and then cut out only the regions that have significant phyloP scores.
-
-##### First, extract regulatory sequences for the reference genome
-### This could be done through perl, but the Tabix libraries are hard to install.. 
-system("samtools faidx $upstreamFileName $locus >$TMPDir/$locus.tmp.up.fasta");
-system("samtools faidx $downstreamFileName $locus >$TMPDir/$locus.tmp.down.fasta");
-
-# read the sequences
-my $upstreamSeq="";
-my $downstreamSeq="";
-open (my $upstreamSeqFile ,"<", "$TMPDir/$locus.tmp.up.fasta") || die ("INTERNAL ERROR: Cannot file temporary upstream seq file.\n");
-open (my $downstreamSeqFile ,"<", "$TMPDir/$locus.tmp.down.fasta") || die ("INTERNAL ERROR: Cannot file temporary downstream seq file.\n");
-my $header = <$upstreamSeqFile>;
-while(<$upstreamSeqFile>) {
-	chomp;
-	$upstreamSeq .= $_;
-}
-
-$header = <$downstreamSeqFile>;
-while(<$downstreamSeqFile>) {
-	chomp;
-	$downstreamSeq .= $_;
-}
-close($upstreamSeqFile);
-close($downstreamSeqFile);
-unlink("$TMPDir/$locus.tmp.up.fasta");
-unlink("$TMPDir/$locus.tmp.down.fasta");
-
-if($verbose) { print localtime() . ": PROGRESS: Loaded upstream sequence (Length: " . length($upstreamSeq) .").\n";
-               print localtime() . ": PROGRESS: Loaded downstream sequence (Length: " . length($downstreamSeq) .").\n"; }
-
-##### Replace aligned sequences in the reference sequences with concensus sequences. This can also be reconstructed ML sequences in the future
-#####   However, for roughly equally spaced species (along evolutionary distance), the difference should not be consequntial 
-my $cnsCount=0;
-if(-e $MAFFileNameUp) {
-	my $maffile = Bio::AlignIO->new(-file => $MAFFileNameUp,
-					-format => "maf");
-	while(my $aln = $maffile->next_aln) {
-	   $cnsCount++;
-	   my $conces = lc($aln->consensus_string());
-   	   substr($upstreamSeq, $aln->get_seq_by_id($locusFixed)->start(), $aln->get_seq_by_id($locusFixed)->length()) = $conces;
-	}
-}
-
-if(-e $MAFFileNameDown) {
-	my $maffile = Bio::AlignIO->new(-file => $MAFFileNameDown,
-					-format => "maf");
-	while(my $aln = $maffile->next_aln) {
-	   $cnsCount++;
-	   my $conces = lc($aln->consensus_string());
-       substr($downstreamSeq, $aln->get_seq_by_id($locusFixed)->start(), $aln->get_seq_by_id($locusFixed)->length()) = $conces;
-	}
-}
-
-if($verbose) { print localtime() . ": PROGRESS : Created concensus sequences from $cnsCount CNSs.\n"; }
-####################
-### Now, we have the consensus sequences in context. Load the CNS files
-
-open(my $CNSFile, "<", $CNSFileName);
-my $upCoreName=">$locus|$family|UP|";
-my $downCoreName=">$locus|$family|DOWN|";
-my $upCoreSeq="";
-my $downCoreSeq="";
-while(my $line = <$CNSFile>) {
-	chomp($line);
-	my ($curlocus, $start, $end,$score,$pos,$chr,$absstart,$absend) = split /,/, $line;
-	if($pos eq "UP") {
-	  if($upCoreSeq ne "") { $upCoreSeq .= ('X' x 10); }
-	  $upCoreName .= length($upCoreSeq) . ";" . ($end - $start + $flank *2) . ";$chr;" . ($absstart-$flank) . ";";
-	  $upCoreSeq .= substr($upstreamSeq, $upstreamLength + $start -$flank, abs($end - $start) + $flank*2+1);
-	}
-	if($pos eq "DOWN") {
-	  if($downCoreSeq ne "") { $downCoreSeq .= ('X' x 10); }
-	  $downCoreName .= length($downCoreSeq) . ";" . ($end - $start + $flank *2) . ";$chr;" . ($absstart-$flank) . ";";
-	  $downCoreSeq .= substr($downstreamSeq,$start -$flank, abs($end-$start) + $flank*2+1);
-	}
-}
-close($CNSFile);
-
-###### Filter low complexity regions
-######
-
-$upCoreSeq =~ s/\?/N/g;
-$downCoreSeq =~ s/\?/N/g;
-
-if($lowcomplexityfilter) {
-
-	$upCoreSeq =~ s/[A|T|a|t]{6}/XXXXXX/g;
-	$downCoreSeq =~ s/[A|T|a|t]{6}/XXXXXX/g;
-	$upCoreSeq =~ s/[C|G]{6}/XXXXXX/g;
-	$downCoreSeq =~ s/[C|G]{6}/XXXXXX/g;
-}
-
-if($upCoreSeq ne "") {
-	if($mode eq "CNS") {
-		print "$upCoreName\n" . uc($upCoreSeq) ."\n";
-	} elsif($mode eq "REF") {
-		#cleanup seq
-		$upstreamSeq =~ s/^N*//;
-		print ">$locus|$family|UP\n$upstreamSeq\n";
-	}
-}
-if($downCoreSeq ne "") {
-	if($mode eq "CNS") {
-		print "$downCoreName\n" . uc($downCoreSeq) ."\n";
-   	} elsif($mode eq "REF") {
-   		$downstreamSeq =~ s/N*$//;
-		print ">$locus|$family|DOWN\n$downstreamSeq\n";
-	}
-}
-
