@@ -7,11 +7,6 @@ use threads;
 use threads::shared;
 my $threadlock:shared;
 
-########### Parameters
-
-my $upstreamLength;
-my $downstreamLength;
-
 ###########
 
 my $conservatoryDir=abs_path(".");
@@ -50,7 +45,7 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 	print "processConservation --family <family>\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
 	print "\t--family\t\tFamily for which to process conservation (REQUIRED).\n";
-    print "\t--min-identity\t\tMinimum identity for LASTZ alignments.\n";
+	print "\t--min-identity\t\tMinimum identity for LASTZ alignments.\n";
 	print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS.\n";
 	print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS.\n";
 	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";	
@@ -65,7 +60,6 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 
 #################### Set up files
 my $genomedb_file = "$conservatoryDir/genome_database.csv";
-my $parameter_file = "$conservatoryDir/conservatory.parameters.txt";
 my $outputDir = "$conservatoryDir/alignments/$family";
 my $conservationDir = "$conservatoryDir/CNS";
 my $alignmentDir = "$conservatoryDir/alignments";
@@ -74,26 +68,10 @@ my $geneListFileName;
 ####### First, sanity checks. Check to see if blast is installed and if directory structure is OK.
 ####### 
 die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e $genomedb_file;
-die "ERROR: Cannot find file conservatory parameter file ($parameter_file)\n" unless -e $parameter_file;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
 
 my $samtools = `sh -c 'command -v samtools'`;
 die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" unless ($samtools ne "");  
-
-##################### Read Parameters
-if($verbose) { print localtime(). ": Loading parameter file $parameter_file.\n"; }
-open (my $parameters, "<", $parameter_file);
-while(my $curline = <$parameters>) {
-	chomp($curline);
-	if(substr($curline,1,1) ne "#") {
-		(my $paramName, my $paramValue) = split /=/, $curline;
-		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
-		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
-		elsif($paramName ne "") { }
-	}
-}
-close($parameters);
-if($verbose) { print localtime() . ": Running parameters (upstreamLength $upstreamLength; downstreamLength $downstreamLength).\n"; } 
 
 ### Clear old locks
 system("rm $outputDir/*.lock");
@@ -104,7 +82,7 @@ open(my $genomedb, "<", $genomedb_file);
 my $header=<$genomedb>;
 while(my $curgenomeline= <$genomedb>) {
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference) = split /,/, $curgenomeline;
-	
+
 	if($family eq $curgenomeFamily && $curgenomeName eq $curgenomeReference) {
 		$genomeWasProcessed=1;
 		
