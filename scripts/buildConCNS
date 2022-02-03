@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use Bio::AlignIO;
+use Bio::SeqIO;
 use POSIX;
 use Getopt::Long;
 use Cwd 'abs_path';
@@ -15,6 +16,7 @@ my $flank =0;
 my $verbose = 0;
 my $force=0;
 my $help = 0;
+my $format ="";
 
 my $upstreamConcensus;
 my $downstreamConcensus;
@@ -22,15 +24,17 @@ my $downstreamConcensus;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"family=s" => \$family,
 			"CNSfile=s" => \$CNSfileName,
+			"format=s" => \$format,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
-if( $CNSfileName eq "" or $family eq "" or $help ) {
+if( $CNSfileName eq "" or $family eq "" or $help or ($format ne "GFF" && $format ne "FASTA") ) {
    print "Conservatory version 0.0.1\n\n";
 
    print "buildConCNS --family <familyName> --CNSfile <CNSfile>\n\n\nExtract CNS sequences.\n\n\n";
    print "\t--family\tFamily name (REQUIRED).\n";
    print "\t--CNSfile\t\t\tCNS CSV file (REQUIRED).\n";
+   print "\t--format\t\t\tOutput format. FASTA or GFF. (REQUIRED).\n";
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
    print "\t--help\t\t\tPrints this message.\n\n";
    
@@ -45,23 +49,55 @@ die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n"
 open (my $CNSfile, "<$CNSfileName");
 my $curlocus="";
 my $CNS;
+my $upstreamFileName, my $downstreamFileName;
 while(my $curCNSline = <$CNSfile>) {
-	my ($locus,$relstart,$relend,$logpVal,$upordown) = split /,/, $curCNSline;
+	chomp($curCNSline);
+	my ($locus,$relstart,$relend,$logpVal,$upordown, $chr, $absstart, $absend, $isorf) = split /,/, $curCNSline;
 
 	if($locus ne $curlocus) {  ### read the concensus sequences
-		my $upstreamFileName = $alignmentDir . "/$family/$locus.up.fasta";
-		my $downstreamFileName = $alignmentDir . "/$family/$locus.down.fasta";
+		$upstreamFileName = $alignmentDir . "/$family/$locus.up.fasta";
+		$downstreamFileName = $alignmentDir . "/$family/$locus.down.fasta";
   		die "ERROR: Cannot find alignment files $upstreamFileName and $downstreamFileName.\n" unless ((-e $upstreamFileName) && (-e $downstreamFileName)) ;
-		$downstreamConcensus = getConcensusSequence($downstreamFileName);
-		$upstreamConcensus = getConcensusSequence($upstreamFileName);
 		$curlocus = $locus;
 	}
-	if($upordown eq "UP") {
-		$CNS = substr($upstreamConcensus, length($upstreamConcensus) + $relstart, $relend - $relstart);
-	} else {
-		$CNS = substr($downstreamConcensus, $relstart, $relend - $relstart);
+
+	if($format eq "FASTA") {
+		if($upordown eq "UP") {
+			my $upstreamConcensus = getConcensusSequence($upstreamFileName);
+			$CNS = substr($upstreamConcensus, length($upstreamConcensus) + $relstart, $relend - $relstart);
+		} else {
+			my $downstreamConcensus = getConcensusSequence($downstreamFileName);
+			$CNS = substr($downstreamConcensus, $relstart, $relend - $relstart);
+		}
+		print ">$locus.$upordown.$relstart\n$CNS\n";
+	} else { ## If GFF
+		### get list of species having each CNS
+		my %CNSSeq;
+		my $fastaFile;
+		
+		if($upordown eq "UP") {
+			$fastaFile = Bio::SeqIO->new(-file => "$upstreamFileName" ,
+        			                 -format => 'fasta');
+		} else {
+			$fastaFile = Bio::SeqIO->new(-file => "$downstreamFileName" ,
+        			                 -format => 'fasta');
+		}
+		while(my $seq = $fastaFile->next_seq()){
+			my $speciesCNSSeq;
+			if($upordown eq "UP") {
+				$speciesCNSSeq = $seq->subseq($seq->length+$relstart, $seq->length+$relend);
+			}else {
+				$speciesCNSSeq = $seq->subseq($relstart, $relend);
+			}
+			### The CNS "exists" in a species if more than 80% of the sequence is covered.
+			my $numOfNs = ($speciesCNSSeq =~ tr/N//);
+			if( $numOfNs/length($speciesCNSSeq) <0.2) {
+				$CNSSeq{$seq->id()} = $speciesCNSSeq;
+			}
+		}
+		## Now dump Gff
+		print "$chr\tConservatory\tCNS\t$absstart\t$absend\t.\t+\t.\tName=$locus:$relstart;Pval=$logpVal;ORFCheck=$isorf;Species=" . join(",", sort keys %CNSSeq) . "\n";
 	}
-	print ">$locus.$upordown.$relstart\n$CNS\n";
 }
 
 close($CNSfile);
@@ -72,7 +108,6 @@ sub getConcensusSequence {
 	my $in  = Bio::AlignIO->new(-file => "$inFileName" ,
         	                 -format => 'fasta');
 	my $aln = $in->next_aln();
-#	$aln->missing_char("N");
 	$aln->gap_char('N');
 	my $conc = $aln->consensus_string();
 	$conc =~ tr/\?/-/;
