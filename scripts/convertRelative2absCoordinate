@@ -83,8 +83,8 @@ while(my $curgenomeline= <$genomedb>) {
 
 	if($curgenomeName eq $genome) {
 		$footprintFile = "$genomeDir/$curgenomeFamily/$genome.footprint.gff3";
-		$upstreamLength = $curUpstreamLength;
-		$downstreamLength = $curDownstreamLength;
+		$upstreamLength = $curUpstreamLength * 1000;
+		$downstreamLength = $curDownstreamLength * 1000;
 	}
 }
 close($genomedb);
