@@ -164,6 +164,13 @@ while(my $curgenomeline= <$genomedb>) {
 			$downstreamLength = $recommendedDownstream;
 			$genomeDatabaseWasProcessed=1;
 		}
+		###### Build chromosome size file
+		my $chromosomeSizeFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.chrom.size";
+		if( (! -e $chromosomeSizeFile || $force) && $curgenomeName eq $curgenomeReference) {
+			print localtime() . ": $curgenomeName : START building chromosome size file.\n";
+			system("zcat $conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta.gz | awk '\$0 ~ \">\" {if (NR > 1) {print c;} c=0;printf substr(\$0,2,100) \"\\t\"; } \$0 !~ \">\" {c+=length(\$0);} END { print c; }' > $chromosomeSizeFile");
+			print localtime() . ": $curgenomeName : START building chromosome size file.\n";
+		}		
 
 		######### Stage 3: Build regulatory sequence database
 		my $upstreamDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.upstream.fasta";
