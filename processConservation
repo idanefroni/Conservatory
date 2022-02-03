@@ -118,10 +118,14 @@ while(my $curgenomeline= <$genomedb>) {
 		system("for a in $conservationDir/$family/*.csv; do cat \$a >> $conservationDir/$family.csv; done");
 		system("for a in $conservationDir/$family/*.bed; do cat \$a | sed 's/ /\t/g' >> $conservationDir/$family.bed; done");
 		
-		# sort both files
+		# sort files
 		system("sort -k1,1 -k2,2n -o $conservationDir/$family.csv $conservationDir/$family.csv");
-		system("sort -k1,1 -k2,2n -o $conservationDir/$family.bed $conservationDir/$family.bed");
+		system("sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
+
+		# Make nice output files. BW for the phylop track and GFF for the CNS
+		system("$conservatoryDir/scripts/bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
 		
+
 		print localtime() . ": END processing conservation for $family (reference genome $curgenomeName)\n";
 	}
 }

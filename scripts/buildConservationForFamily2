@@ -32,7 +32,7 @@ my $dump_bam = 0;
 my $help = 0;
 my $skipAlignment=0;
 my $skipConservation=0;
-my $minPhyloPscore=2;
+my $minPhyloPscore=1.5;
 my $noFlagORF=0;
 my $minORFLength="auto";
 my $onlyOneOrtholog=0;
@@ -84,7 +84,7 @@ if( $locus eq "" or $family eq "" or $help or !($orthologSelectionStrategy eq "b
    print "\t--min-align-threshold\t\tMimimum hsp threshold for LASTZ alignments. Default is 2000 (lower threshold will identify smaller conserved sequences but alignments will be less reliable).\n";
    print "\t--ortholog-selection-strategy\t\tMethod to select the best set of CRE orthologs for a genomes. Can be bestmean (default) or bestsum. Bestmean will prefer better alignments, Bestsum, more possible orthologs.\n";
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
-   print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 2).\n";
+   print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.5).\n";
    print "\t--no-orf-flag\t\tSkip flagging of ORF in CNS.\n";
    print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS. Deafult is \"auto\" which is automatically calculated based on expected random ORF occurance in data.\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
@@ -326,7 +326,7 @@ if ($numOfSpecies >= $minAlignments) {
 	if($dump_bam) {
 		foreach my $speciesToAlign (@species) {
 			foreach my $orthologToAlign (@{ $orthologs{$speciesToAlign} }) {
-				my $convertParameters = "--conservatoryDirectory $conservatoryDir --genome $refGenome --format SAM";
+				my $convertParameters = "--conservatoryDirectory $conservatoryDir --genome $refGenome --format SAM --tag $speciesToAlign ";
 				system("lastz --format=sam $lastzParameters $upstreamRefFastaName " . $orthologToAlign->{'upstreamFileName'} . " | $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos UP >>" .
 					$locus . ".sam");
 				system("lastz --format=sam $lastzParameters $downstreamRefFastaName " . $orthologToAlign->{'downstreamFileName'} . " | $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos DOWN >>" .
@@ -526,7 +526,7 @@ if(-e $treeFileName && !$skipConservation) {
 		system("cp $tmpDir/$locus.phylop.bed $outputCNSDir");
 	}
 	unlink("$tmpDir/$locus.phylop.bed");
-} else { print "WARNING : Skipping phyloP analysis...\n"; }
+} else { print "WARNING: Skipping phyloP analysis...\n"; }
 
 if($verbose) { print "PROGRESS: End conservation analysis for $locus (" .localtime() . ").\n"; }
 #### Go back to the original directory, and we are done!

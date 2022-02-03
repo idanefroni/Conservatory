@@ -31,6 +31,7 @@ my $format="";
 my $relPosition="";
 my $infileName="";
 my $outfileName="";
+my $tag="";
 my $help=0;
 my $infile;
 ########### Parameters
@@ -43,6 +44,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"relPos=s" => \$relPosition,
 			"input=s" => \$infileName,
 			"output=s" => \$outfileName,
+			"tag=s" => \$tag,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 
@@ -55,6 +57,7 @@ if($genome eq "" || $format eq "" || $relPosition eq "" || $help || ($format ne 
 	print "\t--format\t\tInput format (SAM or MAF) (REQUIRED).\n";
 	print "\t\t\t\t(Currently only SAM is implemented)\n";
 	print "\t--relPos\t\tCoordinates are relative to UPstream or DOWNstream (REQUIRED).\n";
+	print "\t--tag\t\tExtra info to add about gene.\n";
 	print "\t--input\t\t\tInput file name (default:STDIN).\n";
 	print "\t--output\t\tOutput file name (default:STDOUT).\n";
 	exit();
@@ -147,7 +150,12 @@ if($format eq "SAM") {
 			chomp $line;
 			my @fields= split /\t/,$line;
 	
-			my $orthname = $genePos{'Name'} . ":" . $fields[0];
+			my $orthname;
+			if($tag eq "") {
+				$orthname = $genePos{'Name'} . ":" . $fields[0];
+			} else {
+				$orthname = $genePos{'Name'} . ":$tag:" . $fields[0];
+			}
 			$fields[0] = $orthname;
 			$fields[2] = $genePos{'Chr'};
 			my $aln_start = $fields[3];
