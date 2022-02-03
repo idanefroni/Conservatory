@@ -68,31 +68,20 @@ my $footprintFile = "";
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 
 die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
-die "ERROR: Cannot find file conservatory parameter file ($parameterFile)\n" unless -e $parameterFile;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e $genomeDir);
 die "ERROR: Cannot find input file ($infileName)\n" unless (-e $infileName || $infileName eq "");
-
-##################### Read Parameters
-open (my $parameters, "<", $parameterFile);
-while(my $curline = <$parameters>) {
-	chomp($curline);
-	if(substr($curline,1,1) ne "#") {
-		(my $paramName, my $paramValue) = split /=/, $curline;
-		if(uc($paramName) eq "UPSTREAMLENGTH") { $upstreamLength = $paramValue; }
-		elsif(uc($paramName) eq "DOWNSTREAMLENGTH") { $downstreamLength = $paramValue; }
-		elsif($paramName ne "") {  }
-	}
-}
-close($parameters);
 
 ################### Read Genome DB
 open(my $genomedb, "<", $genomedbFile);
 my $header=<$genomedb>;
 while(my $curgenomeline= <$genomedb>) {
-	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference) = split /,/, $curgenomeline;
-	
+	chomp $curgenomeline;
+	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $curUpstreamLength, $curDownstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
+
 	if($curgenomeName eq $genome) {
 		$footprintFile = "$genomeDir/$curgenomeFamily/$genome.footprint.gff3";
+		$upstreamLength = $curUpstreamLength;
+		$downstreamLength = $curDownstreamLength;
 	}
 }
 close($genomedb);
@@ -104,7 +93,6 @@ if($infileName eq "") {
 } else {
 	open($infile, "<", $infileName);
 }
-
 
 my $gff = Bio::Tools::GFF->new(-file => $footprintFile,
 							   -gff_version => 3);
