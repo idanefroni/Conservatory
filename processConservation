@@ -63,6 +63,7 @@ my $genomedb_file = "$conservatoryDir/genome_database.csv";
 my $outputDir = "$conservatoryDir/alignments/$family";
 my $conservationDir = "$conservatoryDir/CNS";
 my $alignmentDir = "$conservatoryDir/alignments";
+my $genomesDir = "$conservatoryDir/genomes";
 my $geneListFileName;
 
 ####### First, sanity checks. Check to see if blast is installed and if directory structure is OK.

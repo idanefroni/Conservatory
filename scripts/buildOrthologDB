@@ -48,7 +48,7 @@ while(<$genomedb>) {
 	if($genomeDBLine[0] eq $genome) {
 		$referenceGenome = $genomeDBLine[3];
 		$family = $genomeDBLine[2];
-		$geneProcessingREGEX = $genomeDBLine[8];
+		$geneProcessingREGEX = $genomeDBLine[9];
 	}
 }
 

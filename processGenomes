@@ -168,7 +168,8 @@ while(my $curgenomeline= <$genomedb>) {
 		my $chromosomeSizeFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.chrom.size";
 		if( (! -e $chromosomeSizeFile || $force) && $curgenomeName eq $curgenomeReference) {
 			print localtime() . ": $curgenomeName : START building chromosome size file.\n";
-			system("zcat $conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta.gz | awk '\$0 ~ \">\" {if (NR > 1) {print c;} c=0;printf substr(\$0,2,100) \"\\t\"; } \$0 !~ \">\" {c+=length(\$0);} END { print c; }' > $chromosomeSizeFile");
+			system("samtools faidx $genomeFastaFile");
+			system("cut -f1-2 $genomeFastaFile.fai >$chromosomeSizeFile")
 			print localtime() . ": $curgenomeName : START building chromosome size file.\n";
 		}		
 
