@@ -1,10 +1,184 @@
-#######
-### Make tree
+#!/usr/bin/perl
 
-for f in *.csv; do cut -d ',' -f 1 $f | sort | uniq -c | grep "\b1" | cut -d ' ' -f 8 | grep -f - $f | sort -k2,2 -t"," >> ../Bra.singelton.csv; done
-cut -d',' -f2 Bra.singelton.csv | sort | uniq -c | grep "\b15" |  wc -l
-awk -F',' '{if($3 >350) {print $2;}}' Bra.singelton.csv | sort | uniq -c | grep "\b15" |  cut -d ' ' -f 7 | grep -f - Bra.singelton.csv | sort -t',' -k1,1 > Bra.singelton.all.csv
-cat Brasicaceae/*protein*.fasta | sed 's/\*//g' | awk '/^>/ {printf("\n%s\n",$0);next;} {printf("%s",$0);} END {printf("\n");}'  >Bra.proteins.fasta
-cut -d',' -f1 Bra.singelton.all.csv | grep --no-group-separator -A1 -f - Bra.proteins.fasta  | sed 's/AT[0-9]/ATT/' | sed 's/AL[0-9]/ALL/' | sed 's/Sp[0-9|U]/Spp/' | awk 'BEGIN{curSp="";} /^>/ {if(substr($0,2,3) != curSp) {if(curSp == "") { printf("%s\n",$0);} else {printf("\n%s\n",$0);} curSp = substr($0,2,3);} next; } {printf("%s",$0);} END {printf("\n");}' | awk '{print substr($0,0,100000); }' >Bra.proteins.singletons.fasta
+use POSIX;
+use strict;
+use Text::CSV;
+use List::Util qw(min max sum);
+use List::MoreUtils qw(uniq firstidx);
+use Bio::AlignIO;
+use Cwd;
+use Cwd 'abs_path';
+use Getopt::Long;
 
- muscle -maxiters 1 -diags -sv -in Solanaceae.proteins.singletons.fasta -out Solanaceae.align.fasta   
+################################################################################
+######### Setup
+
+my $conservatoryDir=abs_path(".");
+my $family;
+my $treeFile;
+my $help=0;
+my $minN=5;
+my $maxN=100;
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"family=s" => \$family,
+			"tree=s" => \$treeFile,
+			"help" => \$help) or die ("Error in command line arguments\n");
+
+if($help || $family eq "" || $treeFile eq "") {
+   print "buildModel --family <familyName> \n\n\n";
+   print "\t--family\tFamily name (REQUIRED).\n";
+   print "\t--tree\tTree file for phyloFit (REQUIRED).\n";
+   print "\t--help\t\t\tPrints this message.\n\n";
+   
+   exit();
+}
+
+my $genomedbFile = $conservatoryDir . "/genome_database.csv";
+my $CNSDir = "$conservatoryDir/CNS/$family/";
+my $genomeDir ="$conservatoryDir/genomes/$family";
+my $alignmentDir ="$conservatoryDir/alignments/$family";
+
+die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e $genomeDir && -e $alignmentDir && -e "$conservatoryDir/scripts" && -e $alignmentDir);
+
+########## read genome database to get species list
+
+my %speciesInFamily;
+my $referenceGenome;
+open (my $genomeDatabase, "<", $genomedbFile);
+my $header = <$genomeDatabase>;
+while((my $curgenomeline = <$genomeDatabase>)) {
+	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
+	if($curgenomeFamily eq $family) {
+		$speciesInFamily{$curgenomeSpecies}=1;
+		$referenceGenome = $curgenomeReference;
+	}
+}
+close($genomeDatabase);
+
+die "ERROR: Cannot find family ($family) or the reference genome for the family in the genome database file.\n" unless (scalar(keys %speciesInFamily) >0);
+
+######## Read ortholog files
+
+my %orthologList;
+
+open (my $geneFootprintFile, "$genomeDir/$referenceGenome.footprint.gff3") || die "ERROR: Can't find gene footprint file $genomeDir/$referenceGenome.footprint.gff3.\n";
+while(my $curGeneLine = <$geneFootprintFile>) {
+	chomp($curGeneLine);
+	my @curGeneLineFields = split /[=\t]/, $curGeneLine;
+	my $geneName = $curGeneLineFields[9];
+	my $geneOrthFileName = "$alignmentDir/$geneName.CREorthologs.txt";
+	if(-e $geneOrthFileName) {
+		open my $orthFile, $geneOrthFileName;
+		my %orthGroup;
+		while(<$orthFile>) {
+			chomp;
+			my @orthFields = split /\t/;
+			my $orthName = $orthFields[0];
+			my $score = $orthFields[2] + $orthFields[3];
+			if (not defined $orthGroup{$orthName} ) {
+				$orthGroup{$orthName} = $score;
+			} else {
+				if($orthGroup{$orthName} < $score) { $orthGroup{$orthName} = $score; }
+			}
+		}
+		close($orthFile);
+		#### If this orthology group contains all species
+		if(scalar (keys %orthGroup) == scalar (keys %speciesInFamily) -1) {
+			#normalize score values
+			my $totalScore=0;
+			foreach (%orthGroup) { $totalScore = $totalScore + $_;}
+			foreach (keys %orthGroup) { $orthGroup{$_} = $orthGroup{$_}/ $totalScore * 1000000 }
+			$orthologList{$geneName} = \%orthGroup;
+		}
+	} 
+}
+
+close($geneFootprintFile);
+######### ###########################################
+#### Now we have read all the orthologs and collected those genes that have orthlogs for all species. Now, calculated the expected alignment score for each species
+
+my %speciesScoreMean;
+my %speciesScoreSD;
+
+foreach my $curSpecies (keys %speciesInFamily) {
+	my $totalScorePerSpecies=0;
+	foreach my $curOrthName (keys %orthologList) {
+		$totalScorePerSpecies += $orthologList{$curOrthName}{$curSpecies};
+	}
+	$speciesScoreMean{$curSpecies} = $totalScorePerSpecies / (scalar (keys %orthologList));
+	my $totalScoreDevPerSpecies=0;
+	foreach my $curOrthName (keys %orthologList) {
+		$totalScoreDevPerSpecies += ($speciesScoreMean{$curSpecies} - $orthologList{$curOrthName}{$curSpecies}) ** 2;
+	}
+	$speciesScoreSD{$curSpecies} = ($totalScoreDevPerSpecies / (scalar (keys %orthologList))) ** 0.5;
+}
+
+### now screen for orthologs which alignment is within one SD
+my @highInformationOrthologs;
+foreach my $curOrtholog (keys %orthologList) {
+	my $outlier =0;
+	foreach my $curSpecies (keys %speciesInFamily) {
+		if( abs($orthologList{$curOrtholog}{$curSpecies} - $speciesScoreMean{$curSpecies}) > $speciesScoreSD{$curSpecies}*1) { $outlier=1; }
+	}
+	if($outlier ==0 ) { push @highInformationOrthologs, $curOrtholog }
+}
+
+print "INFO: Found " . scalar @highInformationOrthologs . " high information ortholog alignments at 1 SD.\n";
+
+if( scalar @highInformationOrthologs < $minN) {
+	print "WARNING: Number of high information ortholog alignments too low. Expanding search criteria...\n";
+	@highInformationOrthologs = ();
+	foreach my $curOrtholog (keys %orthologList) {
+		my $outlier =0;
+		foreach my $curSpecies (keys %speciesInFamily) {
+			if( abs($orthologList{$curOrtholog}{$curSpecies} - $speciesScoreMean{$curSpecies}) > $speciesScoreSD{$curSpecies}*1.5) { $outlier=1; }
+		}
+		if($outlier ==0 ) { push @highInformationOrthologs, $curOrtholog }
+	}
+	print "INFO: Found " . scalar @highInformationOrthologs . " high information ortholog alignments at 1.5 SD.\n";
+}
+
+############# Now pick top N, read and concat FASTA alignment
+
+if (scalar @highInformationOrthologs > $maxN) { 
+	@highInformationOrthologs = @highInformationOrthologs[1..$maxN];
+}
+
+print "INFO: Collecting FASTA seq.";
+my %fastaConcat;
+foreach my $curOrth ( @highInformationOrthologs ) {
+	print ".";
+	my $fastaUpFilename = "$alignmentDir/$curOrth.up.fasta";
+	my $upFasta = Bio::AlignIO->new(-file => "$fastaUpFilename" ,
+        	                 -format => 'fasta');
+	my $upFastaAln = $upFasta->next_aln();
+	$upFastaAln->gap_char('N');
+	$upFastaAln = $upFastaAln->remove_gaps('N',1);
+
+	### HACK
+	foreach my $seq ($upFastaAln->each_seq()) {
+		if($seq->id() eq "Campleicaulis") { $seq->id("Camplexicaulis") }
+		if(not defined $fastaConcat{$seq->id()}) {
+			$fastaConcat{$seq->id()} = $seq->seq();
+		} else {
+			$fastaConcat{$seq->id()} .= $seq->seq();
+		}
+	}
+}
+print "\n";
+####### Now dump fasta
+
+my $tmpFastaFileName = "$alignmentDir/tmp/$family.formodel.fasta";
+open my $tmpFasta, ">$tmpFastaFileName";
+foreach my $fastaSeq ( keys %fastaConcat ) {
+	$fastaConcat{$fastaSeq} =~ tr/N/-/;
+	print $tmpFasta ">$fastaSeq\n" . $fastaConcat{$fastaSeq} . "\n";
+}
+close $tmpFasta;
+print "INFO: Done prepping FASTA file.\n";
+####### make Model
+system("phyloFit --tree $treeFile --nrates 4 --out-root $family $tmpFastaFileName");
+#unlink($tmpFastaFileName);
+#system("cp $family.mod $conservatoryDir/genomes/$family.mod");
+#unlink("$family.mod");
