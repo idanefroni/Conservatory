@@ -505,8 +505,8 @@ if(-e $treeFileName && !$skipConservation) {
 	}
 	
 	### Build CNS and convert to table
-	if( (-e "$tmpDir/$locus.cns.csv") && (-s "$tmpDir/$locus.cns.csv" > $EMPTY_FILE)) {
-		system("cp $tmpDir/$locus.cns.csv $outputCNSDir");
+	if( (-e "$tmpDir/$locus.cns.csv")) {
+		if(-s "$tmpDir/$locus.cns.csv" > $EMPTY_FILE) {	system("cp $tmpDir/$locus.cns.csv $outputCNSDir"); }
 		if(!$keep_tmp) {unlink("$tmpDir/$locus.cns.csv");}
 	}
 

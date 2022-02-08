@@ -18,17 +18,17 @@ my $family;
 my $treeFile;
 my $help=0;
 my $minN=5;
-my $maxN=100;
+my $maxN=20;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"family=s" => \$family,
 			"tree=s" => \$treeFile,
 			"help" => \$help) or die ("Error in command line arguments\n");
 
 if($help || $family eq "" || $treeFile eq "") {
-   print "buildModel --family <familyName> \n\n\n";
+   print "\n\tbuildModel --family <familyName> \n\t\tbuildModel accepts a family (for which alignments have already been done) and a tree file\n\t\tand produces a model file for phyloP based on non-coding sequence data.\n\n";
    print "\t--family\tFamily name (REQUIRED).\n";
-   print "\t--tree\tTree file for phyloFit (REQUIRED).\n";
-   print "\t--help\t\t\tPrints this message.\n\n";
+   print "\t--tree\t\tTree file for phyloFit (REQUIRED).\n";
+   print "\t--help\t\tPrints this message.\n\n";
    
    exit();
 }
@@ -57,6 +57,8 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 close($genomeDatabase);
 
 die "ERROR: Cannot find family ($family) or the reference genome for the family in the genome database file.\n" unless (scalar(keys %speciesInFamily) >0);
+
+print "INFO: START automatic phylogenetic model computation.\n";
 
 ######## Read ortholog files
 
@@ -178,7 +180,9 @@ foreach my $fastaSeq ( keys %fastaConcat ) {
 close $tmpFasta;
 print "INFO: Done prepping FASTA file.\n";
 ####### make Model
+print "INFO: START computing model.\n";
 system("phyloFit --tree $treeFile --nrates 4 --out-root $family $tmpFastaFileName");
-#unlink($tmpFastaFileName);
-#system("cp $family.mod $conservatoryDir/genomes/$family.mod");
-#unlink("$family.mod");
+print "INFO: END computing model.\n";
+unlink($tmpFastaFileName);
+system("mv -f $family.mod $conservatoryDir/genomes/$family.mod");
+print "INFO: DONE.\n";
