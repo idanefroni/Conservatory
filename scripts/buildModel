@@ -121,12 +121,24 @@ my @highInformationOrthologs;
 foreach my $curOrtholog (keys %orthologList) {
 	my $outlier =0;
 	foreach my $curSpecies (keys %speciesInFamily) {
-		if( abs($orthologList{$curOrtholog}{$curSpecies} - $speciesScoreMean{$curSpecies}) > $speciesScoreSD{$curSpecies}*1) { $outlier=1; }
+		if( abs($orthologList{$curOrtholog}{$curSpecies} - $speciesScoreMean{$curSpecies}) > $speciesScoreSD{$curSpecies}*0.5) { $outlier=1; }
 	}
 	if($outlier ==0 ) { push @highInformationOrthologs, $curOrtholog }
 }
+print "INFO: Found " . scalar @highInformationOrthologs . " high information ortholog alignments at 0.5 SD.\n";
 
-print "INFO: Found " . scalar @highInformationOrthologs . " high information ortholog alignments at 1 SD.\n";
+if( scalar @highInformationOrthologs < $minN) {
+	print "WARNING: Number of high information ortholog alignments too low. Expanding search criteria...\n";
+	@highInformationOrthologs = ();
+	foreach my $curOrtholog (keys %orthologList) {
+		my $outlier =0;
+		foreach my $curSpecies (keys %speciesInFamily) {
+			if( abs($orthologList{$curOrtholog}{$curSpecies} - $speciesScoreMean{$curSpecies}) > $speciesScoreSD{$curSpecies}*1) { $outlier=1; }
+		}
+		if($outlier ==0 ) { push @highInformationOrthologs, $curOrtholog }
+	}
+	print "INFO: Found " . scalar @highInformationOrthologs . " high information ortholog alignments at 1 SD.\n";
+}
 
 if( scalar @highInformationOrthologs < $minN) {
 	print "WARNING: Number of high information ortholog alignments too low. Expanding search criteria...\n";
@@ -144,7 +156,10 @@ if( scalar @highInformationOrthologs < $minN) {
 ############# Now pick top N, read and concat FASTA alignment
 
 if (scalar @highInformationOrthologs > $maxN) { 
-	@highInformationOrthologs = @highInformationOrthologs[1..$maxN];
+	#### pick the last ones
+	my $highInfoOrthNum = scalar @highInformationOrthologs;
+
+	@highInformationOrthologs = @highInformationOrthologs[($highInfoOrthNum-$maxN)..$highInfoOrthNum-1];
 }
 
 print "INFO: Collecting FASTA seq.";
@@ -152,19 +167,21 @@ my %fastaConcat;
 foreach my $curOrth ( @highInformationOrthologs ) {
 	print ".";
 	my $fastaUpFilename = "$alignmentDir/$curOrth.up.fasta";
-	my $upFasta = Bio::AlignIO->new(-file => "$fastaUpFilename" ,
-        	                 -format => 'fasta');
-	my $upFastaAln = $upFasta->next_aln();
-	$upFastaAln->gap_char('N');
-	$upFastaAln = $upFastaAln->remove_gaps('N',1);
+	if( -e $fastaUpFilename) {
+		my $upFasta = Bio::AlignIO->new(-file => "$fastaUpFilename" ,
+        		                 -format => 'fasta');
+        my $upFastaAln = $upFasta->next_aln();
+        $upFastaAln->gap_char('N');
+        $upFastaAln = $upFastaAln->remove_gaps('N',1);
 
-	### HACK
-	foreach my $seq ($upFastaAln->each_seq()) {
-		if($seq->id() eq "Campleicaulis") { $seq->id("Camplexicaulis") }
-		if(not defined $fastaConcat{$seq->id()}) {
-			$fastaConcat{$seq->id()} = $seq->seq();
-		} else {
-			$fastaConcat{$seq->id()} .= $seq->seq();
+        ### HACK
+        foreach my $seq ($upFastaAln->each_seq()) {
+			if($seq->id() eq "Campleicaulis") { $seq->id("Camplexicaulis") }
+			if(not defined $fastaConcat{$seq->id()}) {
+				$fastaConcat{$seq->id()} = $seq->seq();
+				} else {
+				$fastaConcat{$seq->id()} .= $seq->seq();
+			}
 		}
 	}
 }
