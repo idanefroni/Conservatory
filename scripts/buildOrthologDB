@@ -60,7 +60,7 @@ while(<$genomedb>) {
 	chomp;
 	my @genomeDBLine = split /,/;
 	if($genomeDBLine[0] eq $referenceGenome) {
-		$referenceGeneProcessingREGEX = $genomeDBLine[8];
+		$referenceGeneProcessingREGEX = $genomeDBLine[9];
 	}
 }
 close($genomedb);

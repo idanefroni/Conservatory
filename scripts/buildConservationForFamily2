@@ -28,7 +28,7 @@ my $minCNSLength=6;
 my $keep_tmp = 0;
 my $verbose = 0;
 my $force=0;
-my $dump_bam = 0;
+my $dump_bam = 1;
 my $help = 0;
 my $skipAlignment=0;
 my $skipConservation=0;
@@ -60,7 +60,6 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
-			"dump-bam" => \$dump_bam,
 			"skip-alignment" => \$skipAlignment,
 			"skip-conservation" => \$skipConservation,
 			"help" => \$help) or die ("Error in command line arguments\n");
@@ -91,7 +90,6 @@ if( $locus eq "" or $family eq "" or $help or !($orthologSelectionStrategy eq "b
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
    print "\t--skip-conservation\t\tDo not compute phyloP scores.\n";
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
-   print "\t--dump-bam\t\tExport a bam of all pair-wise alignment, translated to absolute coordinates. For JBrowse tracks.\n";
  
    print "\n\t\tGeneral options\n\n";
    print "\t--force\t\tRecompute alignments and CNS even if files exist.\n";
@@ -109,7 +107,7 @@ my $outputCNSDir = "$conservatoryDir/CNS/$family/";
 my $tmpDir = "$conservatoryDir/alignments/$family/tmp";
 my $genomeDir ="$conservatoryDir/genomes/$family";
 my $lastzParameters = "--gap=200,100 --nochain --recoverseeds --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=1000 --hspthreshold=$minHSPthreshold --gappedthresh=2500";
-#my $lastzParameters = "--nogapped --nochain --recoverseeds --seed=match4 --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --hspthreshold=1100";
+
 
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 

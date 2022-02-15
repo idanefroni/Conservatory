@@ -162,7 +162,7 @@ if($format eq "SAM") {
 			
 			my $seq = $fields[9];
 			
-			## Remove all insertions in order to translate coordiantes to reference
+			## Remove all insertions in order to translate coordinates to reference
 			my $curcigar = $fields[5];
 			my $newcigar ="";
 			my $curPosInReference=1;
@@ -202,7 +202,7 @@ if($format eq "SAM") {
 		
 			if($genePos{'Strand'} eq "+") {
 				if($relPosition eq "UP") {
-					$fields[3] =  $genePos{'Start'}  - $length + $aln_start ;
+					$fields[3] =  $genePos{'Start'}  - $length + $aln_start -1 ;
 				} else { #if its downstream
 					$fields[3] = $genePos{'End'} + $aln_start + 1;	
 				}
@@ -216,7 +216,7 @@ if($format eq "SAM") {
 					$fields[3] =  $genePos{'End'} + $length - ($aln_start + $aln_end) +3;
 					#adding 3, because the lastz sam format is starting with 1, the aln_end is +1.
 				} else {
-					$fields[3] = $genePos{'Start'} - ($aln_start + $aln_end) +3;	
+					$fields[3] = $genePos{'Start'} - ($aln_start + $aln_end) +2;	
 				}
 			}
 

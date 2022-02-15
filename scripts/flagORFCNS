@@ -80,7 +80,7 @@ while(<STDIN>) {
 		close($tmpFastaFile);
 		
 		#begin orf scan
-		open my $orfscan, "$dirname" . "/ORFfinder -in $tmpFastaFileName -ml $minORFLength4CNS 2>/dev/null | ";
+		open my $orfscan, "$dirname" . "/ORFfinder -in $tmpFastaFileName -ml $minORFLength4CNS -s 2 2>/dev/null | ";
 		if(<$orfscan>) { $CNSfields[(scalar @CNSfields)-1] = "ORF"}
 		close($orfscan);
 		unlink($tmpFastaFileName);

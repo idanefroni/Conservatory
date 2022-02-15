@@ -19,6 +19,7 @@ my $help=0;
 my $verbose=0;
 my $genomeWasProcessed=0;
 my $genomeDatabaseWasProcessed=0;
+my $forceRun=0;
 my $threads=16;
 my $rebuiltReferenceBlastDB="";
 my $upstreamLength;
@@ -33,6 +34,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"threads=i" => \$threads,
 			"force" => \$force,
 			"force-orthology" => \$forceOrthology,
+			"force-run" => \$forceRun,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
 
@@ -45,8 +47,9 @@ if($help) {
 	print "\t--family\t\tLimit genome processing to a specific family (DEFAULT: process all families).\n";
 	print "\t--genome\t\tLimit genome processing to a specific genome (DEFAULT process all genomes). \n";
 	print "\t--threads\t\tNumber of threads to use (DEAFULT: 16). \n";
-	print "\t--force\t\tForce rebuilding of all databases file (expect orthology).\n";
-	print "\t--force-orthology\t\tForce rebuilding orthology database.\n";
+	print "\t--force\t\t\tForce rebuilding of all databases file (except orthology).\n";
+	print "\t--force-orthology\tForce rebuilding orthology database.\n";
+	print "\t--force-run\t\tDo not verify the status of the last run.\n\t\t\t\t[WARNING: This can cause data corruption if two processGenomes processes are starting in parallel. Only use this if you know what you are doing]\n";  
 	print "\t--verbose\t\tOutput extra progress messages.\n";
 	print "\t--help\t\t\tPrints this message.\n\n";
 	exit(0);
@@ -72,7 +75,10 @@ die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" u
 ### Check if another process is not running
 if (-e $genomedb_tmp_file) {
 	print localtime() . " : WARNING Another genome processing instance is running or last ran was aborted. Are you sure you want to run (y/[n])?";
-	my $response = <STDIN>;
+	my $response = "y";
+	if(!$forceRun) {
+		$response = <STDIN>;
+	}
 	chomp $response;
 	if($response eq "y") {
 		unlink($genomedb_tmp_file);
@@ -133,7 +139,7 @@ while(my $curgenomeline= <$genomedb>) {
 		
 		if( $upstreamLength == 0 || $downstreamLength ==0 | $force) {
 			#### check the optimized regulatory sequence lengths
-			#### scan the footprint file to find 95% intergenic region
+			#### scan the footprint file to find 97.5% intergenic region
 			my $old=0, my @allSpaces;
 			open(my $footprintFile, "<$genomeFootprintGFFFile");
 			while(my $footprintLine = <$footprintFile>) {
@@ -169,8 +175,8 @@ while(my $curgenomeline= <$genomedb>) {
 		if( (! -e $chromosomeSizeFile || $force) && $curgenomeName eq $curgenomeReference) {
 			print localtime() . ": $curgenomeName : START building chromosome size file.\n";
 			system("samtools faidx $genomeFastaFile");
-			system("cut -f1-2 $genomeFastaFile.fai >$chromosomeSizeFile")
-			print localtime() . ": $curgenomeName : START building chromosome size file.\n";
+			system("cut -f1-2 $genomeFastaFile.fai >$chromosomeSizeFile");
+			print localtime() . ": $curgenomeName : END building chromosome size file.\n";
 		}		
 
 		######### Stage 3: Build regulatory sequence database

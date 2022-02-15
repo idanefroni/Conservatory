@@ -47,6 +47,7 @@ while(my $curgenomeline= <$genomedb>) {
 		open(my $inGFF, "<", $genomeGFFFileName) || die "ERROR: Cannot find GFF3 file $genomeGFFFileName\n";
 		while (my $line = <$inGFF>) {
 		    chomp $line;
+		    $line =~ s/;[\r\n]+$//g;
 		    if((substr ($line,0,1) ne "#") && ($line ne "") ) {
 		    	my @array = split( "\t", $line );
 		    	my $type = $array[2];

@@ -3,9 +3,7 @@ use POSIX;
 use strict;
 use Getopt::Long;
 use Cwd 'abs_path';
-use threads;
-use threads::shared;
-my $threadlock:shared;
+use List::MoreUtils qw(firstidx);
 
 ###########
 
@@ -17,6 +15,7 @@ my $verbose=0;
 my $help=0;
 my $genomeWasProcessed=0;
 my $threads=16;
+my @threadPids;
 my $version=2;
 
 my $skipAlignment=0;
@@ -66,13 +65,22 @@ my $alignmentDir = "$conservatoryDir/alignments";
 my $genomesDir = "$conservatoryDir/genomes";
 my $geneListFileName;
 
+#### set up parallel processing
+@threadPids = (0) x $threads;
+
 ####### First, sanity checks. Check to see if blast is installed and if directory structure is OK.
 ####### 
 die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e $genomedb_file;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes" && -e "$conservatoryDir/genomes/blastdb/" && -e "$conservatoryDir/scripts" && -e "$conservatoryDir/alignments");
 
-my $samtools = `sh -c 'command -v samtools'`;
-die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" unless ($samtools ne "");  
+my $t_lastz = `sh -c 'command -v lastz'`;
+die "ERROR: Cannot find lastz in path. Please make sure it is installed.\n" unless ($t_lastz ne ""); 
+
+my $t_samtools = `sh -c 'command -v samtools'`;
+die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" unless ($t_samtools ne "");  
+
+my $t_phyloP = `sh -c 'command -v phyloP'`;
+die "ERROR: Cannot find phyloP in path. Please make sure phast is installed.\n" unless ($t_phyloP ne "");  
 
 ### Clear old locks
 system("rm $outputDir/*.lock");
@@ -93,10 +101,52 @@ while(my $curgenomeline= <$genomedb>) {
 		die localtime() . ": ABORT Cannot find footprint file ($geneListFileName). Was processGenomes run?\n" unless -e $geneListFileName;
 		### Start threads
 		if(!($skipAlignment && $skipConservation)) {
-			my @alignmentThreads = map { threads->new(\&processAlignmentThread, $_) } 1 .. $threads;
-			$_->join for @alignmentThreads;
+			
+			#my @alignmentThreads = map { threads->new(\&processAlignmentThread, $_) } 1 .. $threads;
+			#$_->join for @alignmentThreads;
+			open(my $geneListFile, "<", $geneListFileName);
+			while(my $geneline = <$geneListFile>) {
+					chomp($geneline);
+					my $curLocus;
+					my @array = split /\t/, $geneline;
+					my %geneparam = split/[;=]/, $array[8];
+					($curLocus) = $geneparam{'Name'};
+					
+					# now find a place for the thread
+					
+					my $placeForProcess = firstidx { $_ == 0 } @threadPids;
+					### If the queue is full, wait for the next spot 
+					if( $placeForProcess == -1 ) {
+						my $freedPid = wait();
+						$placeForProcess = firstidx { $_ == $freedPid } @threadPids;
+					}
+					#### now fork the alignment
+					my $forkChildPid = fork();
+					if(!$forkChildPid) {	#### In the child process
+						print localtime() . ": Thread $placeForProcess is processing $curLocus.\n";
+						my $alignmentParams = "--family $family --locus $curLocus ";
+						if($minIdentity>0) { $alignmentParams .= " --min-identity $minIdentity"; }
+						if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
+						if($minPhyloPscore>0) { $alignmentParams .= " --min-phylop-score $minPhyloPscore"; }   		
+						if($force) { $alignmentParams .= " --force"; }
+						if($skipAlignment) { $alignmentParams .= " --skip-alignment"; }
+						if($skipConservation) { $alignmentParams .= " --skip-conservation"; }
+						#print "$conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams\n";
+						system("$conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
+						exit;
+					} else {
+						$threadPids[$placeForProcess] = $forkChildPid;
+					}
+			}
+			## wait for all child processes to finish
+			for my $curPid (@threadPids) {
+				if($curPid != 0) { waitpid($curPid, 0); }
+			}
+			close($geneListFile);
+			print localtime() . ": END Finished processing all alignments.\n";
 		}
 		## Merge all BAM, sort and index
+		print localtime() . ": START data merge and sort.\n";
 		unlink("$alignmentDir/$family.bam");
 		system("find $outputDir -name \"*.bam\" > $outputDir/$family.bams.txt");
 		system("ulimit -n 200000; samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");
@@ -120,63 +170,21 @@ while(my $curgenomeline= <$genomedb>) {
 		system("for a in $conservationDir/$family/*.bed; do cat \$a | sed 's/ /\t/g' >> $conservationDir/$family.bed; done");
 		
 		# sort files
-		system("sort -k1,1 -k2,2n -o $conservationDir/$family.csv $conservationDir/$family.csv");
+		system("sort -t',' -k1,1 -k7,7n -o $conservationDir/$family.csv $conservationDir/$family.csv");
 		system("sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
 
 		# Make nice output files. BW for the phylop track and GFF for the CNS
 		system("$conservatoryDir/scripts/bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
-		
+		print localtime() . ": END data merge and sort.\n";		
 
 		print localtime() . ": END processing conservation for $family (reference genome $curgenomeName)\n";
 	}
 }
 close($genomedb);
-
+                                                                           
 if(! $genomeWasProcessed) { die ("ERROR: No family $family or no reference genome was found in $genomedb_file.\n"); }
 
 print localtime() . ": END conservation processing run.\n";
 
-sub processAlignmentThread {
-	my $goodtogo=0;
-	my ($threadnumber) = @_;
-	print localtime() . ": OPEN thread $threadnumber.\n";
-	my @locks;
 
-	open(my $geneListFile, "<", $geneListFileName);
-	while(my $geneline = <$geneListFile>) {
-		my $curLocus;
-		if (1) {
-	   	  lock $threadlock;
-	   	  chomp $geneline;
-	   	  my @array = split /\t/, $geneline;
-	   	  my %geneparam = split/[;=]/, $array[8];
-	   	  
-	   	  ($curLocus) = $geneparam{'Name'};
-	   	  if(!( -e "$outputDir/$curLocus.lock")) {
-			open(my $lock, ">","$outputDir/$curLocus.lock");
-			close($lock);
-			print localtime() . ": Thread $threadnumber is processing $curLocus.\n";
-			push @locks, "$outputDir/$curLocus.lock";
-			$goodtogo=1;
-		  }
-		}
-		if($goodtogo) {
-	   		my $alignmentParams = "--family $family --locus $curLocus --dump-bam";
-	   		if($minIdentity>0) { $alignmentParams .= " --min-identity $minIdentity"; }
-	   		if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
-	   		if($minPhyloPscore>0) { $alignmentParams .= " --min-phylop-score $minPhyloPscore"; }   		
-	   		if($force) { $alignmentParams .= " --force"; }
-	   		if($skipAlignment) { $alignmentParams .= " --skip-alignment"; }
-	   		if($skipConservation) { $alignmentParams .= " --skip-conservation"; }
-	   		system("$conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
-			$goodtogo=0;
-		} 
-	}
-	#remove all locks.
-	foreach my $lockToDelete (@locks) {
-		unlink($lockToDelete);
-	}
 
-	close($geneListFile);
-	print localtime() . ": CLOSE thread $threadnumber.\n";
-}
