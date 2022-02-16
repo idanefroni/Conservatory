@@ -199,6 +199,8 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 						$orthologs{$curgenomeSpecies} = [ {
 							'Name' => $curPutativeOrtholog,
 							'Genome' => $curgenomeName,
+							'upstreamLength' => $upstreamLength *1000,
+							'downstreamLength' => $downstreamLength *1000,
 							'upstreamFileName' => $upstreamFastaName,
 							'downstreamFileName' => $downstreamFastaName,
 							'MAFUpFileName' => $MAFUpFileName,
@@ -210,6 +212,8 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 							{
 								'Name' => $curPutativeOrtholog,
 								'Genome' => $curgenomeName,
+								'upstreamLength' => $upstreamLength *1000,
+								'downstreamLength' => $downstreamLength *1000,
 								'upstreamFileName' => $upstreamFastaName,
 								'downstreamFileName' => $downstreamFastaName,
 								'MAFUpFileName' => $MAFUpFileName,
@@ -336,7 +340,6 @@ if ($numOfSpecies >= $minAlignments) {
 	### First, move everything to an array. Dump a copy to the CRE-ortholog file
 	
 	my $finalCREorthologFileName = "$outputDir/$locus.CREorthologs.txt";
-	
 	open(my $finalCREorthologFile, ">$finalCREorthologFileName");
 	
 	my @orthologsToProcess;
@@ -344,20 +347,24 @@ if ($numOfSpecies >= $minAlignments) {
 		foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
 			if($curOrtholog->{'UpQuality'} > $EMPTY_FILE || $curOrtholog->{'DownQuality'} > $EMPTY_FILE) {
 				push @orthologsToProcess, $curOrtholog;
-				print $finalCREorthologFile $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" .$curOrtholog->{'DownQuality'} ."\n"; 
+				print $finalCREorthologFile $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
 			}
 		}
 	}
 	close($finalCREorthologFile);
+
+
 	if((scalar @orthologsToProcess) > 0) {
 		my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
 		
 		### Load all MAF, collapse species-specific paralogs and convert to FASTA.
 		my %fastaUpstreamAlignment;
 		my %fastaDownstreamAlignment;
+		my @mapAlignments;
+		
 		foreach my $curOrthologToMultiz (@orthologsToProcessSorted) {
-			%fastaUpstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFUpFileName'}, $upstreamLengthReference, %fastaUpstreamAlignment);
-			%fastaDownstreamAlignment = MAFtoFASTA($curOrthologToMultiz->{'MAFDownFileName'}, $downstreamLengthReference, %fastaDownstreamAlignment);
+			MAFtoFASTA($curOrthologToMultiz->{'MAFUpFileName'}, $upstreamLengthReference, $curOrthologToMultiz->{'upstreamLength'}, \%fastaUpstreamAlignment, \@mapAlignments, "U");
+			MAFtoFASTA($curOrthologToMultiz->{'MAFDownFileName'}, $downstreamLengthReference,$curOrthologToMultiz->{'downstreamLength'}, \%fastaDownstreamAlignment, \@mapAlignments, "D");
 		}
 
 		my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
@@ -382,6 +389,12 @@ if ($numOfSpecies >= $minAlignments) {
 		}
 		close($finalFASTAUpFile);
 		close($finalFASTADownFile);
+		
+		####### Save alignment map to file
+		my $finalAlignmentMapFileName = "$outputDir/$locus.map.txt";
+		open(my $finalAlignmentMap, ">$finalAlignmentMapFileName");
+		foreach (@mapAlignments) { print $finalAlignmentMap $locus . "\t" . $_; }
+		close($finalAlignmentMap);
 	}
 } else { if($verbose) { print "PROGRESS: Not enough CRE-orthologs for alignment ($numOfSpecies, minimum is:$minAlignments). Check --min-species parameter.\n"; }} 
 
@@ -581,11 +594,12 @@ sub geneToSpecies {
 
 ################### Load MAF file and return a FASTA array in reference coordinates
 sub MAFtoFASTA {
-	(my $mafFileName, my $seqLength, my %inFASTA) = @_;
+	(my $mafFileName, my $seqLength, my $targetSeqLength, my $inFASTARef,my $inMapRef, my $dir) = @_;
 
 	my $refseqname;
 	my $refstart = -1;
 	my $reflen;
+	my @inMap = @$inMapRef;
 	my @insertions;
 
 	my $maffile = Bio::AlignIO->new(-file => $mafFileName,
@@ -597,16 +611,16 @@ sub MAFtoFASTA {
 #		   $species = $alignseq->id();
 	   	   my $newspseq = $alignseq->seq();
 	   	   
-		   if(not defined $inFASTA{$species}) {
-		       $inFASTA{$species} = "N" x $seqLength;
+		   if(not defined $inFASTARef->{$species}) {
+		       $inFASTARef->{$species} = "N" x $seqLength;
 		   }
 		   if($refseqname eq "") {
 			 $refseqname = $species;
 		   }
 
 		   if($species eq $refseqname) {
-	   			 # Identify all insertions from the sequence to keep the seq in reference coordinates		 
-		   	     @insertions = findAll($newspseq, "-");
+	   		 # Identify all insertions from the sequence to keep the seq in reference coordinates		 
+		   	 @insertions = findAll($newspseq, "-");
 		   }
 
    		   #now remove the insertions
@@ -622,18 +636,32 @@ sub MAFtoFASTA {
 		   if($refstart == -1) {
 			$refstart = $alignseq->start()-1;
 			$reflen = length($newspseq);
-		   }
-		   
+		   } else {
+			#### Log the alignment
+			my $refRelative, my $targetRelative;
+			if($dir eq "U") {
+				$refRelative = $refstart - $seqLength;
+				$targetRelative = $alignseq->start() -1 -$targetSeqLength;
+			} else {
+				$refRelative = $refstart;
+				$targetRelative = $alignseq->start() - 1;
+			}
+			push @$inMapRef, "$refRelative\t$reflen\t$species\t" . $alignseq->id() . "\t$targetRelative\n";
+  		   }
+
+
 		   # Check if we are overriding sequences
-		   my $curspseq = substr($inFASTA{$species}, $refstart, $reflen);
+		   my $curspseq = substr($inFASTARef->{$species}, $refstart, $reflen);
 		   if( $curspseq eq  "N" x length($curspseq)) {
-		   	   substr($inFASTA{$species}, $refstart, $reflen) = $newspseq;
+			   my $tmpseq = $inFASTARef->{$species};
+		   	   substr($tmpseq, $refstart, $reflen) = $newspseq;
+			   $inFASTARef->{$species} = $tmpseq;
 		   } else {
 			# if there was something there, merge the sequences
-			if(substr($inFASTA{$species}, $refstart, $reflen) ne $newspseq) {
+			if(substr($inFASTARef->{$species}, $refstart, $reflen) ne $newspseq) {
 					
-				my $curseq = substr($inFASTA{$species}, $refstart, $reflen);
-				my $refseq = substr($inFASTA{$refseqname}, $refstart, $reflen);
+				my $curseq = substr($inFASTARef->{$species}, $refstart, $reflen);
+				my $refseq = substr($inFASTARef->{$refseqname}, $refstart, $reflen);
 				my $conseq;
 				for my $curchr (0 .. $reflen) {
 					my $selectedMergedNuc;
@@ -651,14 +679,14 @@ sub MAFtoFASTA {
 					}
 					$conseq .= $selectedMergedNuc;
 				}
-				substr($inFASTA{$species}, $refstart, $reflen) = $conseq;
+				my $tmpseq = $inFASTARef->{$species};
+				substr($tmpseq, $refstart, $reflen) = $conseq;
+			   	$inFASTARef->{$species} = $tmpseq;
 			}
 		}
 	   }
 	   $refstart = -1;
 	}
-	
-	return %inFASTA;
 }
 
 sub findAll {
