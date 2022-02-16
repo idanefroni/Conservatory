@@ -168,10 +168,12 @@ while(my $curgenomeline= <$genomedb>) {
 		# merge gene files for entire genome
 		system("for a in $conservationDir/$family/*.csv; do cat \$a >> $conservationDir/$family.csv; done");
 		system("for a in $conservationDir/$family/*.bed; do cat \$a | sed 's/ /\t/g' >> $conservationDir/$family.bed; done");
+		system("for a in $alignmentDir/$family/*.map.txt; do cat \$a >> $alignmentDir/$family.map.txt; done");
 		
 		# sort files
 		system("sort -t',' -k1,1 -k7,7n -o $conservationDir/$family.csv $conservationDir/$family.csv");
 		system("sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
+		system("sort -k1,1 -k2,2nr -u -o $alignmentDir/$family.map.txt $alignmentDir/$family.map.txt");
 
 		# Make nice output files. BW for the phylop track and GFF for the CNS
 		system("$conservatoryDir/scripts/bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
