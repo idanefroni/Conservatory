@@ -329,9 +329,9 @@ if ($numOfSpecies >= $minAlignments) {
 		foreach my $speciesToAlign (@species) {
 			foreach my $orthologToAlign (@{ $orthologs{$speciesToAlign} }) {
 				my $convertParameters = "--conservatoryDirectory $conservatoryDir --genome $refGenome --format SAM --tag $speciesToAlign ";
-				system("lastz --format=sam $lastzParameters $upstreamRefFastaName " . $orthologToAlign->{'upstreamFileName'} . " | $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos UP >>" .
+				system("lastz --format=sam $lastzParameters $upstreamRefFastaName " . $orthologToAlign->{'upstreamFileName'} . " |perl  $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos UP >>" .
 					$locus . ".sam");
-				system("lastz --format=sam $lastzParameters $downstreamRefFastaName " . $orthologToAlign->{'downstreamFileName'} . " | $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos DOWN >>" .
+				system("lastz --format=sam $lastzParameters $downstreamRefFastaName " . $orthologToAlign->{'downstreamFileName'} . " | perl $conservatoryDir/scripts/convertRelative2absCoordinate $convertParameters --relPos DOWN >>" .
 					$locus . ".sam");
 			}
 		}
@@ -347,7 +347,7 @@ if ($numOfSpecies >= $minAlignments) {
 		foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
 			if($curOrtholog->{'UpQuality'} > $EMPTY_FILE || $curOrtholog->{'DownQuality'} > $EMPTY_FILE) {
 				push @orthologsToProcess, $curOrtholog;
-				print $finalCREorthologFile $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
+				print $finalCREorthologFile $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
 			}
 		}
 	}
@@ -363,8 +363,8 @@ if ($numOfSpecies >= $minAlignments) {
 		my @mapAlignments;
 		
 		foreach my $curOrthologToMultiz (@orthologsToProcessSorted) {
-			MAFtoFASTA($curOrthologToMultiz->{'MAFUpFileName'}, $upstreamLengthReference, $curOrthologToMultiz->{'upstreamLength'}, \%fastaUpstreamAlignment, \@mapAlignments, "U");
-			MAFtoFASTA($curOrthologToMultiz->{'MAFDownFileName'}, $downstreamLengthReference,$curOrthologToMultiz->{'downstreamLength'}, \%fastaDownstreamAlignment, \@mapAlignments, "D");
+			MAFtoFASTA($family, $curOrthologToMultiz->{'MAFUpFileName'}, $upstreamLengthReference, $curOrthologToMultiz->{'upstreamLength'}, \%fastaUpstreamAlignment, \@mapAlignments, "U");
+			MAFtoFASTA($family, $curOrthologToMultiz->{'MAFDownFileName'}, $downstreamLengthReference,$curOrthologToMultiz->{'downstreamLength'}, \%fastaDownstreamAlignment, \@mapAlignments, "D");
 		}
 
 		my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
@@ -572,7 +572,7 @@ sub getMAFQuality {
 
 # convert gene name to species name in input MAF line
 sub geneToSpecies {
-	my ($geneName) = @_;
+	(my $family,my  $geneName) = @_;
 	my $gene2sp;
 	open(my $genomeDatabase, "<" , $genomedbFile);
 	my $header= <$genomeDatabase>;
@@ -582,7 +582,7 @@ sub geneToSpecies {
 		my $speciesName= $array[1];
 		my $geneToSpecies= "^" . $array[8] . "[a-zA-Z0-9\._\-]*";
 		$gene2sp = $geneName;
-		if($array[8] ne "") {
+		if($array[8] ne "" && $array[2] eq $family) {
 			eval '$gene2sp =~ s/$geneToSpecies/$speciesName/g';
 			if($gene2sp ne $geneName){
 				return $gene2sp;
@@ -594,7 +594,7 @@ sub geneToSpecies {
 
 ################### Load MAF file and return a FASTA array in reference coordinates
 sub MAFtoFASTA {
-	(my $mafFileName, my $seqLength, my $targetSeqLength, my $inFASTARef,my $inMapRef, my $dir) = @_;
+	(my $family, my $mafFileName, my $seqLength, my $targetSeqLength, my $inFASTARef,my $inMapRef, my $dir) = @_;
 
 	my $refseqname;
 	my $refstart = -1;
@@ -607,7 +607,7 @@ sub MAFtoFASTA {
 
 	while(my $aln = $maffile->next_aln) {
 	   foreach my $alignseq ($aln->each_seq() ) {
-	   	   my $species = geneToSpecies($alignseq->id());
+	   	   my $species = geneToSpecies($family, $alignseq->id());
 #		   $species = $alignseq->id();
 	   	   my $newspseq = $alignseq->seq();
 	   	   
