@@ -347,7 +347,7 @@ if ($numOfSpecies >= $minAlignments) {
 		foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
 			if($curOrtholog->{'UpQuality'} > $EMPTY_FILE || $curOrtholog->{'DownQuality'} > $EMPTY_FILE) {
 				push @orthologsToProcess, $curOrtholog;
-				print $finalCREorthologFile $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
+				print $finalCREorthologFile  $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
 			}
 		}
 	}
