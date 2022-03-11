@@ -102,8 +102,6 @@ while(my $curgenomeline= <$genomedb>) {
 		### Start threads
 		if(!($skipAlignment && $skipConservation)) {
 			
-			#my @alignmentThreads = map { threads->new(\&processAlignmentThread, $_) } 1 .. $threads;
-			#$_->join for @alignmentThreads;
 			open(my $geneListFile, "<", $geneListFileName);
 			while(my $geneline = <$geneListFile>) {
 					chomp($geneline);
@@ -131,7 +129,6 @@ while(my $curgenomeline= <$genomedb>) {
 						if($force) { $alignmentParams .= " --force"; }
 						if($skipAlignment) { $alignmentParams .= " --skip-alignment"; }
 						if($skipConservation) { $alignmentParams .= " --skip-conservation"; }
-						#print "$conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams\n";
 						system("$conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
 						exit;
 					} else {
