@@ -321,7 +321,7 @@ while(my $curgenomeline= <$genomedb>) {
 					if(! -e $blastG2REF) {
 						print localtime() . ": $curgenomeName : START reciprocal blast.\n";
 						my $blastthreads = $threads;
-						my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeReference.proteins.fasta";
+						my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReferenceFamily/$curgenomeReference.proteins.fasta";
 						system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
 						system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
 						print localtime() . ": $curgenomeName : END reciprocal blast.\n";
