@@ -10,8 +10,10 @@ my $help=0;
 my $genome="";
 my $family;
 my $genomefound = 0;
+my $genomeDatabaseFile="genome_database.csv";
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"genome-database=s" => \$genomeDatabaseFile,
 			"genome=s" => \$genome,
 			"help" => \$help) or die("Error in command line arguments\n");
 			
@@ -20,10 +22,11 @@ if( $genome eq "" || $help) {
 	
 	print "buildFootprint\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
+	print "\t--genome-database\t\tGenome database file name (DEFAULT: genome_database.csv).\n";	
 	print "\t--genome\t\tGenome name for which to build footprint databse (MANDATORY). \n\n";
     exit();
 }
-my $genomedb_file = $conservatoryDir . "/genome_database.csv";
+my $genomedb_file = "$conservatoryDir/$genomeDatabaseFile";
 
 ##### Sanity checks.
 die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e $genomedb_file;
@@ -39,7 +42,6 @@ while(my $curgenomeline= <$genomedb>) {
 	chomp $curgenomeline;
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
 
-#	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $minScore, $GeneNameField, $GeneNameProcessREGEX,$GeneNameIdentifierREGEX) = split /,/, $curgenomeline;
 	if($curgenomeName eq $genome) {
 		$genomefound=1;
 		$family = $curgenomeFamily;
@@ -76,7 +78,7 @@ while(my $curgenomeline= <$genomedb>) {
 		    			$max = max($array[3], $array[4]);
 		    			#### Chr Note Start End Dir	    			
 		    			$CDS{$genenameProcessed} = {
-		    					'Name' => $genenameProcessed,
+		    					'Name' => "$curgenomeSpecies-$curgenomeName-$genenameProcessed",
 		    					'Chr' => $array[0],
 		    					'Source' =>  $array[1],
 		    					'Start' => $min,

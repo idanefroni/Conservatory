@@ -22,12 +22,17 @@ my $maxN=20;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"family=s" => \$family,
 			"tree=s" => \$treeFile,
+			"maxN=i" => \$maxN,
+			"minN=i" => \$minN,
 			"help" => \$help) or die ("Error in command line arguments\n");
 
 if($help || $family eq "" || $treeFile eq "") {
    print "\n\tbuildModel --family <familyName> \n\t\tbuildModel accepts a family (for which alignments have already been done) and a tree file\n\t\tand produces a model file for phyloP based on non-coding sequence data.\n\n";
    print "\t--family\tFamily name (REQUIRED).\n";
    print "\t--tree\t\tTree file for phyloFit (REQUIRED).\n";
+   
+   print "\t--minN\t\tMinimum number of sequences to use.\n";
+   print "\t--maxN\t\tMaximum number of sequences to use.\n";
    print "\t--help\t\tPrints this message.\n\n";
    
    exit();
@@ -198,7 +203,7 @@ close $tmpFasta;
 print "INFO: Done prepping FASTA file.\n";
 ####### make Model
 print "INFO: START computing model.\n";
-system("phyloFit --tree $treeFile --nrates 4 --out-root $family $tmpFastaFileName");
+system("phyloFit --tree $treeFile --nrates 4 --subst-mod HKY85+Gap --gaps-as-bases --out-root $family $tmpFastaFileName");
 print "INFO: END computing model.\n";
 unlink($tmpFastaFileName);
 system("mv -f $family.mod $conservatoryDir/genomes/$family.mod");

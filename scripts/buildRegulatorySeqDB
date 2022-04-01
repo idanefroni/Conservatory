@@ -92,9 +92,9 @@ if($mode eq "upstream") {
 						} else {
 							$prom = substr($chromosomes[$chromosome_num], $mylastgeneend_pos-1, $seq_len - $mylastgeneend_pos + $pstart);
 						}
-					} elsif($pstart <0) {
+					} elsif($pstart <= 0) {
 						## If this is at the start of the chromosome and we don't have enough upstream seq
-						$prom = substr($chromosomes[$chromosome_num], 0, $loc)
+						$prom = substr($chromosomes[$chromosome_num], 0, $loc-1)
 					} else {
 						$prom = substr($chromosomes[$chromosome_num], $pstart-1, $seq_len);
 					}

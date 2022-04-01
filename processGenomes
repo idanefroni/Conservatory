@@ -47,6 +47,11 @@ if($global && $referenceGenomeName eq "") {
 	print "\n\nERROR: Global mode selected but no reference genome provided (--reference).\n\n";
 	$help =1;
 }
+if($referenceGenomeName ne "" && !$global) {
+	print "\n\nERROR: Reference genomes can only be specied in global mode.\n\n";
+	$help =1;
+	
+}
 if($help) {
 	print "Conservatory version 0.0.1\n\n";
 	
@@ -204,7 +209,7 @@ while(my $curgenomeline= <$genomedb>) {
 			(my $genomeFootprintGFFFile = $genomeGFFFile) =~ s/genes.gff3/footprint.gff3/;
 			if(! -e $genomeFootprintGFFFile || $force) {
 				print localtime() . ": $curgenomeName : START building footprint database\n";
-				system("perl $conservatoryDir/scripts/buildFootprint --conservatoryDirectory $conservatoryDir --genome $curgenomeName");
+				system("perl $conservatoryDir/scripts/buildFootprint --conservatoryDirectory $conservatoryDir --genome-database $genomeDatabaseFileName --genome $curgenomeName");
 				die localtime() . ": ABORT Internal error. Can not run buildFootprint script!\n" unless -r $genomeFootprintGFFFile;
 				print localtime() . ": $curgenomeName : END building footprint database\n";
 			} else { print localtime() . ": SKIP Footprint database already exists (use --force to rebuild)\n"; }
@@ -322,7 +327,11 @@ while(my $curgenomeline= <$genomedb>) {
 						print localtime() . ": $curgenomeName : END reciprocal blast.\n";
 					} else { print localtime() . ": SKIP blast temporary files already exists. Delete $blastG2REF to rebuild.\n" }
 					print localtime() . ": $curgenomeName : START Building ortholog database.\n";
-					system("perl $conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome $curgenomeName");
+					if($global) {
+						system("perl $conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome-database $genomeDatabaseFileName --genome $curgenomeName --reference $curgenomeReference");
+					} else {
+						system("perl $conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome-database $genomeDatabaseFileName --genome $curgenomeName");
+					}
 					print localtime() . ": $curgenomeName : END Building ortholog database.\n";
 				} 
 			} else { print localtime(). ": SKIP Ortholog database already exists (use --force-orthology to rebuild)\n"; }

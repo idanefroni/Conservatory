@@ -5,6 +5,7 @@ use strict;
 use Cwd 'abs_path';
 use Getopt::Long;
 
+my $genomeDatabaseFileName = "genome_database.csv";
 
 my $MAX_ORTH=8;
 my $MIN_EVAL= 10;
@@ -12,12 +13,18 @@ my $EVAL_CUTOFF_FOR_FAMILY=0.33;
 my $conservatoryDir=abs_path(".");
 my $help=0;
 my $genome="";
+my $referenceGenome="";
+my $referenceGenomeFamily="";
+my $referenceGenomeSpecies="";
 my $family="";
+my $species;
 my $genomefound = 0;
 
 my $line;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+				"genome-database=s" => \$genomeDatabaseFileName,
 			"genome=s" => \$genome,
+			"reference=s" => \$referenceGenome,
 			"help" => \$help) or die("Error in command line arguments\n");
 			
 			
@@ -26,10 +33,12 @@ if( $genome eq "" || $help) {
 	
 	print "buildOrthologDB\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
+	print "\t--genome-database\t\tGenome database file name (DEFAULT: genome_database.csv).\n";	
+	print "\t--reference\t\tReference genome name (for global mode). \n";
 	print "\t--genome\t\tGenome name for which to build putative ortholog databse (REQUIRED). \n\n";
     exit();
 }
-my $genomedb_file = $conservatoryDir . "/genome_database.csv";
+my $genomedb_file = "$conservatoryDir/$genomeDatabaseFileName";
 
 ##### Sanity checks.
 die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e $genomedb_file;
@@ -38,7 +47,6 @@ die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n"
 ######### Find out what is the reference genome and the processing REGEX
 open(my $genomedb, "<", $genomedb_file);
 my $header=<$genomedb>;
-my $referenceGenome="";
 my $geneProcessingREGEX="";
 my $referenceGeneProcessingREGEX="";
 
@@ -46,8 +54,11 @@ while(<$genomedb>) {
 	chomp;
 	my @genomeDBLine = split /,/;
 	if($genomeDBLine[0] eq $genome) {
-		$referenceGenome = $genomeDBLine[3];
+		if($referenceGenome eq "") {
+			$referenceGenome = $genomeDBLine[3];
+		}
 		$family = $genomeDBLine[2];
+		$species = $genomeDBLine[1];
 		$geneProcessingREGEX = $genomeDBLine[9];
 	}
 }
@@ -60,16 +71,19 @@ while(<$genomedb>) {
 	chomp;
 	my @genomeDBLine = split /,/;
 	if($genomeDBLine[0] eq $referenceGenome) {
+		$referenceGenomeFamily = $genomeDBLine[2];
+		$referenceGenomeSpecies = $genomeDBLine[1];
 		$referenceGeneProcessingREGEX = $genomeDBLine[9];
 	}
 }
 close($genomedb);
 
-die "ERROR: Cannot file genome $genome in database.\n" unless $referenceGenome ne "";
+die "ERROR: Cannot file genome $genome in database.\n" unless $family ne "";
+die "ERROR: Cannot file reference genome $genome in database.\n" unless $referenceGenomeFamily ne "";
 
 my $genome2refFileName = "$conservatoryDir/genomes/tmpblast/$genome" . "2" . "$referenceGenome" . ".txt";
 my $ref2genomeFileName = "$conservatoryDir/genomes/tmpblast/$referenceGenome" . "2" . "$genome" . ".txt";
-my $outputOrthologFileName = "$conservatoryDir/genomes/$family/$genome.orthologs.csv";
+my $outputOrthologFileName = "$conservatoryDir/genomes/$family/$referenceGenome.$genome.orthologs.csv";
 my $footprintGFFFileName = "$conservatoryDir/genomes/$family/$genome.footprint.gff3";
 
 open (my $gffFile, "<", $footprintGFFFileName ) or die "ERROR: Cannot open footprint file $footprintGFFFileName.\n";
@@ -104,9 +118,13 @@ while(my $curline = <$g2ref>) {
 	my $locus = $line_s[0];
 	my $refLocus = $line_s[1];
 	my $eval = $line_s[10];
+	
+	### Translate protein name to  full and unique gene name
 	if($referenceGeneProcessingREGEX ne "") { eval '$refLocus =~ s/$referenceGeneProcessingREGEX//g;'; }
 	if($geneProcessingREGEX ne "") { eval '$locus =~ s/$geneProcessingREGEX//g;'; }
-
+	$locus = "$species-$genome-$locus";
+	$refLocus = "$referenceGenomeSpecies-$referenceGenome-$refLocus";
+	
 	if($eval < $MIN_EVAL) {
 		if($eval ==0) { 
 			$eval = 400;
@@ -141,8 +159,12 @@ while(my $curline = <$ref2g>) {
 	my $refLocus = $line_s[0];
 	my $locus = $line_s[1];
 	my $eval = $line_s[10];
+
+	### Translate protein name to  full and unique gene name
 	if($referenceGeneProcessingREGEX ne "") { eval '$refLocus =~ s/$referenceGeneProcessingREGEX//g;'; }
 	if($geneProcessingREGEX ne "") { eval '$locus =~ s/$geneProcessingREGEX//g;'; }
+	$locus = "$species-$genome-$locus";
+	$refLocus = "$referenceGenomeSpecies-$referenceGenome-$refLocus";
 	
 	if($eval < $MIN_EVAL) {
 		if($eval ==0) { 
