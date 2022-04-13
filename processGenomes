@@ -301,7 +301,8 @@ while(my $curgenomeline= <$genomedb>) {
 		
 			my $blastG2REF = "$conservatoryDir/genomes/tmpblast/$curgenomeName" . "2" ."$curgenomeReference.txt";
 			my $blastREF2G = "$conservatoryDir/genomes/tmpblast/$curgenomeReference" . "2" ."$curgenomeName.txt";
-			if(! -e $orthologFilename || $forceOrthology) {
+
+			if(! (-e $orthologFilename) || $forceOrthology) {
 				# If this is the reference genome, build mock ortholog file.
 
 				if($curgenomeName eq $curgenomeReference) {
@@ -338,7 +339,7 @@ while(my $curgenomeline= <$genomedb>) {
 			print localtime() . ": END processing genome $curgenomeName\n-------------------------------------------------------------------------------------------------------------\n";
 		}
 		print $genomedbProcess "$curgenomeName,$curgenomeSpecies,$curgenomeFamily,$curgenomeReference,$upstreamLength,$downstreamLength,$geneNameField,$geneProcessingRegEx,$gene2SpeciesIdentifier,$proteinProcessingRegEx\n";
-	}
+	} else {  print $genomedbProcess $curgenomeline . "\n"; } ### Spit out comments
 }
 close($genomedb);
 close($genomedbProcess);

@@ -9,10 +9,10 @@ use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
 
-print STDERR "\nUsage: buildCNSTables family cnsFile mapFile teGFFfile\n\nAccepts CNS and alignment map files and output generate two files:\n\n";
+print STDERR "\nUsage: buildCNSTables referenceGenome cnsFile mapFile teGFFfile\n\nAccepts CNS and alignment map files and output generate two files:\n\n";
 print STDERR "\t\t[family].cns.table.csv\t\tFiltered CNS file\n\t\t[family].cns.position.table.csv\t\tThe position of the CNS in each of the family genomes\n";
 print STDERR "\n\nThe filtered CNS table has the following fields:\n";
-print STDERR "\tFamily, CNS_Unique_Name, Chromosome, Start, End, ORFCheck, ConservationLevel, ConservationLevelPerLocus, PositionVariability\n\n";
+print STDERR "\tCNS_Unique_Name_In_Reference, ReferenceGenome, Chromosome, Start, End, ORFCheck, TECheck\n\n";
 print STDERR "The position table has the following fields:\n";
 print STDERR "\tCNS_Unique_Name, ReferenceGene, Genome, Gene, RelativeStart, UporDown, phyloP-pvalue\n\n\n";
 
@@ -21,24 +21,25 @@ if(scalar @ARGV< 3) {
 }
 
 open (my $CNSInputFile,"sort -t',' -k6,6 -k7,7n $ARGV[1] |") ||  die "ERROR: Cannot find CNS file $ARGV[1].\n";
-my $family = $ARGV[0];
+
 
 ################### Identify the reference genome
-my $refGenome="";
-my $upstreamLengthReference;
-my $downstreamLengthReference;
+my $referenceGenome=$ARGV[0];
+my $referenceGenomeFamily;
+my $referenceSpecies;
+
 my $conservatoryDir=abs_path(".");
 my $genomedbFile = $conservatoryDir . "/genome_database.csv";
 open (my $genomeDatabase, "<", $genomedbFile) || die "ERROR: Cannot open genome database $genomedbFile.\n";
 my $header = <$genomeDatabase>;
-while((my $curgenomeline = <$genomeDatabase>) && $refGenome eq "") {
+while((my $curgenomeline = <$genomeDatabase>) && $referenceGenomeFamily eq "") {
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
-	if($curgenomeFamily eq $family && $curgenomeName eq $curgenomeReference) {
-		$refGenome = $curgenomeReference;
-		$upstreamLengthReference = $upstreamLength  * 1000;
-		$downstreamLengthReference = $downstreamLength * 1000;
+	if($curgenomeName eq $referenceGenome) {
+		$referenceGenomeFamily = $curgenomeFamily;
+		$referenceSpecies = $curgenomeSpecies;
 	}
 }
+die "ERROR: Cannot find reference genome $referenceGenome in genome_database.csv" unless $referenceGenomeFamily ne "";
 
 my %CNSDB;
 my $CNSCounter=1;
@@ -107,7 +108,7 @@ while(<$CNSInputFile>) {
 	
 	chomp;
 	my ($locus, $startRel, $endRel, $pval,$upordown, $chromosome, $start, $end, $orf) = split /,/;
-	
+	if($orf eq "ORF" || $orf eq "1") { $orf = "1"; } else { $orf = "0"; }
 	### Check for overlaps 
 	if($previousCNS ne "") {
 		if($CNSDB{$previousCNS}{'Chromosome'} == $chromosome && overlap($start, $end, $CNSDB{$previousCNS}{'Start'},$CNSDB{$previousCNS}{'End'})) {
@@ -138,17 +139,17 @@ while(<$CNSInputFile>) {
 
 		## If the TE is in more than 20% of the CNS, mark the overlap
 		if($curTE->seq_id eq $chromosome && overlap($start, $end, $curTE->start, $curTE->end)>0.2) {
-			$overlapTE=1;
+			$overlapTE="1";
 		} else {
-			$overlapTE=0;
+			$overlapTE="0";
 		}
 		
 	} else {
-		$overlapTE=0;
+		$overlapTE="0";
 	}
 	
 	if($overlapCNS eq "") {
-		my $newCNSName = "CNS_" . $family . "_$CNSCounter";
+		my $newCNSName = "CNS_" . $referenceGenome . "_$CNSCounter";
 		$CNSDB{$newCNSName} = {
 			'Name' => $newCNSName, 
 			'Chromosome' => $chromosome,
@@ -156,9 +157,6 @@ while(<$CNSInputFile>) {
 			'End' => $end,
 			'ORFCheck' => $orf,
 			'TECheck' => $overlapTE,
-			'ConservationLevel' => 0,
-			'ConservationLevelPerLocus' => 0,
-			'PositionVariability' => 0,
 			'Position' => ()};
 		$previousCNS = $newCNSName;
 		
@@ -169,11 +167,11 @@ while(<$CNSInputFile>) {
 		## Merge the CNS.
 		$CNSDB{$overlapCNS}{'Start'} = min($start, $CNSDB{$overlapCNS}{'Start'});
 		$CNSDB{$overlapCNS}{'End'} = max($end, $CNSDB{$overlapCNS}{'End'});
-		if($overlapTE == 1) {
-			$CNSDB{$overlapCNS}{'TECheck'} = 1;
+		if($overlapTE eq "1") {
+			$CNSDB{$overlapCNS}{'TECheck'} = "1";
 		}
-		if($orf eq "ORF") {
-			$CNSDB{$overlapCNS}{'ORFCheck'} = "ORF";
+		if($orf eq "1") {
+			$CNSDB{$overlapCNS}{'ORFCheck'} = "1";
 		}
 		push @CNSList, $overlapCNS;
 		
@@ -186,7 +184,6 @@ close($CNSInputFile);
 
 print localtime() . ": Collect positions of CNS from reference and target genomes...\n";
 
-
 open ($CNSInputFile,"sort -t',' -k6,6 -k7,7n $ARGV[1] |") ||  die "ERROR: Cannot find CNS file $ARGV[1].\n";
 my $CNSLineCounter =0;
 
@@ -195,10 +192,11 @@ while(<$CNSInputFile>) {
 	my ($locus, $startRel, $endRel, $pval,$upordown, $chromosome, $start, $end, $orf) = split /,/;
 	my $relatedCNSName = $CNSList[$CNSLineCounter];
 	push (@{ $CNSDB{$relatedCNSName}{'Position'} }, {
-		'Genome' => $refGenome,
-		'RefLocus' => $locus,
-		'TargetLocus' => $locus,
+		'Genome' => $referenceGenome,
+		'RefLocus' => "$referenceSpecies-$referenceGenome-$locus",
+		'TargetLocus' => "$referenceSpecies-$referenceGenome-$locus",
 		'StartRel' => $startRel,
+		'phyloPval' => $pval,
 		'UpDown' => $upordown});
 	
 	my @targetPositions = @{ $mappings{$locus} };
@@ -206,7 +204,7 @@ while(<$CNSInputFile>) {
 		if(overlap($startRel, $endRel,  $curTargetPos->{'StartRefRel'},  $curTargetPos->{'StartRefRel'} +  $curTargetPos->{'Length'})) {
 			push (@{ $CNSDB{$relatedCNSName}{'Position'} }, {
 				'Genome' => $curTargetPos->{'TargetGenome'},
-				'RefLocus' => $locus,
+				'RefLocus' => "$referenceSpecies-$referenceGenome-$locus",
 				'TargetLocus' => $curTargetPos->{'TargetLocus'},
 				'StartRel' => $curTargetPos->{'TargetStartRel'},
 				'phyloPval' => $pval,
@@ -222,54 +220,26 @@ print localtime() . ": Done collecting positions from reference.\n";
 close ($CNSInputFile);
 ####### Done filtering and indexing
 ### Now calculate CNS level statistics
-my $totalSpecies = scalar keys %targetSpecies;
-
-foreach my $curCNS ( keys %CNSDB ) {
-	my %targetGenomes;
-	my $curLocus;
-	my @positions = @{ $CNSDB{$curCNS}{'Position'} };
-	foreach my $curTargetPos (@{ positions }) {
-		$targetGenomes { $curTargetPos->{'Genome'} } =1;
-		$curLocus = $curTargetPos->{'RefLocus'};
-	}
-	$CNSDB{$curCNS}{'ConservationLevel'} = ceil( (scalar keys %targetGenomes)/$totalSpecies*100 ) /100;
-	my @speciesPerLocus = keys %{ $targetSpeciesPerLocus{$curLocus} };
-	my $totalSpeciesPerLocus = scalar @speciesPerLocus; 
-	$CNSDB{$curCNS}{'ConservationLevelPerLocus'} = ceil( (scalar keys %targetGenomes)/$totalSpeciesPerLocus*100 ) /100;
-	### This value can be greater than 1 if the CNS is shared by more than one locus. If it is, cap at 1.
-	if( $CNSDB{$curCNS}{'ConservationLevelPerLocus'} >1) {
-		$CNSDB{$curCNS}{'ConservationLevelPerLocus'} = 1;
-	}
-	
-	my @positionSum;
-	foreach my $curTargetPos (@{ positions }) {
-		push @positionSum, abs($curTargetPos->{'StartRel'});	
-	}
-	
-	$CNSDB{$curCNS}{'PositionVariability'} = 0;
-}
 
 
 print localtime() . ": Done calculating statistics.\n";
 ######### Finally, dump the tables
 
-open (my $outputCNS, ">$family.cns.table.csv");
-open (my $outputPosition, ">$family.cns.position.table.csv");
+open (my $outputCNS, ">$referenceGenome.cns.table.csv");
+open (my $outputPosition, ">$referenceGenome.cns.position.table.csv");
 
 foreach my $curCNS ( keys %CNSDB ) {
-	print $outputCNS $family . "," .
-					 $curCNS . "," .
+	print $outputCNS $curCNS . "," .
+					 $referenceGenome . "," .
 					 $CNSDB{$curCNS}{'Chromosome'} . "," . 
 					 $CNSDB{$curCNS}{'Start'} . "," .
 					 $CNSDB{$curCNS}{'End'} . "," .
 					 $CNSDB{$curCNS}{'ORFCheck'} . "," .
-					 $CNSDB{$curCNS}{'TECheck'} . "," .
-					 $CNSDB{$curCNS}{'ConservationLevel'} . "," .
-					 $CNSDB{$curCNS}{'ConservationLevelPerLocus'} . "," .
-					 $CNSDB{$curCNS}{'PositionVariability'} . "\n";
+					 $CNSDB{$curCNS}{'TECheck'} . "\n";
+				 
+				 
 	my @positions = @{ $CNSDB{$curCNS}{'Position'} };
 	
-	#### ADD CNSID To Position file????
 	foreach my $curPos ( @positions ) {
 		print $outputPosition $curCNS . "," .
 							  $curPos->{'RefLocus'} . "," . 

@@ -23,11 +23,17 @@ my $skipConservation=0;
 my $minIdentity=0;
 my $minSpeciesNum= -1;
 my $minPhyloPscore=0;
+my $referenceGenome="";
+my $geneListFileName;
+my $global=1;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"reference=s" => \$referenceGenome,
+			"global" => \$global,
 			"family=s" => \$family,
 			"threads=i" => \$threads,
 			"version=i" => \$version,
+			"genelist=s" => \$geneListFileName,
 			"min-identity=i" => \$minIdentity,
 			"min-species=i" => \$minSpeciesNum,
 			"min-phylop-score=f" => \$minPhyloPscore,
@@ -38,7 +44,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"help" => \$help) or die("Error in command line arguments\n");
 
 			
-if($help || $family eq "" || ($version != 1 && $version !=2)) {
+if($help || (!$global && $family eq "") || ($version != 1 && $version !=2) || ($global && $referenceGenome eq "")) {
 	print "Conservatory version 0.0.1\n\n";
 	
 	print "processConservation --family <family>\n\n";
@@ -60,10 +66,13 @@ if($help || $family eq "" || ($version != 1 && $version !=2)) {
 #################### Set up files
 my $genomedb_file = "$conservatoryDir/genome_database.csv";
 my $outputDir = "$conservatoryDir/alignments/$family";
+if($global) {
+	$outputDir = "$conservatoryDir/alignments/$referenceGenome";
+}
 my $conservationDir = "$conservatoryDir/CNS";
 my $alignmentDir = "$conservatoryDir/alignments";
 my $genomesDir = "$conservatoryDir/genomes";
-my $geneListFileName;
+
 
 #### set up parallel processing
 @threadPids = (0) x $threads;
@@ -82,9 +91,6 @@ die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" u
 my $t_phyloP = `sh -c 'command -v phyloP'`;
 die "ERROR: Cannot find phyloP in path. Please make sure phast is installed.\n" unless ($t_phyloP ne "");  
 
-### Clear old locks
-system("rm $outputDir/*.lock");
-
 ######## Read genome database file.
 	
 open(my $genomedb, "<", $genomedb_file);
@@ -92,13 +98,20 @@ my $header=<$genomedb>;
 while(my $curgenomeline= <$genomedb>) {
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference) = split /,/, $curgenomeline;
 
-	if($family eq $curgenomeFamily && $curgenomeName eq $curgenomeReference) {
+	if( (!$global && ($family eq $curgenomeFamily && $curgenomeName eq $curgenomeReference)) || ($global && $curgenomeName eq $referenceGenome) ) {
 		$genomeWasProcessed=1;
 		
 		#### First, genome sanity check. See that we have all files.
-		print localtime() . ": START processing conservation for $family (reference genome $curgenomeName)\n";
-		$geneListFileName = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.footprint.gff3";
-		die localtime() . ": ABORT Cannot find footprint file ($geneListFileName). Was processGenomes run?\n" unless -e $geneListFileName;
+		if($global) {
+			print localtime() . ": START processing conservation for  reference genome $referenceGenome\n";
+		} else {
+			print localtime() . ": START processing conservation for $family (reference genome $curgenomeName)\n";
+		}
+		if($geneListFileName eq "") {
+			$geneListFileName = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.footprint.gff3";
+		}
+		die localtime() . ": ABORT Cannot find gene list file name ($geneListFileName).\n" unless -e $geneListFileName;
+		
 		### Start threads
 		if(!($skipAlignment && $skipConservation)) {
 			
@@ -109,6 +122,9 @@ while(my $curgenomeline= <$genomedb>) {
 					my @array = split /\t/, $geneline;
 					my %geneparam = split/[;=]/, $array[8];
 					($curLocus) = $geneparam{'Name'};
+					
+					## Get genename
+					$curLocus =~ s/^.[^-]*-[^-]*-//;
 					
 					# now find a place for the thread
 					
@@ -122,14 +138,24 @@ while(my $curgenomeline= <$genomedb>) {
 					my $forkChildPid = fork();
 					if(!$forkChildPid) {	#### In the child process
 						print localtime() . ": Thread $placeForProcess is processing $curLocus.\n";
-						my $alignmentParams = "--family $family --locus $curLocus ";
+						my $alignmentParams;
+						
+						if ($global) {
+							$alignmentParams = "--reference $referenceGenome --locus $curLocus ";
+						} else {
+							$alignmentParams = "--family $family --locus $curLocus ";
+						}						
 						if($minIdentity>0) { $alignmentParams .= " --min-identity $minIdentity"; }
 						if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
 						if($minPhyloPscore>0) { $alignmentParams .= " --min-phylop-score $minPhyloPscore"; }   		
 						if($force) { $alignmentParams .= " --force"; }
 						if($skipAlignment) { $alignmentParams .= " --skip-alignment"; }
 						if($skipConservation) { $alignmentParams .= " --skip-conservation"; }
-						system("perl $conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
+						if($global) {
+							system("perl $conservatoryDir/scripts/buildConservation $alignmentParams");
+						} else {
+							system("perl $conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
+						}
 						exit;
 					} else {
 						$threadPids[$placeForProcess] = $forkChildPid;
@@ -144,6 +170,9 @@ while(my $curgenomeline= <$genomedb>) {
 		}
 		## Merge all BAM, sort and index
 		print localtime() . ": START data merge and sort.\n";
+		if($global) {
+			$family = $referenceGenome;
+		}
 		unlink("$alignmentDir/$family.bam");
 		system("find $outputDir -name \"*.bam\" > $outputDir/$family.bams.txt");
 		system("ulimit -n 200000; samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");
@@ -170,11 +199,11 @@ while(my $curgenomeline= <$genomedb>) {
 		# sort files
 		system("sort -t',' -k1,1 -k7,7n -o $conservationDir/$family.csv $conservationDir/$family.csv");
 		system("sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
-		system("sort -k1,1 -k2,2nr -u -o $alignmentDir/$family.map.txt $alignmentDir/$family.map.txt");
+		system("sort -k1,1 -k2,2nr -o $alignmentDir/$family.map.txt $alignmentDir/$family.map.txt");
 
 		# Make nice output files. BW for the phylop track and GFF for the CNS
 		system("bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
-		system("perl $conservatoryDir/scripts/buildConCNS --family  $family --format GFF --CNSfile $conservationDir/$family.csv");
+		system("perl $conservatoryDir/scripts/buildConCNS --family  $family --format GFF --CNSfile $conservationDir/$family.cs > $conservationDir/$family.gff3");
 		print localtime() . ": END data merge and sort.\n";		
 
 		print localtime() . ": END processing conservation for $family (reference genome $curgenomeName)\n";

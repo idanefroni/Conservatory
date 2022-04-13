@@ -495,7 +495,7 @@ if(-e $treeFileName && !$skipConservation) {
 		}
 	}
 	close($refFootprintFile);
-	if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd. Upstbeam sequence $upstreamLengthReference bp. Downstream sequence $downstreamLengthReference bp.\n"; }
+	if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd. Upstream sequence $upstreamLengthReference bp. Downstream sequence $downstreamLengthReference bp.\n"; }
 
 	my $coordinateTranslateAwkUp;
 	my $coordinateTranslateStrUp;
@@ -613,7 +613,7 @@ sub geneToSpecies {
 
 sub fullNameToShortName {
 	(my $geneName) = @_;
-	$geneName =~ s/^.*-//;
+	$geneName =~ s/^.[^-]*-[^-]*-//;
 	return $geneName;
 }
 
