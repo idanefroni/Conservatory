@@ -39,7 +39,7 @@ my $minPhyloPscore=1.5;
 my $noFlagORF=0;
 my $minORFLength="auto";
 my $onlyOneOrtholog=0;
-my $minHSPthreshold=2000;
+my $minHSPthreshold=1800;
 my $orthologSelectionStrategy = "bestmean";
 
 ########### Reg Seq lengths
@@ -129,7 +129,7 @@ die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" u
 my $t_phyloP = `sh -c 'command -v phyloP'`;
 die "ERROR: Cannot find phyloP in path. Please make sure phast is installed.\n" unless ($t_phyloP ne "");  
 
-die "ERROR: Cannot find the ORFfinder executable utility at $conservatoryDir/scripts.\n" unless (-x "$conservatoryDir/scripts");
+die "ERROR: Cannot find the ORFfinder executable utility at $conservatoryDir/scripts.\n" unless (-x "$conservatoryDir/scripts/ORFfinder");
 
 ### make place for the alignment and CNS
 if (! -e $outputDir) { mkdir($outputDir); }
@@ -182,7 +182,7 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 	chomp;
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/;
 
-	if(substr($curgenomeName,0,1) ne "#" && $curgenomeName ne $referenceGenome) { #if this is not the reference or comment 
+	if(substr($curgenomeName,0,1) ne "#" ) { #if this is not a comment 
 		### get ortholog sequences
 		my $orthologFileName = "$genomeDir/$curgenomeFamily/$referenceGenome.$curgenomeName.orthologs.csv";
 		my $orthologFileFound = open (my $orthologFile, "<", $orthologFileName);
@@ -192,7 +192,7 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 			while(my $orth_line = <$orthologFile>) {
 				chomp($orth_line);
 				(my $curPutativeOrtholog, my $curRefLocus, my $score) = split /,/,$orth_line;
-				if($curRefLocus eq $locusFullName) {
+				if($curRefLocus eq $locusFullName && $curPutativeOrtholog ne $curRefLocus) {
 					my $upstreamFastaName ="$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.up.fasta";
 					my $downstreamFastaName = "$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.down.fasta";
 					extractFastaToFile("$genomeDir/$curgenomeFamily/$curgenomeName.upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
@@ -208,7 +208,9 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 					#############################################################
 					if($upQuality+$downQuality > $minQuality) {
 					
-						if($verbose) { print "PROGRESS: Found possible CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n"; }
+						if($verbose && $curgenomeName ne $referenceGenome) { print "PROGRESS: Found possible CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n"; }
+						if($verbose && $curgenomeName eq $referenceGenome) { print "PROGRESS: Found possible CRE-paralog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n"; }
+						
 						if(not defined $orthologs{$curgenomeSpecies}) {
 							$orthologs{$curgenomeSpecies} = [ {
 								'Name' => $curPutativeOrtholog,
@@ -238,7 +240,9 @@ if((!(-e "$outputDir/$locus.up.fasta" && -e "$outputDir/$locus.down.fasta") || $
 								'DownQuality' => $downQuality});
 								}
 						} else {
-							if($verbose) { print "PROGRESS: Rejected CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: $upQuality.\n"; }
+							if($verbose && $curgenomeName ne $referenceGenome) { print "PROGRESS: Rejected CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: $upQuality.\n"; }
+							if($verbose && $curgenomeName eq $referenceGenome) { print "PROGRESS: Rejected CRE-paralog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: $upQuality.\n"; }
+							unlink($MAFDownFileName);
 							unlink($MAFUpFileName);
 							unlink($upstreamFastaName);
 							unlink($downstreamFastaName);
@@ -451,8 +455,8 @@ if(!$keep_tmp) {
 			unlink($orthologToAlign->{'upstreamFileName'});
 			unlink($orthologToAlign->{'downstreamFileName'});
 			
-			unlink("$tmpDir/$locus" . "." . $orthologToAlign->{'Name'} . ".up.maf");
-			unlink("$tmpDir/$locus" . "." . $orthologToAlign->{'Name'} . ".down.maf");
+			unlink("$tmpDir/$orthologToAlign->{'MAFUpFileName'}");
+			unlink("$tmpDir/$orthologToAlign->{'MAFDownFileName'}");
 		}
 		
 	}
@@ -463,7 +467,7 @@ if($verbose) { if(-e "$outputDir/$locus.up.fasta") { print "PROGRESS: Done align
 
 
 ######## Now do phyloP.
-my $treeFileName = "$conservatoryDir/genomes/planttree.mod";
+my $treeFileName = "$conservatoryDir/genomes/$referenceGenome.mod";
 
 ### Make sure we have the tree information. If not, just say so and skip
 
@@ -475,7 +479,6 @@ if(-e $treeFileName && !$skipConservation) {
 
 	my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
 	my $finalFASTADownFileName = "$outputDir/$locus.down.fasta";
-
 	
 	### Extract the absolute coordinates of the locus
 	my $refFootprintFileName = "$conservatoryDir/genomes/$referenceGenomeFamily/$referenceGenome.footprint.gff3";

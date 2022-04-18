@@ -1,7 +1,0 @@
-# Created on 13/11/12 by jdutheil
-# Last update 20/06/16 by jdutheil
-
-This example file parses the 46-ways vertebrate alignment from UCSC.
-The data are not included in this folder because of size.
-You have to edit the .bpp files to specify your own path toward the input maf files.
-

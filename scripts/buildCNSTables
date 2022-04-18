@@ -4,7 +4,6 @@ use POSIX;
 use strict;
 use Cwd 'abs_path';
 use List::Util qw(min max);
-use Statistics::Descriptive;
 use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
@@ -224,9 +223,10 @@ close ($CNSInputFile);
 
 print localtime() . ": Done calculating statistics.\n";
 ######### Finally, dump the tables
+mkdir("$conservatoryDir/output");
 
-open (my $outputCNS, ">$referenceGenome.cns.table.csv");
-open (my $outputPosition, ">$referenceGenome.cns.position.table.csv");
+open (my $outputCNS, ">$conservatoryDir/output/$referenceGenome.cns.table.csv");
+open (my $outputPosition, ">$conservatoryDir/output/$referenceGenome.cns.position.table.csv");
 
 foreach my $curCNS ( keys %CNSDB ) {
 	print $outputCNS $curCNS . "," .

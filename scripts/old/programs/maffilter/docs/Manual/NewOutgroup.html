@@ -1,0 +1,108 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- This is the manual of MafFilter, version 1.3.1.
+
+Copyright (C) 2018 Julien Y. Dutheil -->
+<!-- Created by GNU Texinfo 6.1, http://www.gnu.org/software/texinfo/ -->
+<head>
+<title>MafFilter Manual 1.3.1: NewOutgroup</title>
+
+<meta name="description" content="MafFilter Manual 1.3.1: NewOutgroup">
+<meta name="keywords" content="MafFilter Manual 1.3.1: NewOutgroup">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Phylogenetics.html#Phylogenetics" rel="up" title="Phylogenetics">
+<link href="DropSpecies.html#DropSpecies" rel="next" title="DropSpecies">
+<link href="DistanceBasedPhylogeny.html#DistanceBasedPhylogeny" rel="prev" title="DistanceBasedPhylogeny">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="http://www.w3.org/StyleSheets/Core/Steely">
+
+
+</head>
+
+<body lang="en">
+<a name="NewOutgroup"></a>
+<div class="header">
+<p>
+Next: <a href="DropSpecies.html#DropSpecies" accesskey="n" rel="next">DropSpecies</a>, Previous: <a href="DistanceBasedPhylogeny.html#DistanceBasedPhylogeny" accesskey="p" rel="prev">DistanceBasedPhylogeny</a>, Up: <a href="Phylogenetics.html#Phylogenetics" accesskey="u" rel="up">Phylogenetics</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>]</p>
+</div>
+<a name="Root-trees"></a>
+<h4 class="subsubsection">2.3.2.3 Root trees</h4>
+
+<p>The <code>NewOutgroup</code> filter takes an input tree and (re)root it according to a given species name.
+</p>
+<a name="Synopsis_003a-31"></a>
+<h3 class="heading">Synopsis:</h3>
+
+<table class="cartouche" border="1"><tr><td>
+<div class="example">
+<pre class="example">maf.filter=                                 \
+    [...],
+    NewOutgroup(                            \
+        tree_input=BioNJ,                   \
+        tree_output=NioNJ_rooted,           \
+        outgroup=outgroupSpecies),          \
+    [...]
+</pre></div>
+</td></tr></table>
+
+<a name="Arguments_003a-31"></a>
+<h3 class="heading">Arguments:</h3>
+
+<dl compact="compact">
+<dt><code>tree_input={string}</code></dt>
+<dd><p>The tag name of the tree to reroot.
+</p></dd>
+<dt><code>tree_output={string}</code></dt>
+<dd><p>The tag name to use to store the rerooted tree. If the same as <code>tree_input</code>, the rerooted tree will replace the old one.
+</p></dd>
+<dt><code>outgroup={string}</code></dt>
+<dd><p>The name of the species to use as outgroup. One and only one sequence for this species should be present in each block for which rerooting is to be performed.
+</p></dd>
+</dl>
+
+<a name="Extra_002ddata_003a-2"></a>
+<h3 class="heading">Extra-data:</h3>
+
+<dl compact="compact">
+<dt><code>(user-defined tag)</code></dt>
+<dd><p>A rooted tree.
+</p></dd>
+</dl>
+
+
+
+
+
+</body>
+</html>

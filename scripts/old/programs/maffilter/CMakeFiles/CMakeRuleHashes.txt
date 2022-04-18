@@ -1,0 +1,5 @@
+# Hashes of file build rules.
+f4946e6ecec2cba399ef9160df71b9a0 CMakeFiles/dist
+1b434d7f5f41a9e8c74a21fc61f2a381 CMakeFiles/rpm
+5ba772af523af073b36b4731f4c82f45 man/CMakeFiles/man
+5336b445b7022b482479ab2d955f76d6 man/maffilter.1.gz

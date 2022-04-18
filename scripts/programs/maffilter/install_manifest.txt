@@ -1,2 +1,0 @@
-/usr/local/bin/maffilter
-/usr/local/share/man/man1/maffilter.1.gz

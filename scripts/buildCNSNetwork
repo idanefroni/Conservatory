@@ -1,0 +1,175 @@
+#!/usr/bin/perl
+
+use POSIX;
+use strict;
+use Cwd 'abs_path';
+use List::Util qw(min max);
+use Statistics::Descriptive;
+use Getopt::Long;
+use Bio::AlignIO;
+use Bio::Tools::GFF;
+use Bio::SeqFeatureI;
+
+
+my $lociListFileName;
+my $conservatoryDir=abs_path(".");
+my $genomeDatabaseFileName = "genome_database.csv";
+my $help=0;
+my $force=0;
+
+GetOptions ("conservatory-directory=s" => \$conservatoryDir,
+		    "genome-database=s" => \$genomeDatabaseFileName,
+			"loci-list=s" => \$lociListFileName,
+			"force" => \$force, 
+			"help" => \$help) or die ("Error in command line arguments\n");
+			
+			
+if($help || $lociListFileName eq "") {
+   print "buildCNSNetwork --loci-list <File name containing list of genes>\n\n\n";
+   print "\t--conservatory-directory\t\tPath of the main conservatory directory.\n";
+   print "\t--loci-list\t\t\tFile containing list of genes (REQUIRED).\n";
+   print "\t--help\t\t\tShow this message.\n";
+
+   die;
+}
+
+
+#### Read the genome database file
+my %genomeDatabase;
+my $genomedbFile = "$conservatoryDir/$genomeDatabaseFileName";
+my $tmpDir = "$conservatoryDir/tmp/";
+
+open (my $genomeDatabase, "<", $genomedbFile);
+my $header = <$genomeDatabase>;
+while(my $curgenomeline = <$genomeDatabase>) {
+	if(substr($curgenomeline,0,1) ne "#")  {
+		chomp($curgenomeline);
+		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx,$clade1,$clade2) = split /,/, $curgenomeline;
+		$genomeDatabase{$curgenomeSpecies}{'Family'} = $curgenomeFamily;
+		$genomeDatabase{$curgenomeSpecies}{'Species'} = $curgenomeSpecies;
+		$genomeDatabase{$curgenomeSpecies}{'Clade1'} = $clade1;
+		$genomeDatabase{$curgenomeSpecies}{'Clade2'} = $clade2;	
+	}
+}
+
+###### First, assemble the CNS and mapping
+my $allCNS = "$conservatoryDir/output/All.cns.table.csv";
+my $allPositions = "$conservatoryDir/output/All.positions.map.csv";
+my $myLociPositions = "$conservatoryDir/output/myLoci.positions.map.csv";
+
+my $mergedCNSFileName = "$conservatoryDir/output/myLoci.mergedCNS.csv";
+
+unlink("$mergedCNSFileName");
+unlink("$myLociPositions");
+
+if(! -e $allPositions || $force) {
+	print localtime(). ": Assemble all alignments...\n";
+	system("cat $conservatoryDir/output/*.cns.position.table.csv > $allPositions");
+}
+if(! -e $allCNS || $force) {
+	print localtime(). ": Assemble all CNS...\n";
+	system("cat $conservatoryDir/output/*.cns.table.csv > $allCNS");
+}
+
+###### Filter the gene list and merge CNS
+
+system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositions > $myLociPositions");
+system("perl $conservatoryDir/scripts/mergeCNSTables $allCNS $myLociPositions > $mergedCNSFileName");
+
+### Build the CNS dictionary hash
+my %cnsDic;
+open(my $allCNSFile, $allCNS) || die ("Internal error");
+
+while(my $cnsLine = <$allCNSFile>) {
+	chomp($cnsLine);
+	my ($CNSID,$referenceSpecies,$chromosome,$start,$end) = split /,/, $cnsLine;
+	$cnsDic{$CNSID}{'Reference'} = $referenceSpecies;
+	$cnsDic{$CNSID}{'Start'} = $start;
+	$cnsDic{$CNSID}{'Length'} = $end - $start;
+}
+close($allCNSFile);
+
+## Now make network sif file
+my $outputSIFFileName = "$conservatoryDir/output/myLoci.network.sif";
+my $outputDictionaryFileName = "$conservatoryDir/output/myLoci.dic.csv";
+
+open(my $outputSIFFile, ">$outputSIFFileName");
+open(my $outputDictionaryFile, ">$outputDictionaryFileName");
+
+my %nodesDic;
+
+my %nodeCNSHistory;
+
+open (my $nodeFile, $myLociPositions) || die ("Internal error");
+while(my $curNodeLine = <$nodeFile>) {
+	chomp($curNodeLine);
+	my ($CNSID,$referenceLocus,$species,$locus,$relativePos, $upOrDown, $pval) = split /,/, $curNodeLine;
+	$nodesDic{$CNSID}{'Type'} = "CNS-" . $upOrDown;
+	$nodesDic{$CNSID}{'Species'} = $referenceLocus;
+	$nodesDic{$CNSID}{'Family'} = "CNS";
+	$nodesDic{$CNSID}{'Clade1'} = "CNS";
+	$nodesDic{$CNSID}{'Clade2'} = "CNS";
+	$nodesDic{$CNSID}{'DicName'} = $CNSID;
+	$nodesDic{$CNSID}{'Start'} = $cnsDic{$CNSID}{'Start'};
+	$nodesDic{$CNSID}{'Length'} = $cnsDic{$CNSID}{'Length'};
+	
+	$nodesDic{$locus}{'Type'} = "Locus";
+	$nodesDic{$locus}{'Species'} = $species;
+	$nodesDic{$locus}{'Family'} = $genomeDatabase{$species}{'Family'};
+	$nodesDic{$locus}{'Clade1'} = $genomeDatabase{$species}{'Clade1'};
+	$nodesDic{$locus}{'Clade2'} = $genomeDatabase{$species}{'Clade2'};
+	$nodesDic{$locus}{'DicName'} = $locus;
+	$nodesDic{$locus}{'Start'} = $relativePos;
+	$nodesDic{$locus}{'Length'} = 0;
+
+	### Remove duplicates
+	if(! defined $nodeCNSHistory{$locus}{$CNSID}) { 
+		print $outputSIFFile "$locus has $CNSID\n";
+	} else {
+		$nodeCNSHistory{$locus}{$CNSID} = 1;		
+	}
+}
+close($nodeFile);
+
+open (my $mergedCNSFile, $mergedCNSFileName);
+while(my $curMergedCNSLine = <$mergedCNSFile>) {
+	chomp ($curMergedCNSLine);
+	my ($CNSIDA,$CNSIDB) = split /,/, $curMergedCNSLine;
+	print $outputSIFFile  "$CNSIDA is $CNSIDB\n";
+}
+close($mergedCNSFile);
+
+## read the short name
+open (my $lociListFile, $lociListFileName) || die ("Internal error");
+
+while(my $lociLine = <$lociListFile>) {
+	chomp($lociLine);
+	my ($locus,$genename) = split /,/, $lociLine;
+	$nodesDic{$locus}{'Type'} = "ReferenceLocus";	
+	$nodesDic{$locus}{'DicName'} = $genename;
+}
+
+#### Now dump dictionary
+foreach my $curNode (keys %nodesDic) {
+	
+	print $outputDictionaryFile "$curNode," . $nodesDic{$curNode}{'Type'} . "," .
+											  $nodesDic{$curNode}{'DicName'} . "," .
+											  $nodesDic{$curNode}{'Species'} . "," .
+											  $nodesDic{$curNode}{'Family'} . "," .
+											  $nodesDic{$curNode}{'Clade1'} . "," .										
+											  $nodesDic{$curNode}{'Clade2'} . "," .
+											  $nodesDic{$curNode}{'Start'} . "," .
+											  $nodesDic{$curNode}{'Length'} . "\n";											
+}
+
+close($outputSIFFile);
+close($outputDictionaryFile);
+
+
+
+
+
+
+
+
+

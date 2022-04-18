@@ -1,0 +1,160 @@
+#!/usr/bin/perl
+
+use POSIX;
+use strict;
+use Cwd 'abs_path';
+use List::Util qw(min max);
+use Bio::AlignIO;
+use Bio::Tools::GFF;
+use Bio::SeqFeatureI;
+$|=1;
+
+print STDERR "\nUsage: mergeCNSTables cnsTable positionTable\n\nAccepts CNS and position tables with reference related CNS and generate a table of merged CNS:\n\n";
+print STDERR "\t\tmerged.cns.table.csv\t\tMerged CNS file\n\t\tmerged.cns.position.table.csv\t\tThe position of the CNS in each of the family genomes\n";
+print STDERR "\n\nThe filtered CNS table has the following fields:\n";
+print STDERR "\tCNS_Unique_Name_In_Reference, ReferenceGenome, Chromosome, Start, End, ORFCheck, TECheck\n\n";
+print STDERR "The position table has the following fields:\n";
+print STDERR "\tCNS_Unique_Name, ReferenceGene, Genome, Gene, RelativeStart, UporDown, phyloP-pvalue\n\n\n";
+
+if(scalar @ARGV< 2) {
+	die "\n\nERROR: No CNS and map file provided.\n";
+}
+
+
+my %CNSTable;
+my %positionTable;
+
+open (my $CNSInputFile, $ARGV[0]) ||  die "ERROR: Cannot find CNS file $ARGV[0].\n";
+while(<$CNSInputFile>) {
+	chomp;
+	my ($CNSID, $referenceGenome, $chromosome, $start, $end, $orf, $te) = split /,/;
+	
+	#### Filter ORF and TE flagged CNS
+	if($orf ne "1" && $te ne "1") {
+#	if($orf eq "0") {
+		$CNSTable{$CNSID} =	 {
+				'CNSID' => $CNSID,
+				'ReferenceGenome' => $referenceGenome,
+				'Chromosome' => $chromosome,
+				'Start' => $start,	
+				'End' => $end,
+				'Length' => $end-$start,
+				'TE' => $te,
+				'ORF' => $orf
+		};
+	}
+}
+
+close($CNSInputFile);
+
+open (my $CNSPositionFile, $ARGV[1]) ||  die "ERROR: Cannot find position file $ARGV[1].\n";
+while(<$CNSPositionFile>) {
+	chomp;
+	my ($CNSID, $referenceLocus, $targetGenome, $targetLocus, $targetRelativeStart, $upordown, $pvalue) = split /,/;
+	## Only if non-filtered CNS
+	if(defined $CNSTable{$CNSID}) {
+		if(defined $positionTable{$targetLocus}) {
+			push( @{ $positionTable{$targetLocus}{'Positions'} } , {
+						'CNSID' => $CNSID,
+						'ReferenceGenome' => $CNSTable{$CNSID}{'ReferenceGenome'},
+						'ReferenceLocus' => $referenceLocus,
+						'Start' => $targetRelativeStart,
+						'End' => $targetRelativeStart + $CNSTable{$CNSID}{'Length'},					
+						'Upordown' => $upordown,
+						'pVal' => $pvalue } );
+				
+		} else {
+			$positionTable{$targetLocus} = {
+					'TargetGenome' => $targetGenome,
+					'TargetLocus' => $targetLocus,
+					'Positions' => () };
+			push( @{ $positionTable{$targetLocus}{'Positions'} } , {
+						'CNSID' => $CNSID,
+						'ReferenceGenome' => $CNSTable{$CNSID}{'ReferenceGenome'},
+						'ReferenceLocus' => $referenceLocus,
+						'Start' => $targetRelativeStart,
+						'End' => $targetRelativeStart + $CNSTable{$CNSID}{'Length'},
+						'Upordown' => $upordown,
+						'pVal' => $pvalue } );				
+		
+		}	
+	}
+}
+close($CNSPositionFile);
+
+### Now Identify CNS to merge
+my %CNSToMerge;
+
+foreach my $curLocus (keys %positionTable) {
+
+	my $curPos=0;
+	my @curLocusPositions = @{ $positionTable{$curLocus}{'Positions'} }; 
+	my $curLocusPositionsLength = scalar @curLocusPositions;
+	
+	while( $curPos < $curLocusPositionsLength) {
+		my $curPosStart = $curLocusPositions[$curPos]{'Start'};
+		my $curPosEnd = $curLocusPositions[$curPos]{'End'};
+		my $curPosUporDown = $curLocusPositions[$curPos]{'Upordown'};
+		my $curPosCNSID = $curLocusPositions[$curPos]{'CNSID'};
+		my $curPosReferenceGenome = $curLocusPositions[$curPos]{'ReferenceGenome'};
+
+		my $compareTo= $curPos+1;
+		while ($compareTo <= $curLocusPositionsLength) {
+			my $comparePosStart = $curLocusPositions[$compareTo]{'Start'};
+			my $comparePosEnd = $curLocusPositions[$compareTo]{'End'};
+			my $comparePosUporDown = $curLocusPositions[$compareTo]{'Upordown'};
+			my $comparePosCNSID = $curLocusPositions[$compareTo]{'CNSID'};
+			my $comparePosReferenceGenome = $curLocusPositions[$compareTo]{'ReferenceGenome'};
+			
+			if($curPosCNSID ne $comparePosCNSID && $curPosUporDown eq $comparePosUporDown && $curPosReferenceGenome ne $comparePosReferenceGenome) {
+				if(overlap($curPosStart, $curPosEnd, $comparePosStart, $comparePosEnd)) {
+					if(defined $CNSToMerge{$curPosCNSID}{$comparePosCNSID} || defined $CNSToMerge{$comparePosCNSID}{$curPosCNSID} ) {
+						### It it is already merged
+					} else {
+						$CNSToMerge{$curPosCNSID}{$comparePosCNSID} =1;
+						$CNSToMerge{$comparePosCNSID}{$curPosCNSID} =1;
+					}
+				}
+			}
+			$compareTo++;
+		}
+		$curPos++;
+	}
+}
+
+##########
+print STDERR "Merging " . scalar (keys %CNSToMerge) . " CNS..\n";
+foreach my $curCNS (keys %CNSToMerge) {
+	foreach my $targetCNS (keys %{ $CNSToMerge{$curCNS} }) {
+		print "$curCNS,$targetCNS\n";
+	}
+}
+
+
+
+
+
+
+### Compute overlap between two fragments
+sub overlap {
+	my ($startOne, $endOne, $startTwo, $endTwo) =@_;
+	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
+		 ($startOne > $endTwo)) {
+		return 0;
+	} else {
+		#### return the percent overlap
+		if($endOne < $endTwo) {
+			if($startOne >= $startTwo) {
+				return 1;
+			} else {
+				return ($endOne -$startTwo) /($endOne - $startOne);
+			} 
+		} else {
+			if($startOne <= $startTwo) {
+				return 1;
+			} else {
+				return ($endTwo -$startOne) /($endOne - $startOne);
+			} 			
+		}
+	}
+}

@@ -29,8 +29,6 @@ my $global=1;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"reference=s" => \$referenceGenome,
-			"global" => \$global,
-			"family=s" => \$family,
 			"threads=i" => \$threads,
 			"version=i" => \$version,
 			"genelist=s" => \$geneListFileName,
@@ -49,7 +47,8 @@ if($help || (!$global && $family eq "") || ($version != 1 && $version !=2) || ($
 	
 	print "processConservation --family <family>\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
-	print "\t--family\t\tFamily for which to process conservation (REQUIRED).\n";
+	print "\t--reference\t\tThe reference genome (REQUIRED).\n";
+	print "\t--genelist\t\tThe list of genes to process (DEFAULT: all genes in the reference genome).\n";
 	print "\t--min-identity\t\tMinimum identity for LASTZ alignments.\n";
 	print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS.\n";
 	print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS.\n";
@@ -172,6 +171,7 @@ while(my $curgenomeline= <$genomedb>) {
 		print localtime() . ": START data merge and sort.\n";
 		if($global) {
 			$family = $referenceGenome;
+			$curgenomeReference = $referenceGenome;
 		}
 		unlink("$alignmentDir/$family.bam");
 		system("find $outputDir -name \"*.bam\" > $outputDir/$family.bams.txt");
@@ -192,20 +192,27 @@ while(my $curgenomeline= <$genomedb>) {
 		unlink("$conservationDir/$family.bw");
 		
 		# merge gene files for entire genome
-		system("for a in $conservationDir/$family/*.csv; do cat \$a >> $conservationDir/$family.csv; done");
+		system("for a in $conservationDir/$family/*.csv; do cat \$a >> $conservationDir/$family.csv.tmp; done");
 		system("for a in $conservationDir/$family/*.bed; do cat \$a | sed 's/ /\t/g' >> $conservationDir/$family.bed; done");
-		system("for a in $alignmentDir/$family/*.map.txt; do cat \$a >> $alignmentDir/$family.map.txt; done");
+		system("for a in $alignmentDir/$family/*.map.txt; do cat \$a >> $alignmentDir/$family.map.txt.tmp; done");
 	
 		# sort files
-		system("sort -t',' -k1,1 -k7,7n -o $conservationDir/$family.csv $conservationDir/$family.csv");
+		system("sort -t',' -k1,1 -k7,7n $conservationDir/$family.csv.tmp | uniq > $conservationDir/$family.csv");
 		system("sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
-		system("sort -k1,1 -k2,2nr -o $alignmentDir/$family.map.txt $alignmentDir/$family.map.txt");
+		system("sort -k1,1 -k2,2nr $alignmentDir/$family.map.txt.tmp | uniq > $alignmentDir/$family.map.txt");
+		unlink("$conservationDir/$family.csv.tmp");
+		unlink("$alignmentDir/$family.map.txt.tmp");
 
 		# Make nice output files. BW for the phylop track and GFF for the CNS
 		system("bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
-		system("perl $conservatoryDir/scripts/buildConCNS --family  $family --format GFF --CNSfile $conservationDir/$family.cs > $conservationDir/$family.gff3");
+		system("perl $conservatoryDir/scripts/buildConCNS --family  $family --format GFF --CNSfile $conservationDir/$family.csv > $conservationDir/$family.gff3");
 		print localtime() . ": END data merge and sort.\n";		
+		## Process CNS tables and flag TEs
+		print localtime() . ": START build CNS tables.\n";
+		system("perl $conservatoryDir/scripts/buildCNSTables $family $conservationDir/$family.csv $alignmentDir/$family.map.txt $conservatoryDir/genomes/TE/$family.te.gff3");
 
+		print localtime() . ": END CNS table build.\n";
+		
 		print localtime() . ": END processing conservation for $family (reference genome $curgenomeName)\n";
 	}
 }

@@ -1,0 +1,124 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- This is the manual of MafFilter, version 1.3.1.
+
+Copyright (C) 2018 Julien Y. Dutheil -->
+<!-- Created by GNU Texinfo 6.1, http://www.gnu.org/software/texinfo/ -->
+<head>
+<title>MafFilter Manual 1.3.1: SiteFrequencySpectrum</title>
+
+<meta name="description" content="MafFilter Manual 1.3.1: SiteFrequencySpectrum">
+<meta name="keywords" content="MafFilter Manual 1.3.1: SiteFrequencySpectrum">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="makeinfo">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="index.html#Top" rel="start" title="Top">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Descriptive.html#Descriptive" rel="up" title="Descriptive">
+<link href="PolymorphismStatistics.html#PolymorphismStatistics" rel="next" title="PolymorphismStatistics">
+<link href="FourSpeciesSitePatternCounts.html#FourSpeciesSitePatternCounts" rel="prev" title="FourSpeciesSitePatternCounts">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+blockquote.smallindentedblock {margin-right: 0em; font-size: smaller}
+blockquote.smallquotation {font-size: smaller}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+div.smalldisplay {margin-left: 3.2em}
+div.smallexample {margin-left: 3.2em}
+div.smalllisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+pre.smalldisplay {font-family: inherit; font-size: smaller}
+pre.smallexample {font-size: smaller}
+pre.smallformat {font-family: inherit; font-size: smaller}
+pre.smalllisp {font-size: smaller}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+<link rel="stylesheet" type="text/css" href="http://www.w3.org/StyleSheets/Core/Steely">
+
+
+</head>
+
+<body lang="en">
+<a name="SiteFrequencySpectrum"></a>
+<div class="header">
+<p>
+Next: <a href="PolymorphismStatistics.html#PolymorphismStatistics" accesskey="n" rel="next">PolymorphismStatistics</a>, Previous: <a href="FourSpeciesSitePatternCounts.html#FourSpeciesSitePatternCounts" accesskey="p" rel="prev">FourSpeciesSitePatternCounts</a>, Up: <a href="Descriptive.html#Descriptive" accesskey="u" rel="up">Descriptive</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>]</p>
+</div>
+<a name="Site-frequency-spectrum"></a>
+<h4 class="subsubsection">2.3.1.9 Site frequency spectrum</h4>
+<p>The <code>SiteFrequencySpectrum</code> computes the site frequency spectrum for each block.
+Only positions in the alignment with only two states are considered.
+The proportions of bi-allelic sites are then computed by bins.
+Lets consider the following example with 7 sequences:
+</p><pre class="verbatim">ACGT
+ACTT
+AGTT
+AGTT
+TCTT
+TCTT
+TCTT
+</pre><p>It contains one site with 4/7 (eq 3/7), one site with 2/7 (eq 5/7), one site with 1/7 (eq 6/7) and one site 0/7 (eq 7/7).
+With seven sequences, there are actually 4 possibles frequencies: 1/7, 2/7, 3/7 and 4/7 (plus the 0/7 frequency, corresponding to a site with no-mutation).
+It is possible to compute all these frequencies individually by settingthe <code>bounds</code> parameter to
+</p><pre class="verbatim">SiteFrequencySpectrum(bounds=(-0.5,0.5,1.5,2.5,3.5,4.5), ...)
+</pre><p>which will output the number of site with 0, 1, 2, 3 or 4 minor states. Sites with more than 2 states are always counted separately, as well as sites containing unresolved characters.
+If one want to count only constant sites for instance, one can simply type
+</p><pre class="verbatim">SiteFrequencySpectrum(bounds=(-0.5,0.5), ...)
+</pre><p>The remaining sites will be pulled in a column called &ldquo;Ignored&rdquo;.
+</p> 
+<a name="Synopsis_003a-24"></a>
+<h3 class="heading">Synopsis:</h3>
+
+<table class="cartouche" border="1"><tr><td>
+<div class="example">
+<pre class="example">maf.filter=                                 \
+    [...],                                   
+    SequenceStatistics(                     \
+        statistics=(\                       \
+            [...],                                                    
+            SiteFrequencySpectrum(          \
+                bounds=(-0.5, 0.5, 1.5),    \
+                ingroup=(pop1, pop2, pop3), \
+                outgroup=species2,          \
+            [...]),                         \
+        ref_species=pop1,                   \
+        file=data.statistics.csv),          \
+    [...]
+</pre></div>
+</td></tr></table>
+
+<a name="Arguments_003a-24"></a>
+<h3 class="heading">Arguments:</h3>
+<dl compact="compact">
+<dt><code>bounds={list of double}</code></dt>
+<dd><p>The bounds delimiting the bins of the spectrum to be computed.
+</p>
+</dd>
+<dt><code>ingroup={list}</code></dt>
+<dd><p>A list of species forming the ingroup and on which the statistics should be calculated.
+</p>
+</dd>
+<dt><code>outgroup=species</code></dt>
+<dd><p>A species name saying which sequence should be used to determine the ancestral state. If non-empty, the unfolded frequency spectrum will be computed.
+If empty, the folded frequency spectrum will be returned (1/5 and 4/5 frequences will be pulled, so that the maximum frequency will be 1/2).
+</p>
+</dd>
+</dl>
+
+
+
+
+</body>
+</html>
