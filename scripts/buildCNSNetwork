@@ -12,6 +12,7 @@ use Bio::SeqFeatureI;
 
 
 my $lociListFileName;
+my $networkName="myNetwork";
 my $conservatoryDir=abs_path(".");
 my $genomeDatabaseFileName = "genome_database.csv";
 my $help=0;
@@ -20,6 +21,7 @@ my $force=0;
 GetOptions ("conservatory-directory=s" => \$conservatoryDir,
 		    "genome-database=s" => \$genomeDatabaseFileName,
 			"loci-list=s" => \$lociListFileName,
+			"name=s" => \$networkName,
 			"force" => \$force, 
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
@@ -28,6 +30,7 @@ if($help || $lociListFileName eq "") {
    print "buildCNSNetwork --loci-list <File name containing list of genes>\n\n\n";
    print "\t--conservatory-directory\t\tPath of the main conservatory directory.\n";
    print "\t--loci-list\t\t\tFile containing list of genes (REQUIRED).\n";
+   print "\t--name\t\t\tName prefix for output files.\n";
    print "\t--help\t\t\tShow this message.\n";
 
    die;
@@ -55,9 +58,9 @@ while(my $curgenomeline = <$genomeDatabase>) {
 ###### First, assemble the CNS and mapping
 my $allCNS = "$conservatoryDir/output/All.cns.table.csv";
 my $allPositions = "$conservatoryDir/output/All.positions.map.csv";
-my $myLociPositions = "$conservatoryDir/output/myLoci.positions.map.csv";
+my $myLociPositions = "$conservatoryDir/output/$networkName.positions.map.csv";
 
-my $mergedCNSFileName = "$conservatoryDir/output/myLoci.mergedCNS.csv";
+my $mergedCNSFileName = "$conservatoryDir/output/$networkName.mergedCNS.csv";
 
 unlink("$mergedCNSFileName");
 unlink("$myLociPositions");
@@ -90,8 +93,8 @@ while(my $cnsLine = <$allCNSFile>) {
 close($allCNSFile);
 
 ## Now make network sif file
-my $outputSIFFileName = "$conservatoryDir/output/myLoci.network.sif";
-my $outputDictionaryFileName = "$conservatoryDir/output/myLoci.dic.csv";
+my $outputSIFFileName = "$conservatoryDir/output/$networkName.network.sif";
+my $outputDictionaryFileName = "$conservatoryDir/output/$networkName.dic.csv";
 
 open(my $outputSIFFile, ">$outputSIFFileName");
 open(my $outputDictionaryFile, ">$outputDictionaryFileName");
@@ -153,23 +156,15 @@ while(my $lociLine = <$lociListFile>) {
 foreach my $curNode (keys %nodesDic) {
 	
 	print $outputDictionaryFile "$curNode," . $nodesDic{$curNode}{'Type'} . "," .
-											  $nodesDic{$curNode}{'DicName'} . "," .
-											  $nodesDic{$curNode}{'Species'} . "," .
-											  $nodesDic{$curNode}{'Family'} . "," .
-											  $nodesDic{$curNode}{'Clade1'} . "," .										
-											  $nodesDic{$curNode}{'Clade2'} . "," .
-											  $nodesDic{$curNode}{'Start'} . "," .
-											  $nodesDic{$curNode}{'Length'} . "\n";											
+						  $nodesDic{$curNode}{'DicName'} . "," .
+						  $nodesDic{$curNode}{'Species'} . "," .
+						  $nodesDic{$curNode}{'Family'} . "," .
+						  $nodesDic{$curNode}{'Clade1'} . "," .										
+						  $nodesDic{$curNode}{'Clade2'} . "," .
+						  $nodesDic{$curNode}{'Start'} . "," .
+						  $nodesDic{$curNode}{'Length'} . "\n";											
 }
 
 close($outputSIFFile);
 close($outputDictionaryFile);
-
-
-
-
-
-
-
-
 
