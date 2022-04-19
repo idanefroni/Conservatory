@@ -198,9 +198,10 @@ while(<$CNSInputFile>) {
 		'phyloPval' => $pval,
 		'UpDown' => $upordown});
 	
+	### There is a minimum overlap of 10bp between mapping and CNS to count as overlapping - to remove dubious alignments
 	my @targetPositions = @{ $mappings{$locus} };
 	foreach my $curTargetPos (@{ targetPositions}) {
-		if(overlap($startRel, $endRel,  $curTargetPos->{'StartRefRel'},  $curTargetPos->{'StartRefRel'} +  $curTargetPos->{'Length'})) {
+		if(overlap($startRel, $endRel,  $curTargetPos->{'StartRefRel'},  $curTargetPos->{'StartRefRel'} +  $curTargetPos->{'Length'},"ABS")>=10) {
 			push (@{ $CNSDB{$relatedCNSName}{'Position'} }, {
 				'Genome' => $curTargetPos->{'TargetGenome'},
 				'RefLocus' => "$referenceSpecies-$referenceGenome-$locus",
@@ -255,9 +256,14 @@ close($outputCNS);
 close($outputPosition);
 
 
-### Compute overlap between two fragments
+### Compute overlap between two fragments. Parameters:
+### overlap(startOne, endOne, StartTwo, endTwo, mode)
+### mode can be "ABS", in which case returns the absolute overlap in bp
+### else, returns relative overlap (0-1).
+###
+
 sub overlap {
-	my ($startOne, $endOne, $startTwo, $endTwo) =@_;
+	my ($startOne, $endOne, $startTwo, $endTwo, $mode) =@_;
 	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
 		 ($startOne > $endTwo)) {
 		return 0;
@@ -265,15 +271,31 @@ sub overlap {
 		#### return the percent overlap
 		if($endOne < $endTwo) {
 			if($startOne >= $startTwo) {
-				return 1;
+				if($mode eq "ABS") {
+					return ($endOne-$startOne);
+				} else {
+					return 1;
+				}
 			} else {
-				return ($endOne -$startTwo) /($endOne - $startOne);
+				if($mode eq "ABS") {
+					return ($endOne -$startTwo);
+				} else {
+					return ($endOne -$startTwo) /($endOne - $startOne);
+				}
 			} 
 		} else {
 			if($startOne <= $startTwo) {
-				return 1;
+				if($mode eq "ABS") {
+					return ($endOne-$startOne);					
+				} else {
+					return 1;
+				}
 			} else {
-				return ($endTwo -$startOne) /($endOne - $startOne);
+				if($mode eq "ABS") {
+					return ($endTwo -$startOne);
+				} else {
+					return ($endTwo -$startOne) /($endOne - $startOne);
+				}
 			} 			
 		}
 	}

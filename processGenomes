@@ -172,7 +172,7 @@ print $genomedbProcess $header;
 while(my $curgenomeline= <$genomedb>) {
 	chomp $curgenomeline;
 	if(substr($curgenomeline,0,1) ne "#" ) { ### If not commented
-		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
+		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $cladeI, $cladeII) = split /,/, $curgenomeline;
 		my $curgenomeReferenceFamily = $curgenomeFamily;
 	
 		if(($genome ne "" && $genome eq $curgenomeName) || ($family ne "" && $family eq $curgenomeFamily) || ($genome eq "" && $family eq "") || ($global && $genome eq "") || ($global && $curgenomeName eq $genome)) {
@@ -303,45 +303,28 @@ while(my $curgenomeline= <$genomedb>) {
 			my $blastREF2G = "$conservatoryDir/genomes/tmpblast/$curgenomeReference" . "2" ."$curgenomeName.txt";
 
 			if(! (-e $orthologFilename) || $forceOrthology) {
-				# If this is the reference genome, build mock ortholog file.
-
-#				if($curgenomeName eq $curgenomeReference) {
-#					print localtime() . ": $curgenomeName : START Building ortholog database.\n";
-
-#					open (my $footprintFile, "<", $genomeFootprintGFFFile);
-#					open (my $orthologFile, ">", $orthologFilename);
-#					while(<$footprintFile>) {
-#						chomp;
-#						(my $junk,my $genename) = split /=/;
-#						print $orthologFile "$genename,$genename,800\n";
-#					}
-#					close $orthologFile;
-#					close $footprintFile;
-#					print localtime() . ": $curgenomeName : END Building ortholog database.\n";
-#				} else {
-					if(! -e $blastG2REF) {
-						print localtime() . ": $curgenomeName : START reciprocal blast.\n";
-						my $blastthreads = $threads;
-						my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReferenceFamily/$curgenomeReference.proteins.fasta";
-						system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
-						if(! -e $blastREF2G) {
-							system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
-						}
-						print localtime() . ": $curgenomeName : END reciprocal blast.\n";
-					} else { print localtime() . ": SKIP blast temporary files already exists. Manually delete the files $blastG2REF and $blastREF2G to rebuild.\n" }
-					print localtime() . ": $curgenomeName : START Building ortholog database.\n";
-					
-					if($global) {
-						system("perl $conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome-database $genomeDatabaseFileName --genome $curgenomeName --reference $curgenomeReference");
-					} else {
-						system("perl $conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome-database $genomeDatabaseFileName --genome $curgenomeName");
+				if(! -e $blastG2REF) {
+					print localtime() . ": $curgenomeName : START reciprocal blast.\n";
+					my $blastthreads = $threads;
+					my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReferenceFamily/$curgenomeReference.proteins.fasta";
+					system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
+					if(! -e $blastREF2G) {
+						system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
 					}
-					print localtime() . ": $curgenomeName : END Building ortholog database.\n";
-#				} 
+					print localtime() . ": $curgenomeName : END reciprocal blast.\n";
+				} else { print localtime() . ": SKIP blast temporary files already exists. Manually delete the files $blastG2REF and $blastREF2G to rebuild.\n" }
+				print localtime() . ": $curgenomeName : START Building ortholog database.\n";
+				
+				if($global) {
+					system("perl $conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome-database $genomeDatabaseFileName --genome $curgenomeName --reference $curgenomeReference");
+				} else {
+					system("perl $conservatoryDir/scripts/buildOrthologDB --conservatoryDirectory $conservatoryDir --genome-database $genomeDatabaseFileName --genome $curgenomeName");
+				}
+				print localtime() . ": $curgenomeName : END Building ortholog database.\n";
 			} else { print localtime(). ": SKIP Ortholog database already exists (use --force-orthology to rebuild)\n"; }
 			print localtime() . ": END processing genome $curgenomeName\n-------------------------------------------------------------------------------------------------------------\n";
 		}
-		print $genomedbProcess "$curgenomeName,$curgenomeSpecies,$curgenomeFamily,$curgenomeReference,$upstreamLength,$downstreamLength,$geneNameField,$geneProcessingRegEx,$gene2SpeciesIdentifier,$proteinProcessingRegEx\n";
+		print $genomedbProcess "$curgenomeName,$curgenomeSpecies,$curgenomeFamily,$curgenomeReference,$upstreamLength,$downstreamLength,$geneNameField,$geneProcessingRegEx,$gene2SpeciesIdentifier,$proteinProcessingRegEx,$cladeI,$cladeII\n";
 	} else {  print $genomedbProcess $curgenomeline . "\n"; } ### Spit out comments
 }
 close($genomedb);
