@@ -143,7 +143,7 @@ while(my $curgenomeline= <$genomedb>) {
 						my $alignmentParams;
 						
 						if ($global) {
-							$alignmentParams = "--reference $referenceGenome --locus $curLocus ";
+							$alignmentParams = "--reference $referenceGenome --locus $curLocus --skip-bam-dump";
 						} else {
 							$alignmentParams = "--family $family --locus $curLocus ";
 						}						
@@ -209,7 +209,7 @@ while(my $curgenomeline= <$genomedb>) {
 
 		# Make nice output files. BW for the phylop track and GFF for the CNS
 		system("bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
-		system("perl $conservatoryDir/scripts/buildConCNS --family  $family --format GFF --CNSfile $conservationDir/$family.csv > $conservationDir/$family.gff3");
+#		system("perl $conservatoryDir/scripts/buildConCNS --family  $family --format GFF --CNSfile $conservationDir/$family.csv > $conservationDir/$family.gff3");
 		print localtime() . ": END data merge and sort.\n";		
 		## Process CNS tables and flag TEs
 		print localtime() . ": START build CNS tables.\n";

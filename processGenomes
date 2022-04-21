@@ -303,11 +303,13 @@ while(my $curgenomeline= <$genomedb>) {
 			my $blastREF2G = "$conservatoryDir/genomes/tmpblast/$curgenomeReference" . "2" ."$curgenomeName.txt";
 
 			if(! (-e $orthologFilename) || $forceOrthology) {
-				if(! -e $blastG2REF) {
+				if(! -e $blastG2REF || ! -e $blastREF2G) {
 					print localtime() . ": $curgenomeName : START reciprocal blast.\n";
 					my $blastthreads = $threads;
 					my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReferenceFamily/$curgenomeReference.proteins.fasta";
-					system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
+					if(! -e $blastG2REF) {
+						system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
+					}
 					if(! -e $blastREF2G) {
 						system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
 					}

@@ -65,14 +65,11 @@ my $mergedCNSFileName = "$conservatoryDir/output/$networkName.mergedCNS.csv";
 unlink("$mergedCNSFileName");
 unlink("$myLociPositions");
 
-if(! -e $allPositions || $force) {
-	print localtime(). ": Assemble all alignments...\n";
-	system("cat $conservatoryDir/output/*.cns.position.table.csv > $allPositions");
-}
-if(! -e $allCNS || $force) {
-	print localtime(). ": Assemble all CNS...\n";
-	system("cat $conservatoryDir/output/*.cns.table.csv > $allCNS");
-}
+print localtime(). ": Assemble all alignments...\n";
+system("cat $conservatoryDir/output/*.cns.position.table.csv > $allPositions");
+
+print localtime(). ": Assemble all CNS...\n";
+system("cat $conservatoryDir/output/*.cns.table.csv > $allCNS");
 
 ###### Filter the gene list and merge CNS
 
@@ -128,8 +125,7 @@ while(my $curNodeLine = <$nodeFile>) {
 	### Remove duplicates
 	if(! defined $nodeCNSHistory{$locus}{$CNSID}) { 
 		print $outputSIFFile "$locus has $CNSID\n";
-	} else {
-		$nodeCNSHistory{$locus}{$CNSID} = 1;		
+		$nodeCNSHistory{$locus}{$CNSID} = 1;
 	}
 }
 close($nodeFile);

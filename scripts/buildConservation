@@ -24,18 +24,21 @@ my $referenceGenome;
 my $referenceGenomeFamily;
 my $minAlignments = 4; # The minimum number of aligned promoters that is required to generate an alignment file
 my $EMPTY_FILE = 0; # The size of an empty MAF file, containing no alignments
-my $minIdentity= 60;
+#my $minIdentity= 60;
+my $minIdentity= 70;
 my $minQuality = 1000;
-my $minCNSLength=6;
+my $minCNSLength=4;
+my $CNSMergeLength=10;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 my $keep_tmp = 0;
 my $verbose = 0;
 my $force=0;
 my $dump_bam = 1;
+my $skipDumpBam=0;
 my $help = 0;
 my $skipAlignment=0;
 my $skipConservation=0;
 my $skipMissingGenomes=0;
-my $minPhyloPscore=1.5;
+my $minPhyloPscore=3;
 my $noFlagORF=0;
 my $minORFLength="auto";
 my $onlyOneOrtholog=0;
@@ -63,6 +66,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
+			"skip-bam-dump" =>\$skipDumpBam,
 			"skip-alignment" => \$skipAlignment,
 			"skip-conservation" => \$skipConservation,
 			"skip-missing-genomes" => \$skipMissingGenomes,
@@ -83,14 +87,15 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    print "\t--locus\t\t\tLocus in the reference genome for the family (REQUIRED).\n";
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
    print "\n\t\tAlignment options\n\n";
-   print "\t--min-identity\t\tMinimum identity for LASTZ alignments. Default is 60. Use lower number if species are more distant.\n";
+   print "\t--min-identity\t\tMinimum identity for LASTZ alignments. Default is 70. Use lower number if species are more distant.\n";
    print "\t--min-align-threshold\t\tMimimum hsp threshold for LASTZ alignments. Default is 2000 (lower threshold will identify smaller conserved sequences but alignments will be less reliable).\n";
    print "\t--ortholog-selection-strategy\t\tMethod to select the best set of CRE orthologs for a genomes. Can be bestmean (default) or bestsum. Bestmean will prefer better alignments, Bestsum, more possible orthologs.\n";
    print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS (default: 4).\n";
-   print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.5).\n";
+   print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 3).\n";
    print "\t--no-orf-flag\t\tSkip flagging of ORF in CNS.\n";
    print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS. Deafult is \"auto\" which is automatically calculated based on expected random ORF occurance in data.\n";
    print "\t--only-one-ortholog\t\tIf multiple putative orthologs found, use only the one with best CRE alignment (default: use all).\n";
+   print "\t--skip-bam-dump\t\tDo not generate bam files for the alignments.\n";
    print "\t--skip-alignment\t\tJust do phyloP calculations. Do not perform alignments.\n";
    print "\t--skip-conservation\t\tDo not compute phyloP scores.\n";
    print "\t--skip-missing-genomes\t\tIf genome information can't be found, skip and continue analysis (DEFAULT: Terminate with error message),\n";
@@ -104,6 +109,7 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    exit();
 }
 
+if($skipDumpBam) { $dump_bam=0; }
 
 ### Set up directory and file access
 my $genomedbFile = $conservatoryDir . "/genome_database.csv";
@@ -518,8 +524,8 @@ if(-e $treeFileName && !$skipConservation) {
 	}
 	
 	#### Now run phyloP 
-#	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
-	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method LRT --mode CON";
+	#my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
+	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method LRT --mode CONACC";
 	my $flagORFCommand="";
 	if(!$noFlagORF) {
 		$flagORFCommand="| $conservatoryDir/scripts/flagORFCNS $finalFASTAUpFileName $finalFASTADownFileName $tmpDir $minORFLength";
@@ -534,7 +540,7 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 			if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found upstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLengthReference, \$3-$upstreamLengthReference, \$4,\"UP\",$coordinateTranslateStrUp); }' $flagORFCommand > $tmpDir/$locus.cns.csv");			
+				system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLengthReference, \$3-$upstreamLengthReference, \$4,\"UP\",$coordinateTranslateStrUp); }' $flagORFCommand > $tmpDir/$locus.cns.csv");
 				
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
@@ -546,7 +552,7 @@ if(-e $treeFileName && !$skipConservation) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 			if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found downstream CNS.\n"; }
-				system("bedtools merge -d 25 -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' $flagORFCommand >> $tmpDir/$locus.cns.csv");
+				system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' $flagORFCommand >> $tmpDir/$locus.cns.csv");
 			}
 			if(!$keep_tmp) {unlink("$tmpDir/$locus.down.fil.bed"); }
 		}
@@ -589,8 +595,8 @@ sub mean {
 sub extractFastaToFile {
 	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
 	my $linearise = "perl -e ' { while (<>) { if(!/^>/) {chomp;} print; } print(\"\n\"); }'";
-	my $maskdinucrep = " sed -r 's/(AG|CT|CC|GG){6}/XXXXXXXXXXXX/g'";
-	my $maskseq = " sed -r 's/[A|T]{10}/XXXXXXXXXX/g' | sed 's/NNN/XXX/g'";
+	my $maskdinucrep = " sed -r 's/((AG){6}|(CT){6}|(CA){6}|(CC){6}|(GG){6}|(TG){6})/XXXXXXXXXXXX/g'";
+	my $maskseq = " sed -r 's/[A|T]{10}/XXXXXXXXXX/g' | sed -r 's/(TCTA){4}/XXXXXXXXXXXXXXXX/g' | sed 's/NNN/XXX/g'";
 	system("samtools faidx $fastaFile $locus | $linearise | $maskdinucrep | $maskseq  >$outputFastaFile");
 }
 

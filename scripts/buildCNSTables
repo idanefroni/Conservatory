@@ -201,7 +201,7 @@ while(<$CNSInputFile>) {
 	### There is a minimum overlap of 10bp between mapping and CNS to count as overlapping - to remove dubious alignments
 	my @targetPositions = @{ $mappings{$locus} };
 	foreach my $curTargetPos (@{ targetPositions}) {
-		if(overlap($startRel, $endRel,  $curTargetPos->{'StartRefRel'},  $curTargetPos->{'StartRefRel'} +  $curTargetPos->{'Length'},"ABS")>=10) {
+		if(overlap($startRel, $endRel,  $curTargetPos->{'StartRefRel'},  $curTargetPos->{'StartRefRel'} +  $curTargetPos->{'Length'},"ABS")>=6) {
 			push (@{ $CNSDB{$relatedCNSName}{'Position'} }, {
 				'Genome' => $curTargetPos->{'TargetGenome'},
 				'RefLocus' => "$referenceSpecies-$referenceGenome-$locus",
@@ -209,6 +209,10 @@ while(<$CNSInputFile>) {
 				'StartRel' => $curTargetPos->{'TargetStartRel'},
 				'phyloPval' => $pval,
 				'UpDown' => $upordown});
+				if($curTargetPos->{'TargetGenome'} eq "Ppatens") {
+					my $overlapCNS = overlap($startRel, $endRel,  $curTargetPos->{'StartRefRel'},  $curTargetPos->{'StartRefRel'} +  $curTargetPos->{'Length'},"ABS");
+					print "Ppatens hit: $locus, $curTargetPos->{'TargetLocus'}, $relatedCNSName, $curTargetPos->{'Length'}; overlap: $overlapCNS.\n"; 
+				}
 		}
 	}
 	
