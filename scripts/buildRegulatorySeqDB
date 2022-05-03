@@ -1,9 +1,12 @@
 #!/usr/bin/perl
 use strict;
 use List::Util qw(min max);
+use Bio::AlignIO;
+use Bio::Tools::GFF;
+use Bio::SeqFeatureI;
 
 if( @ARGV < 3) {
-   print "buildRegulatorySeqDB <upstream|downstream> <FastaFile> <GFFFile> <Length> <OutputFastaFile>\n";
+   print "buildRegulatorySeqDB <upstream|downstream> <FastaFile> <GFFFile> <Length> <OutputFastaFile> [TE Annotation GFF File]\n";
    exit();
 }
 
@@ -14,8 +17,9 @@ open (my $output, ">", "$ARGV[4]");
 my $seq;
 my $seq_len = $ARGV[3];
 my $mode = $ARGV[0];
+my $teAnnotationFileName = $ARGV[5];
 
-# read genome
+# read genomeg
 my @chromosomes;
 my @chromosomes_names;
 my $cur_chr_num = 0;
@@ -49,14 +53,25 @@ while($cur_line = <DB>) {
 $chromosomes[$cur_chr_num] = $cur_chrom_seq;
 $cur_chr = clean_chr($cur_chr);
 $chromosomes_names[$cur_chr_num] = $cur_chr;
-
 my %index;
 @index{@chromosomes_names} = (0..$#chromosomes_names);
 
+#### Filter TEs, if required
+if(-e $teAnnotationFileName) {
+	my $gff = Bio::Tools::GFF->new(-file => $teAnnotationFileName,
+				   -gff_version => 3);
+	while(my $curTE = $gff->next_feature) {
+		my $chromosome = "C" . $curTE->seq_id;
+		if(defined $index{$chromosome}) {
+			my $chromosome_num = $index{$chromosome};
+			#print $chromosome . "-" . $chromosome_num . " - " . length($chromosomes[$chromosome_num]) . " - " . $curTE->start . " - " . $curTE->end ."\n"; 
+			substr($chromosomes[$chromosome_num], $curTE->start, $curTE->end - $curTE->start) = "X" x ($curTE->end - $curTE->start);
+		}
+	}
+}
+
 my $mylastgeneend_pos=0;
 my $mylastchromosome_num=0;
-
-
 
 if($mode eq "upstream") {
 	while(my $gffline = <$gfffile>)	{
