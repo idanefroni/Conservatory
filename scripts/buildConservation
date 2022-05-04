@@ -7,6 +7,8 @@ use Data::Dumper qw(Dumper);
 use List::Util qw(min max sum);
 use List::MoreUtils qw(uniq firstidx);
 use Bio::AlignIO;
+use Bio::Align::DNAStatistics;
+use Bio::Tools::Run::Alignment::Muscle;
 use Cwd;
 use Cwd 'abs_path';
 use Getopt::Long;
@@ -48,7 +50,6 @@ my $minHSPthresholdFamily=2000;
 my $minHSPthresholdGlobal=1600;
 my $orthologSelectionStrategy = "bestmean";
 
-my $fastMLCommand = "$conservatoryDir/scripts/old/FastML.v3.11/programs/fastml/fastml";
 ########### Reg Seq lengths
 my $upstreamLength;
 my $downstreamLength;
@@ -149,8 +150,7 @@ die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" u
 my $t_phyloP = `sh -c 'command -v phyloP'`;
 die "ERROR: Cannot find phyloP in path. Please make sure phast is installed.\n" unless ($t_phyloP ne "");  
 
-die "ERROR: Cannot find fastML. Please make sure fastML is installed.\n" unless (-x $fastMLCommand);
-die "ERROR: Cannot find the ORFfinder executable utility at $conservatoryDir/scripts.\n" unless (-x "$conservatoryDir/scripts/ORFfinder");
+die "ERROR: Cannot find fastMLexecutable at $conservatoryDir/scripts/fastml.\n" unless (-x "$conservatoryDir/scripts/fastml");
 
 
 ###############################################
@@ -474,7 +474,6 @@ if(! -e $finalCNSFileName || $force) {
 	
 	#### Now run phyloP 
 	my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method LRT --mode CON";
-	my $flagORFCommand="| $conservatoryDir/scripts/flagORFCNS $finalFASTAUpFileName $finalFASTADownFileName $tmpDir $minORFLength";
 	
 	if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
 		system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
@@ -482,7 +481,7 @@ if(! -e $finalCNSFileName || $force) {
 				system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 				if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 					if($verbose) { print "PROGRESS: Found family upstream CNS.\n"; }
-					system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLengthReference{$locusFullName}, \$3-$upstreamLengthReference{$locusFullName}, \$4,\"UP\",$coordinateTranslateStrUp); }' $flagORFCommand > $tmpCNSFileName");			
+					system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLengthReference{$locusFullName}, \$3-$upstreamLengthReference{$locusFullName}, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpCNSFileName");			
 				} else {
 					if($verbose) { print "PROGRESS: No family upstream CNS.\n"; }
 				}
@@ -495,7 +494,7 @@ if(! -e $finalCNSFileName || $force) {
 			system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 			if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
 				if($verbose) { print "PROGRESS: Found family downstream CNS.\n"; }
-				system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' $flagORFCommand >> $tmpCNSFileName");
+				system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2, \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpCNSFileName");
 			} else {
 				if($verbose) { print "PROGRESS: No family downstream CNS.\n"; }
 			}
@@ -541,12 +540,10 @@ foreach my $curSpecies (keys %{ $fastaDownstreamAlignment{$locusFullName} }) {
 
 ###### Assembled ancesteral family CNS for locus
 ####
-#### Future - this is also the place to calculate Ds/Da rates
-#####
 
 
 my $CNSNum=0;
-my $CNSLength=0;
+my $totalCNSLength=0;
 my %CNSforLocus;
 my %cnsReferenceLength;
 
@@ -556,11 +553,12 @@ open (my $CNSFile, $tmpCNSFileName) || die ("INTERNAL ERROR.\n");
 
 while(my $CNSLine = <$CNSFile>) {
 	chomp($CNSLine);
-	my ($cnsLocus,$cnsRelStart,$cnsRelEnd,$pval,$upOrDown,$chromosome,$absStart,$absEnd,$ORF) = split /,/,$CNSLine;
+	my ($cnsLocus,$cnsRelStart,$cnsRelEnd,$pval,$upOrDown,$chromosome,$absStart,$absEnd) = split /,/,$CNSLine;
 	
-	if($ORF eq "NC" && ($cnsRelEnd - $cnsRelStart)> $minCNSLength) {
-		$CNSNum++;
-		$CNSLength += ($cnsRelEnd - $cnsRelStart);
+	if(($cnsRelEnd - $cnsRelStart)> $minCNSLength) {
+		
+		my $curCNSLength = ($cnsRelEnd - $cnsRelStart);	
+		my $shortestAlignment = $curCNSLength;
 		my $CNSName = "$locus.$cnsRelStart";
 		$CNSforLocus{$CNSName} = {
 				'Name' => $CNSName,
@@ -570,33 +568,59 @@ while(my $CNSLine = <$CNSFile>) {
 				'Chromosome' => $chromosome,
 				'absStart' => $absStart,
 				'absEnd' => $absEnd,
-				'ConservationLevel' => 'Family'};  	  
+				'ConservationLevel' => 'Family'};
+				
+		my @cnsORFs;
 				
 		$cnsReferenceLength{$CNSName} = $cnsRelEnd - $cnsRelStart;
 		
 		my $tmpCNSFastaFileName = "$tmpDir/$locus.$cnsRelStart.cns.fasta";
 		open (my $tmpCNSFile, ">$tmpCNSFastaFileName");
+		my $cnsSeq;
 		if($cnsRelStart <= 0 ) { ## If this is upstream seqeunce
 			for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {
+				
 				if(defined $fastaUpstreamAlignment{$locusFullName}{$curSpecies}) {
-					print $tmpCNSFile ">$curSpecies\n" . substr($fastaUpstreamAlignment{$locusFullName}{$curSpecies}, $upstreamLengthReference{$locusFullName}+$cnsRelStart, $cnsRelEnd-$cnsRelStart) ."\n";
+					$cnsSeq=substr($fastaUpstreamAlignment{$locusFullName}{$curSpecies}, $upstreamLengthReference{$locusFullName}+$cnsRelStart, $cnsRelEnd-$cnsRelStart);			
 				} else {				
-					print $tmpCNSFile ">$curSpecies\n" . ("-" x ($cnsRelEnd-$cnsRelStart)) . "\n";
-				}	
+					$cnsSeq = ("-" x ($cnsRelEnd-$cnsRelStart));
+				}
+				
+#				if($cnsSeq ne ('-' x length($cnsSeq))) {
+#					my ($ORFInCNSLength, $ORFInCNS) = getLongestORF($cnsSeq);
+#					my $locCNSSeq = Bio::LocatableSeq->new(-seq => $ORFInCNS,
+#											    	   	   -id => $curSpecies,
+#												    	   -start => 1,
+#												    	   -end => $ORFInCNSLength);
+#					push @cnsORFs, $locCNSSeq;
+#
+#				}
+
+				print $tmpCNSFile ">$curSpecies\n$cnsSeq\n";
 			}
 		} else {	
 			for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {
 				if(defined $fastaDownstreamAlignment{$locusFullName}{$curSpecies}) {
-					print $tmpCNSFile ">$curSpecies\n" . substr($fastaDownstreamAlignment{$locusFullName}{$curSpecies}, $cnsRelStart, $cnsRelEnd-$cnsRelStart) ."\n";
+					$cnsSeq = substr($fastaDownstreamAlignment{$locusFullName}{$curSpecies}, $cnsRelStart, $cnsRelEnd-$cnsRelStart);
 				} else {					
-					print $tmpCNSFile ">$curSpecies\n" . ("-" x ($cnsRelEnd-$cnsRelStart)) . "\n";
+					$cnsSeq = ("-" x ($cnsRelEnd-$cnsRelStart));
 				}
+				
+#				if($cnsSeq ne ('-' x length($cnsSeq))) {
+#					my ($ORFInCNSLength, $ORFInCNS) = getLongestORF($cnsSeq);
+#					my $locCNSSeq = Bio::LocatableSeq->new(-seq => $ORFInCNS,
+#											    	   	-id => $curSpecies,
+#												    	   	-start => 1,
+#												    	   	-end => $ORFInCNSLength);	
+#					push @cnsORFs, $locCNSSeq;
+#				}				
+				print $tmpCNSFile ">$curSpecies\n$cnsSeq\n";
 			}	
 		}	
 		close ($tmpCNSFile);
 		#### Now involke FASTML to reconstruct ancestral sequence
 		my $ancesteralCNSFileName = "$tmpDir/$locus.$cnsRelStart.ancesteral.fasta";
-		system("$fastMLCommand -s $tmpCNSFastaFileName -t $treeFileName -qf -b -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
+		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -qf -b -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
 		unlink($tmpCNSFastaFileName);
 		my $ancesteralCNS;
 		open(my $ancesteralCNSFasta, $ancesteralCNSFileName) || die ("INTERNAL ERROR.\n");
@@ -608,8 +632,39 @@ while(my $CNSLine = <$CNSFile>) {
 		}
 		close($ancesteralCNSFasta);
 		unlink($ancesteralCNSFileName);
-		print $ancesteralLocusCNSFasta ">$locus.$cnsRelStart\n$ancesteralCNS\n";
-		$CNSforLocus{"$locus.$cnsRelStart"}{'ancesteralSequence'} = $ancesteralCNS;
+		
+		##### Check for ORF in reconstructed CNS
+		my ($longestORFLength, $longestORF) = getLongestORF($ancesteralCNS);
+		my $randomORFLength;
+		if($minORFLength eq "auto") {
+			$randomORFLength = getRandomORFLength($ancesteralCNS);
+		} else {
+			$randomORFLength = $minORFLength;
+		}
+		
+		if($longestORFLength < $randomORFLength) {
+			print $ancesteralLocusCNSFasta ">$CNSName\n$ancesteralCNS\n";
+			$totalCNSLength += $curCNSLength;
+			$CNSNum++;
+			$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
+			
+			### Determine KaKs - Future Development
+#			my $muscleAligner = Bio::Tools::Run::Alignment::Muscle->new();
+#			my $cnsAlignment = $muscleAligner->align(\@cnsORFs);
+#			foreach my $curSeq ($cnsAlignment->each_seq) {
+#				print "$CNSName:" . $curSeq->id() . ":\t" . $curSeq->seq() . "\n";
+#			}
+#			my $stats = Bio::Align::DNAStatistics->new();		
+#			my $cnsAlignmentFrame = $cnsAlignment->slice(1, floor($curCNSLength/3)*3);
+				
+#			if($verbose) { print "PROGRESS: Computing KaKs rates for $CNSName."; }
+#			my $kaksStat = $stats->calc_average_KaKs($cnsAlignment,1000);
+#			$CNSforLocus{$CNSName}{'KaKs_z'} = $kaksStat->{'z_score'};		
+#			if($verbose) { print ". best KaKs Z-score: " . $CNSforLocus{$CNSName}{'KaKs_z'} . "\n"; }			
+		} else {
+			if($verbose) { print "PROGRESS: Removing CNS $CNSName. Detected ORF with length $longestORFLength. Max length $randomORFLength.\n"; }
+			delete ($CNSforLocus{$CNSName});
+		}
 	}
 	
 	### remove left over from fastML
@@ -619,7 +674,7 @@ close($ancesteralLocusCNSFasta);
 close($CNSFile);
 if(!$keep_tmp) { unlink("$tmpCNSFileName"); }
 
-if($verbose) { print "PROGRESS: End ancesteral sequence reconstruction for $locus. $CNSNum CNSs. Total Length $CNSLength.\n"; }
+if($verbose) { print "PROGRESS: End ancesteral sequence reconstruction for $locus. $CNSNum CNSs. Total Length $totalCNSLength.\n"; }
 #################################################################
 ##### Now search for deep CNS (outside the family)
 #####
@@ -690,6 +745,12 @@ while(<$genomeDatabase>) {
   foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   	  my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	  
 
+	  #### Filter hits that come from just one genome in a large family
+
+
+	  ####
+
+	  #### Now calculate conservation levels
   	  my @referenceClassification = split /-/ , $speciesClassification{$referenceGenomeSpecies};
   	  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
     	 	my @classification = split /-/ , $speciesClassification{$curSpecies};
@@ -725,7 +786,7 @@ while(<$genomeDatabase>) {
     	 	 	if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
     	 	 	 	$CNSConservationLevel[$curClassificationLevel]++;  
     	 	 	}
-    	     	}
+    	     }
   	  }
 	
 	  # Now mark the "Deepness" level of each CNS
@@ -760,11 +821,20 @@ while(<$genomeDatabase>) {
 		$end = $start + $curHit->{'Length'};
 		
 		foreach my $curCNS (keys %CNSforLocus) {
-			### Check for overlap. translate coordiantes from relative to locus to
+			### Check for overlap. translate coordinates from relative to locus to
 			###  relative to CNS and output alignment line
+			if (overlap($start, $end, $CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'})) {
+				my $startInTargetCNS = max(0, $start-$CNSforLocus{$curCNS}{'Start'});
+				my $seq;
+				my ($tsp,$targetGenome) = split /-/, $curHit->{'TargetLocus'};
+				if($curHit->{'TargetRelativePosition'}<0) {
+					$seq = substr($curHit->{'Sequence'}, $curHit->{'TargetRelativePosition'}+ $regulatoryRegionLengthDatabase{$targetGenome}{'upstreamLength'}, $curHit->{'Length'});
+				} else {
+					$seq = substr($curHit->{'Sequence'}, $curHit->{'TargetRelativePosition'}, $curHit->{'Length'});
+				}
+				print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$startInTargetCNS,$curHit->{'TargetRelativePosition'},$curHit->{'Length'},$seq\n";
+			}
 		}
-		#print "$locusFullName,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'ReferenceRelativePosition'},$curHit->{'TargetRelativePosition'},$curHit->{'Length'}\n";
-  		#print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'ReferenceRelativePosition'},$curHit->{'TargetRelativePosition'},$curHit->{'Length'},$curHit->{'Sequence'}\n";
 	}
   }
   
@@ -841,6 +911,10 @@ sub findAll {
 	return @occurences;
 }
 
+sub lengthWithoutGaps {
+	my $seq = $_[0];
+	return length($seq =~ s/-//rg);
+}
 ### Compute overlap between two fragments. Parameters:
 ### overlap(startOne, endOne, StartTwo, endTwo, mode)
 ### mode can be "ABS", in which case returns the absolute overlap in bp
@@ -1083,4 +1157,71 @@ sub pickBestPutativeOrthologs {
 		}
 	}
 	return %orthologs;
+}
+
+
+###################### ORF Processing functions
+sub getLongestORF {
+   my $seq = $_[0];
+   $seq =~ s/-//g;   ## remove gaps from sequence
+   
+   my $best=0;
+   my ($bests,$beste,$beststrand)=(-1,-1,0);
+   my $dna=Bio::Seq->new(-seq => $seq);
+   my %strand=('+'=>$dna->seq,
+               '-'=>$dna->revcom->seq);
+ 
+   foreach my $direction (keys %strand) {
+      my @starts=();
+      my @ends=();
+      for (my $frame=0;$frame< length($seq)-3;$frame++) {
+         unless ($strand{$direction}=~m/^.{$frame}(taa|tga|tag)/i) {
+            push @starts,$frame+1;
+         }
+      }
+ 
+      while ($strand{$direction}=~m/(taa|tga|tag)/gi) {
+         push @ends,pos($strand{$direction})-2;
+      }
+      push @ends,($dna->length-2,$dna->length-1,$dna->length);
+ 
+      for my $s (@starts) {
+         for my $e (@ends) {
+            if ($e%3==$s%3 and $e>$s) {
+               if ($e-$s>$best) {
+                  $best=$e-$s;
+                  ($bests,$beste,$beststrand)=($s,$e,$direction);
+               }
+               last
+            } else {
+               next
+            }
+         }
+      }
+   }
+   return ($best, substr($seq,$bests, $best) ); ## Returns the length of the longest ORF and its sequence	
+}
+
+
+##### determine the expected random ORF based on GC content of cns
+### Based on Oliver and Marin, Journal of Molecular Evolution, 1996 43:216-223.
+###
+sub getRandomORFLength {
+	my $LENGTH_FACTOR = 2;
+	my $randomORFLength;
+	
+	my $sequence = $_[0];
+	my $seqstr = $sequence;
+	my $gcCNS = length($seqstr =~ s/[A|T|N]//rg);
+	$seqstr = $sequence;
+	my $atCNS = length($seqstr =~ s/[G|C|N]//rg);
+
+	my $q= (1-$gcCNS/($gcCNS+$atCNS))/2;
+	my $t= $q**2 - $q**3;
+	if($t == 0) {
+		$randomORFLength=1000;
+	} else {
+		$randomORFLength = ceil(1/$t)*3*$LENGTH_FACTOR+1;
+	}
+	return $randomORFLength;
 }
