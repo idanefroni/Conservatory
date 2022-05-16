@@ -1,0 +1,25 @@
+Example: distributions
+
+
+	class gammaDistribution : public generalGammaDistribution {
+		class generalGammaDistribution : public distribution { // This is a virtual class from which all types of distribution classes inherit from.
+
+	
+ 
+All the constructors are "explicit": 
+e.g.,
+ 	explicit gammaDistribution() {}												// empty constructor
+	explicit gammaDistribution(MDOUBLE alpha,int in_number_of_categories);		// init constructor
+	explicit gammaDistribution(const gammaDistribution& other);					// copy constructor
+All the methods are "virtual:
+e.g.,	
+	virtual ~gammaDistribution() {}
+	virtual distribution* clone() const { return new gammaDistribution(*this); }
+	
+At the .cpp, some methods are refering the function to the son class
+e.g.,
+	void gammaDistribution::setGammaParameters(int in_number_of_categories, MDOUBLE in_alpha) {
+		generalGammaDistribution::setGammaParameters(in_number_of_categories,in_alpha,in_alpha);
+	}
+
+

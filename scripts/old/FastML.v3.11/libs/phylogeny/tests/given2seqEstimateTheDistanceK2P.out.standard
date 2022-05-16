@@ -1,0 +1,9 @@
+This program computes for the K2P model, when two sequences are given, the ML distance and its likelihood.
+
+For Tr/Tv = 0.5
+ the likelihood of these 2 sequences is:-10.515
+ the ML distance between these 2 sequences is:0.823959
+
+For Tr/Tv = 10
+ the likelihood of these 2 sequences is:-8.70737
+ the ML distance between these 2 sequences is:0.857854

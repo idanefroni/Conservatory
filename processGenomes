@@ -169,7 +169,7 @@ print $genomedbProcess $header;
 while(my $curgenomeline= <$genomedb>) {
 	chomp $curgenomeline;
 	if(substr($curgenomeline,0,1) ne "#" ) { ### If not commented
-		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $cladeI, $cladeII) = split /,/, $curgenomeline;
+		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $clade) = split /,/, $curgenomeline;
 		my $curgenomeReferenceFamily = $curgenomeFamily;
 	
 		if(($genome ne "" && $genome eq $curgenomeName) || ($genome eq "")) {
@@ -327,7 +327,7 @@ while(my $curgenomeline= <$genomedb>) {
 			} else { print localtime(). ": SKIP Ortholog database already exists (use --force-orthology to rebuild)\n"; }
 			print localtime() . ": END processing genome $curgenomeName\n-------------------------------------------------------------------------------------------------------------\n";
 		}
-		print $genomedbProcess "$curgenomeName,$curgenomeSpecies,$curgenomeFamily,$curgenomeReference,$upstreamLength,$downstreamLength,$geneNameField,$geneProcessingRegEx,$gene2SpeciesIdentifier,$proteinProcessingRegEx,$cladeI,$cladeII\n";
+		print $genomedbProcess "$curgenomeName,$curgenomeSpecies,$curgenomeFamily,$curgenomeReference,$upstreamLength,$downstreamLength,$geneNameField,$geneProcessingRegEx,$gene2SpeciesIdentifier,$proteinProcessingRegEx,$clade\n";
 	} else {  print $genomedbProcess $curgenomeline . "\n"; } ### Spit out comments
 }
 close($genomedb);

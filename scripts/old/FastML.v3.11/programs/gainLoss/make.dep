@@ -1,0 +1,1014 @@
+gainLossOptions.o gainLossOptions.debug.o: gainLossOptions.cpp gainLossOptions.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/alphabet.h \
+ ../../libs/phylogeny/Parameters.h
+gainLoss.o gainLoss.debug.o: gainLoss.cpp computePosteriorExpectationOfChange.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/simulateJumps.h \
+ ../../libs/phylogeny/simulateJumpsAbstract.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h ../../libs/phylogeny/alphabet.h \
+ ../../libs/phylogeny/computeJumps.h ../../libs/phylogeny/someUtil.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/sequence.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h gainLoss.h \
+ ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/bblEM.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/replacementModel.h ../../libs/phylogeny/fromQtoPt.h \
+ ../../libs/phylogeny/matrixUtils.h gainLossUtils.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/trivialAccelerator.h gainLossOptions.h \
+ ancestralReconstructStates.h ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h gainLossOptimizer.h \
+ ../../libs/phylogeny/gammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/simulateTree.h ../../libs/phylogeny/phylipFormat.h \
+ ../../libs/phylogeny/maseFormat.h ../../libs/phylogeny/fastaFormat.h \
+ ../../libs/phylogeny/clustalFormat.h rate4siteGL.h gainLoss4site.h \
+ siteSpecificGL.h computeCountsGL.h computeCorrelations.h \
+ ../../libs/phylogeny/Parameters.h \
+ ../../libs/phylogeny/extremeValDistribution.h simulateOnePos.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/threeStateModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/matrixUtils.h \
+ ../../libs/phylogeny/oneTwoMoreModel.h sankoffReconstructGL.h bblLS.h \
+ ../../libs/phylogeny/bblEMfixRoot.h
+gainLossUtils.o gainLossUtils.debug.o: gainLossUtils.cpp gainLossUtils.h \
+ ../../libs/phylogeny/definitions.h gainLossAlphabet.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/distribution.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/gainLossAlphabet.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/matrixUtils.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h gainLossOptions.h \
+ gainLossModel.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/fromQtoPt.h \
+ ../../libs/phylogeny/gammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/Parameters.h
+optimizeGainLossModel.o optimizeGainLossModel.debug.o: optimizeGainLossModel.cpp \
+ optimizeGainLossModel.h ../../libs/phylogeny/bblEM.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/definitions.h \
+ gainLossModel.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/matrixUtils.h gainLossUtils.h gainLossAlphabet.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h gainLossOptions.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/Parameters.h
+optimizeGainLossModelVV.o optimizeGainLossModelVV.debug.o: optimizeGainLossModelVV.cpp \
+ optimizeGainLossModelVV.h ../../libs/phylogeny/bblEM.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/definitions.h \
+ gainLossModel.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/matrixUtils.h gainLossUtils.h gainLossAlphabet.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h gainLossOptions.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/Parameters.h
+likelihoodComputationGL.o likelihoodComputationGL.debug.o: \
+ ../../libs/phylogeny/likelihoodComputationGL.cpp \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/computePijComponent.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/likelihoodComputation.h
+gainLossModel.o gainLossModel.debug.o: gainLossModel.cpp gainLossModel.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/fromQtoPt.h \
+ ../../libs/phylogeny/replacementModel.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/matrixUtils.h ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/errorMsg.h gainLossUtils.h gainLossAlphabet.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/readTree.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h gainLossOptions.h
+siteSpecificGL.o siteSpecificGL.debug.o: siteSpecificGL.cpp siteSpecificGL.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/computePijComponent.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/numRec.h ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/matrixUtils.h gainLossUtils.h gainLossAlphabet.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h gainLossModel.h \
+ ../../libs/phylogeny/replacementModel.h ../../libs/phylogeny/fromQtoPt.h \
+ ../../libs/phylogeny/errorMsg.h gainLossOptions.h
+computePosteriorExpectationOfChange.o computePosteriorExpectationOfChange.debug.o: \
+ computePosteriorExpectationOfChange.cpp \
+ computePosteriorExpectationOfChange.h ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/simulateJumps.h \
+ ../../libs/phylogeny/simulateJumpsAbstract.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h ../../libs/phylogeny/alphabet.h \
+ ../../libs/phylogeny/computeJumps.h ../../libs/phylogeny/someUtil.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/sequence.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/matrixUtils.h \
+ ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/unObservableData.h gainLossOptions.h \
+ gainLossModel.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/errorMsg.h \
+ gainLossUtils.h gainLossAlphabet.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h
+gainLossProject.o gainLossProject.debug.o: gainLossProject.cpp gainLoss.h \
+ ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/bblEM.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/readTree.h \
+ ../../libs/phylogeny/errorMsg.h ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/replacementModel.h ../../libs/phylogeny/fromQtoPt.h \
+ ../../libs/phylogeny/matrixUtils.h gainLossUtils.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h ../../libs/phylogeny/trivialAccelerator.h \
+ gainLossOptions.h ancestralReconstructStates.h \
+ ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h \
+ computePosteriorExpectationOfChange.h \
+ ../../libs/phylogeny/simulateJumps.h \
+ ../../libs/phylogeny/simulateJumpsAbstract.h \
+ ../../libs/phylogeny/computeJumps.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/Parameters.h
+gainLossOptimizer.o gainLossOptimizer.debug.o: gainLossOptimizer.cpp gainLossOptimizer.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/definitions.h gainLoss.h \
+ ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/bblEM.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/matrixUtils.h \
+ gainLossUtils.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h ../../libs/phylogeny/trivialAccelerator.h \
+ gainLossOptions.h ancestralReconstructStates.h \
+ ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h \
+ ../../libs/phylogeny/bblEMfixRoot.h bblLS.h
+ancestralReconstructStates.o ancestralReconstructStates.debug.o: ancestralReconstructStates.cpp \
+ ancestralReconstructStates.h ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/definitions.h gainLossAlphabet.h \
+ ../../libs/phylogeny/matrixUtils.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h ../../libs/phylogeny/someUtil.h \
+ ../../libs/phylogeny/treeIt.h ../../libs/phylogeny/trivialAccelerator.h \
+ ../../libs/phylogeny/logFile.h
+rate4siteGL.o rate4siteGL.debug.o: rate4siteGL.cpp rate4siteGL.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/definitions.h gainLoss.h \
+ ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/bblEM.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/matrixUtils.h \
+ gainLossUtils.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h ../../libs/phylogeny/trivialAccelerator.h \
+ gainLossOptions.h ancestralReconstructStates.h \
+ ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h
+computeCountsGL.o computeCountsGL.debug.o: computeCountsGL.cpp computeCountsGL.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/definitions.h gainLoss.h \
+ ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/bblEM.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/matrixUtils.h \
+ gainLossUtils.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h ../../libs/phylogeny/trivialAccelerator.h \
+ gainLossOptions.h ancestralReconstructStates.h \
+ ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h \
+ computePosteriorExpectationOfChange.h \
+ ../../libs/phylogeny/simulateJumps.h \
+ ../../libs/phylogeny/simulateJumpsAbstract.h \
+ ../../libs/phylogeny/computeJumps.h \
+ ../../libs/phylogeny/suffStatComponent.h
+computeCorrelations.o computeCorrelations.debug.o: computeCorrelations.cpp computeCorrelations.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/Parameters.h \
+ gainLoss.h ../../libs/phylogeny/aaJC.h \
+ ../../libs/phylogeny/replacementModel.h ../../libs/phylogeny/bblEM.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/readTree.h \
+ ../../libs/phylogeny/errorMsg.h ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/matrixUtils.h \
+ gainLossUtils.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h ../../libs/phylogeny/trivialAccelerator.h \
+ gainLossOptions.h ancestralReconstructStates.h \
+ ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h \
+ ../../libs/phylogeny/extremeValDistribution.h
+gainLoss4site.o gainLoss4site.debug.o: gainLoss4site.cpp gainLoss4site.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/definitions.h gainLoss.h \
+ ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/bblEM.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/matrixUtils.h \
+ gainLossUtils.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/treeIt.h ../../libs/phylogeny/trivialAccelerator.h \
+ gainLossOptions.h ancestralReconstructStates.h \
+ ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h siteSpecificGL.h
+simulateChangesAlongTree.o simulateChangesAlongTree.debug.o: simulateChangesAlongTree.cpp \
+ simulateChangesAlongTree.h ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h ../../libs/phylogeny/alphabet.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/talRandom.h ../../libs/phylogeny/matrixUtils.h \
+ gainLoss.h ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/bblEM.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/fastStartTree.h gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/replacementModel.h ../../libs/phylogeny/fromQtoPt.h \
+ gainLossUtils.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/trivialAccelerator.h gainLossOptions.h \
+ ancestralReconstructStates.h ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/siteSpecificRate.h \
+ ../../libs/phylogeny/uniDistribution.h
+simulateOnePos.o simulateOnePos.debug.o: simulateOnePos.cpp ../../libs/phylogeny/definitions.h \
+ simulateOnePos.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/definitions.h ../../libs/phylogeny/readTree.h \
+ ../../libs/phylogeny/errorMsg.h ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/mulAlphabet.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/alphabet.h ../../libs/phylogeny/threeStateModel.h \
+ ../../libs/phylogeny/fromQtoPt.h ../../libs/phylogeny/matrixUtils.h \
+ ../../libs/phylogeny/oneTwoMoreModel.h \
+ ../../libs/phylogeny/simulateTree.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/threeStateAlphabet.h \
+ ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h \
+ ../../libs/phylogeny/uniDistribution.h ../../libs/phylogeny/sequence.h \
+ simulateChangesAlongTree.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/fastaFormat.h gainLoss.h \
+ ../../libs/phylogeny/aaJC.h ../../libs/phylogeny/bblEM.h \
+ ../../libs/phylogeny/countTableComponent.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/bestAlpha.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/chebyshevAccelerator.h \
+ ../../libs/phylogeny/checkcovFanctors.h \
+ ../../libs/phylogeny/checkcovFanctorsWithFactors.h \
+ ../../libs/phylogeny/likelihoodComputationFactors.h \
+ ../../libs/phylogeny/distanceTable.h \
+ ../../libs/phylogeny/distanceMethod.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/errorMsg.h ../../libs/phylogeny/fastStartTree.h \
+ gainLossAlphabet.h gainLossModel.h \
+ ../../libs/phylogeny/replacementModel.h ../../libs/phylogeny/fromQtoPt.h \
+ ../../libs/phylogeny/matrixUtils.h gainLossUtils.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h gainLossOptions.h \
+ ancestralReconstructStates.h ../../libs/phylogeny/computeDownAlg.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/jcDistance.h ../../libs/phylogeny/likeDist.h \
+ ../../libs/phylogeny/jcDistance.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/nj.h \
+ ../../libs/phylogeny/njConstrain.h ../../libs/phylogeny/distances2Tree.h \
+ ../../libs/phylogeny/nucJC.h ../../libs/phylogeny/numRec.h \
+ optimizeGainLossModel.h ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/computeUpAlg.h ../../libs/phylogeny/talRandom.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/gammaUtilities.h optimizeGainLossModelVV.h \
+ ../../libs/phylogeny/readDatMatrix.h \
+ ../../libs/phylogeny/datMatrixHolder.h \
+ ../../libs/phylogeny/siteSpecificRate.h
+bblLS.o bblLS.debug.o: bblLS.cpp bblLS.h ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/sequence.h ../../libs/phylogeny/alphabet.h \
+ ../../libs/phylogeny/mulAlphabet.h ../../libs/phylogeny/someUtil.h \
+ ../../libs/phylogeny/gainLossAlphabet.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/unObservableData.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/sequenceContainer.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h gainLossUtils.h \
+ gainLossAlphabet.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/matrixUtils.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/likelihoodComputation.h \
+ ../../libs/phylogeny/suffStatComponent.h \
+ ../../libs/phylogeny/likelihoodComputationGL.h \
+ ../../libs/phylogeny/computeUpAlg.h gainLossOptions.h
+sankoffReconstructGL.o sankoffReconstructGL.debug.o: sankoffReconstructGL.cpp sankoffReconstructGL.h \
+ ../../libs/phylogeny/tree.h ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/readTree.h ../../libs/phylogeny/errorMsg.h \
+ ../../libs/phylogeny/logFile.h ../../libs/phylogeny/logFile.h \
+ ../../libs/phylogeny/someUtil.h ../../libs/phylogeny/alphabet.h \
+ ../../libs/phylogeny/definitions.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/pijAccelerator.h \
+ ../../libs/phylogeny/replacementModel.h \
+ ../../libs/phylogeny/distribution.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/sequence.h \
+ ../../libs/phylogeny/mulAlphabet.h ../../libs/phylogeny/someUtil.h \
+ ../../libs/phylogeny/gainLossAlphabet.h gainLossUtils.h \
+ gainLossAlphabet.h ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistribution.h \
+ ../../libs/phylogeny/gammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/generalGammaDistributionFixedCategories.h \
+ ../../libs/phylogeny/GamMixtureOptimizer.h \
+ ../../libs/phylogeny/stochasticProcess.h \
+ ../../libs/phylogeny/sequenceContainer.h ../../libs/phylogeny/tree.h \
+ ../../libs/phylogeny/mixtureDistribution.h \
+ ../../libs/phylogeny/unObservableData.h \
+ ../../libs/phylogeny/computePijComponent.h \
+ ../../libs/phylogeny/multipleStochasticProcess.h \
+ ../../libs/phylogeny/gammaDistribution.h \
+ ../../libs/phylogeny/generalGammaDistributionPlusInvariant.h \
+ ../../libs/phylogeny/distributionPlusInvariant.h \
+ ../../libs/phylogeny/gammaUtilities.h ../../libs/phylogeny/numRec.h \
+ ../../libs/phylogeny/uniformDistribution.h \
+ ../../libs/phylogeny/matrixUtils.h \
+ ../../libs/phylogeny/mixtureDistribution.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/evaluateCharacterFreq.h \
+ ../../libs/phylogeny/trivialAccelerator.h \
+ ../../libs/phylogeny/threeStateAlphabet.h \
+ ../../libs/phylogeny/sequence.h ../../libs/phylogeny/recognizeFormat.h \
+ ../../libs/phylogeny/seqContainerTreeMap.h ../../libs/phylogeny/treeIt.h \
+ ../../libs/phylogeny/treeUtil.h ../../libs/phylogeny/amino.h \
+ ../../libs/phylogeny/geneticCodeHolder.h ../../libs/phylogeny/codon.h \
+ ../../libs/phylogeny/nucleotide.h ../../libs/phylogeny/integerAlphabet.h \
+ gainLossOptions.h

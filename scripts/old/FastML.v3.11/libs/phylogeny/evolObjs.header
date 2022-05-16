@@ -1,0 +1,5 @@
+#	$Id: evolObjs.header 962 2006-11-07 15:13:34Z privmane $	
+
+purpose "General Phylogenetic program"
+package "LibEvol"
+version "0.9"

@@ -1,0 +1,5 @@
+((Baboon,Human),(Rat,(Langur,Cow)),Horse);
+((Baboon,Human),((Langur,Rat),Cow),Horse);
+((Baboon,Human),((Rat,Cow),Langur),Horse);
+((Baboon,Human),(Rat,(Langur,Cow)),Horse);
+((Baboon,Human),(Langur,(Cow,Horse)),Rat);

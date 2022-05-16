@@ -1,0 +1,1 @@
+awk 'BEGIN{OFS="\t";FS=",";}{print $3,"Conservatory","CNS",$5,$6,".",$4,".","Name="$2";Level="$10";OR$14";Ancesteral="$15}' CNS/Slycopersicum/Solyc07g056570.cns.csv > CNS/Slycopersicum/Solyc07g056570.cns.gff3

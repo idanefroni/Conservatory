@@ -18,7 +18,6 @@ my $threads=16;
 my @threadPids;
 my $version=2;
 
-my $skipAlignment=0;
 my $skipConservation=0;
 my $minIdentity=0;
 my $minSpeciesNum= -1;
@@ -37,7 +36,6 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-identity=i" => \$minIdentity,
 			"min-species=i" => \$minSpeciesNum,
 			"min-phylop-score=f" => \$minPhyloPscore,
-			"skip-alignment" => \$skipAlignment,
 			"skip-conservation" => \$skipConservation,
 			"force" => \$force,
 			"verbose" => \$verbose,
@@ -56,8 +54,7 @@ if($help || (!$global && $family eq "") || ($version != 1 && $version !=2) || ($
 	print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS.\n";
 	print "\t--skip-missing-genomes\t\tSkip genomes with incomplete data and continue analysis (DEFAULT: terminate with error message).\n";
 	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";	
-	print "\t--skip-alignmnet\t\tSkip the alignment step.\n";
-	print "\t--skip-conservation\t\tSkip phyloP conservation calculation step.\n";
+	print "\t--skip-conservation\t\tSkip conservation calculation step (just merge existing files).\n";
 	print "\t--force\t\tForce rebuilding alignments.\n";
 	print "\t--threads\t\tNumber of threads to use.\n";
 	print "\t--verbose\t\tOutput extra progress messages.\n";
@@ -115,7 +112,7 @@ while(my $curgenomeline= <$genomedb>) {
 		die localtime() . ": ABORT Cannot find gene list file name ($geneListFileName).\n" unless -e $geneListFileName;
 		
 		### Start threads
-		if(!($skipAlignment && $skipConservation)) {
+		if(!($skipConservation)) {
 			
 			open(my $geneListFile, "<", $geneListFileName);
 			while(my $geneline = <$geneListFile>) {
@@ -151,8 +148,6 @@ while(my $curgenomeline= <$genomedb>) {
 						if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
 						if($minPhyloPscore>0) { $alignmentParams .= " --min-phylop-score $minPhyloPscore"; }   		
 						if($force) { $alignmentParams .= " --force"; }
-						if($skipAlignment) { $alignmentParams .= " --skip-alignment"; }
-						if($skipConservation) { $alignmentParams .= " --skip-conservation"; }
 						if($skipMissingGenomes) { $alignmentParams .= " --skip-missing-genomes"; }
 						if($global) {
 							system("perl $conservatoryDir/scripts/buildConservation $alignmentParams");
@@ -177,18 +172,18 @@ while(my $curgenomeline= <$genomedb>) {
 			$family = $referenceGenome;
 			$curgenomeReference = $referenceGenome;
 		}
-		unlink("$alignmentDir/$family.bam");
-		system("find $outputDir -name \"*.bam\" > $outputDir/$family.bams.txt");
-		system("ulimit -n 200000; samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");
-		unlink("$outputDir/$family.bams.txt");
+#		unlink("$alignmentDir/$family.bam");
+#		system("find $outputDir -name \"*.bam\" > $outputDir/$family.bams.txt");
+#		system("ulimit -n 200000; samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");
+#		unlink("$outputDir/$family.bams.txt");
 		
-		system("samtools sort $alignmentDir/$family.tmp.bam > $alignmentDir/$family.sort.bam");
-		unlink("$alignmentDir/$family.tmp.bam");
+#		system("samtools sort $alignmentDir/$family.tmp.bam > $alignmentDir/$family.sort.bam");
+#		unlink("$alignmentDir/$family.tmp.bam");
 
 		# Mark snps and indels
-		system("samtools calmd -@ $threads -b $alignmentDir/$family.sort.bam $conservatoryDir/genomes/$curgenomeFamily/$curgenomeReference.fasta.gz > $alignmentDir/$family.bam");
-		unlink("$alignmentDir/$family.sort.bam");
-		system("samtools index $alignmentDir/$family.bam");
+#		system("samtools calmd -@ $threads -b $alignmentDir/$family.sort.bam $conservatoryDir/genomes/$curgenomeFamily/$curgenomeReference.fasta.gz > $alignmentDir/$family.bam");
+#		unlink("$alignmentDir/$family.sort.bam");
+#		system("samtools index $alignmentDir/$family.bam");
 			
 		##### Now merge conservation data
 		unlink("$conservationDir/$family.csv");
@@ -196,24 +191,25 @@ while(my $curgenomeline= <$genomedb>) {
 		unlink("$conservationDir/$family.bw");
 		
 		# merge gene files for entire genome
-		system("for a in $conservationDir/$family/*.csv; do cat \$a >> $conservationDir/$family.csv.tmp; done");
+		system("for a in $conservationDir/$family/*.cns.csv; do cat \$a >> $conservationDir/$family.csv.tmp; done");
 		system("for a in $conservationDir/$family/*.bed; do cat \$a | sed 's/ /\t/g' >> $conservationDir/$family.bed; done");
-		system("for a in $alignmentDir/$family/*.map.txt; do cat \$a >> $alignmentDir/$family.map.txt.tmp; done");
+		system("for a in $conservationDir/$family/*.map.csv; do cat \$a >> $conservationDir/$family.map.csv.tmp; done");
 	
 		# sort files
-		system("sort -t',' -k1,1 -k7,7n $conservationDir/$family.csv.tmp | uniq > $conservationDir/$family.csv");
+		system("sort -t',' -k1,1 -k7,7n $conservationDir/$family.csv.tmp | uniq > $conservationDir/$family.sorted.csv");
 		system("sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
-		system("sort -k1,1 -k2,2nr $alignmentDir/$family.map.txt.tmp | uniq > $alignmentDir/$family.map.txt");
+		system("sort -t',' -k1,1 $conservationDir/$family.map.csv.tmp | uniq > $conservationDir/$family.map.sorted.csv");
 		unlink("$conservationDir/$family.csv.tmp");
-		unlink("$alignmentDir/$family.map.txt.tmp");
+		unlink("$conservationDir/$family.map.csv.tmp");
 
 		# Make nice output files. BW for the phylop track and GFF for the CNS
 		system("bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
-#		system("perl $conservatoryDir/scripts/buildConCNS --family  $family --format GFF --CNSfile $conservationDir/$family.csv > $conservationDir/$family.gff3");
 		print localtime() . ": END data merge and sort.\n";		
-		## Process CNS tables and flag TEs
+		## Merge CNSs
 		print localtime() . ": START build CNS tables.\n";
-		system("perl $conservatoryDir/scripts/buildCNSTables $family $conservationDir/$family.csv $alignmentDir/$family.map.txt $conservatoryDir/genomes/TE/$family.te.gff3");
+		system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv");
+		unlink("$conservationDir/$family.sorted.csv");
+		unlink("$conservationDir/$family.map.sorted.csv");
 
 		print localtime() . ": END CNS table build.\n";
 		

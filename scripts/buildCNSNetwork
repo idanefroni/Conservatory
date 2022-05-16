@@ -22,7 +22,6 @@ GetOptions ("conservatory-directory=s" => \$conservatoryDir,
 		    "genome-database=s" => \$genomeDatabaseFileName,
 			"loci-list=s" => \$lociListFileName,
 			"name=s" => \$networkName,
-			"force" => \$force, 
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
@@ -47,45 +46,80 @@ my $header = <$genomeDatabase>;
 while(my $curgenomeline = <$genomeDatabase>) {
 	if(substr($curgenomeline,0,1) ne "#")  {
 		chomp($curgenomeline);
-		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx,$clade1,$clade2) = split /,/, $curgenomeline;
+		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx,$classification) = split /,/, $curgenomeline;
 		$genomeDatabase{$curgenomeSpecies}{'Family'} = $curgenomeFamily;
 		$genomeDatabase{$curgenomeSpecies}{'Species'} = $curgenomeSpecies;
-		$genomeDatabase{$curgenomeSpecies}{'Clade1'} = $clade1;
-		$genomeDatabase{$curgenomeSpecies}{'Clade2'} = $clade2;	
+		$genomeDatabase{$curgenomeSpecies}{'Classification'} = $classification;	
 	}
 }
 
 ###### First, assemble the CNS and mapping
-my $allCNS = "$conservatoryDir/output/All.cns.table.csv";
-my $allPositions = "$conservatoryDir/output/All.positions.map.csv";
-my $myLociPositions = "$conservatoryDir/output/$networkName.positions.map.csv";
+my $allCNSFileName = "$conservatoryDir/output/All.cns.csv.tmp";
+my $allPositionsFileName = "$conservatoryDir/output/All.map.csv.tmp";
 
-my $mergedCNSFileName = "$conservatoryDir/output/$networkName.mergedCNS.csv";
+my $myLociPositionsFileName = "$conservatoryDir/output/$networkName.map.csv";
+
+my $mergedCNSFileName = "$conservatoryDir/output/$networkName.cns.csv";
+my $mergedMapFileName = "$conservatoryDir/output/$networkName.map.csv";
+my $mergedDeepCNSFileName = "$conservatoryDir/output/$networkName.merged.deep.cns.csv";
+
 
 unlink("$mergedCNSFileName");
-unlink("$myLociPositions");
+unlink("$myLociPositionsFileName");
+unlink("$mergedMapFileName");
 
 print localtime(). ": Assemble all alignments...\n";
-system("cat $conservatoryDir/output/*.cns.position.table.csv > $allPositions");
+system("cat $conservatoryDir/CNS/*.map.csv > $allPositionsFileName");
 
 print localtime(). ": Assemble all CNS...\n";
-system("cat $conservatoryDir/output/*.cns.table.csv > $allCNS");
+system("cat $conservatoryDir/CNS/*.cns.csv > $allCNSFileName");
 
 ###### Filter the gene list and merge CNS
 
-system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositions > $myLociPositions");
-system("perl $conservatoryDir/scripts/mergeCNSTables $allCNS $myLociPositions > $mergedCNSFileName");
+system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsFileName > $myLociPositionsFileName");
+system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $allCNSFileName --in-map $myLociPositionsFileName --out-cns $mergedCNSFileName --out-map $mergedMapFileName --out-merged $mergedDeepCNSFileName");
 
 ### Build the CNS dictionary hash
 my %cnsDic;
-open(my $allCNSFile, $allCNS) || die ("Internal error");
+my %nodesDic;
+
+my %nodeCNSHistory;
+open(my $allCNSFile, $mergedCNSFileName) || die ("Internal error");
 
 while(my $cnsLine = <$allCNSFile>) {
 	chomp($cnsLine);
-	my ($CNSID,$referenceSpecies,$chromosome,$start,$end) = split /,/, $cnsLine;
-	$cnsDic{$CNSID}{'Reference'} = $referenceSpecies;
-	$cnsDic{$CNSID}{'Start'} = $start;
-	$cnsDic{$CNSID}{'Length'} = $end - $start;
+	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/;
+
+	$cnsDic{$CNSID} = {
+				'ReferenceGenome' => $referenceGenome,
+				'CNSID' => $CNSID,
+				'Chromosome' => $chromosome,
+				'Strand' => $strand,
+				'Start' => $start,	
+				'End' => $end,
+				'Locus' => $locus,
+				'RelStart' => $relStart,
+				'RelEnd' => $relEnd,
+				'Level' => $level,
+				'SupportingSpecies' => $supportingSpecies,
+				'ORFLength' => $orfLength,
+				'ORFDir' => $orfDir,
+				'Omega' => $omega,
+				'AncesteralSeq' => $ancesteralSeq
+	};
+	
+	$nodesDic{$CNSID}{'Type'} = "CNS";
+	$nodesDic{$CNSID}{'Name'} = $CNSID;
+	$nodesDic{$CNSID}{'Species'} = $referenceGenome;
+	$nodesDic{$CNSID}{'Family'}="CNS";
+	$nodesDic{$CNSID}{'Level'}=$level;
+	$nodesDic{$CNSID}{'ORF'}=$orfLength;
+	$nodesDic{$CNSID}{'Classification_1'}="";
+	$nodesDic{$CNSID}{'Classification_2'}="";
+	$nodesDic{$CNSID}{'Classification_3'}="";
+	$nodesDic{$CNSID}{'Classification_4'}="";
+	$nodesDic{$CNSID}{'Classification_5'}="";
+	$nodesDic{$CNSID}{'Classification_6'}="";	
 }
 close($allCNSFile);
 
@@ -96,47 +130,41 @@ my $outputDictionaryFileName = "$conservatoryDir/output/$networkName.dic.csv";
 open(my $outputSIFFile, ">$outputSIFFileName");
 open(my $outputDictionaryFile, ">$outputDictionaryFileName");
 
-my %nodesDic;
-
-my %nodeCNSHistory;
-
-open (my $nodeFile, $myLociPositions) || die ("Internal error");
+open (my $nodeFile, $mergedMapFileName) || die ("Internal error");
 while(my $curNodeLine = <$nodeFile>) {
 	chomp($curNodeLine);
-	my ($CNSID,$referenceLocus,$species,$locus,$relativePos, $upOrDown, $pval) = split /,/, $curNodeLine;
-	$nodesDic{$CNSID}{'Type'} = "CNS-" . $upOrDown;
-	$nodesDic{$CNSID}{'Species'} = $referenceLocus;
-	$nodesDic{$CNSID}{'Family'} = "CNS";
-	$nodesDic{$CNSID}{'Clade1'} = "CNS";
-	$nodesDic{$CNSID}{'Clade2'} = "CNS";
-	$nodesDic{$CNSID}{'DicName'} = $CNSID;
-	$nodesDic{$CNSID}{'Start'} = $cnsDic{$CNSID}{'Start'};
-	$nodesDic{$CNSID}{'Length'} = $cnsDic{$CNSID}{'Length'};
+	my ($CNSID, $targetGenome, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length) = split /,/, $curNodeLine;
 	
-	$nodesDic{$locus}{'Type'} = "Locus";
-	$nodesDic{$locus}{'Species'} = $species;
-	$nodesDic{$locus}{'Family'} = $genomeDatabase{$species}{'Family'};
-	$nodesDic{$locus}{'Clade1'} = $genomeDatabase{$species}{'Clade1'};
-	$nodesDic{$locus}{'Clade2'} = $genomeDatabase{$species}{'Clade2'};
-	$nodesDic{$locus}{'DicName'} = $locus;
-	$nodesDic{$locus}{'Start'} = $relativePos;
-	$nodesDic{$locus}{'Length'} = 0;
+	my @classification = split /-/, $genomeDatabase{$targetGenome}{'Classification'};
 
+	$nodesDic{$targetLocus}{'Type'} = "Locus";
+	$nodesDic{$targetLocus}{'Name'} = $targetGenome;	
+	$nodesDic{$targetLocus}{'Species'} = $genomeDatabase{$targetGenome}{'Species'};
+	$nodesDic{$targetLocus}{'Family'} = $genomeDatabase{$targetGenome}{'Family'};
+	$nodesDic{$targetLocus}{'Level'}="";
+	$nodesDic{$targetLocus}{'ORF'}="";
+
+	$nodesDic{$targetLocus}{'Classification_1'}=$classification[0];
+	$nodesDic{$targetLocus}{'Classification_2'}=$classification[1];
+	$nodesDic{$targetLocus}{'Classification_3'}=$classification[2];
+	$nodesDic{$targetLocus}{'Classification_4'}=$classification[3];
+	$nodesDic{$targetLocus}{'Classification_5'}=$classification[4];
+	$nodesDic{$targetLocus}{'Classification_6'}=$classification[5];
 	### Remove duplicates
-	if(! defined $nodeCNSHistory{$locus}{$CNSID}) { 
-		print $outputSIFFile "$locus has $CNSID\n";
-		$nodeCNSHistory{$locus}{$CNSID} = 1;
+	if(! (defined $nodeCNSHistory{$targetLocus}{$CNSID})) { 
+		print $outputSIFFile "$targetLocus has $CNSID\n";
+		$nodeCNSHistory{$targetLocus}{$CNSID} = 1;
 	}
 }
-close($nodeFile);
 
-open (my $mergedCNSFile, $mergedCNSFileName);
+
+open (my $mergedCNSFile, $mergedDeepCNSFileName);
 while(my $curMergedCNSLine = <$mergedCNSFile>) {
 	chomp ($curMergedCNSLine);
 	my ($CNSIDA,$CNSIDB) = split /,/, $curMergedCNSLine;
 	print $outputSIFFile  "$CNSIDA is $CNSIDB\n";
 }
-close($mergedCNSFile);
+
 
 ## read the short name
 open (my $lociListFile, $lociListFileName) || die ("Internal error");
@@ -145,21 +173,30 @@ while(my $lociLine = <$lociListFile>) {
 	chomp($lociLine);
 	my ($locus,$genename) = split /,/, $lociLine;
 	$nodesDic{$locus}{'Type'} = "ReferenceLocus";	
-	$nodesDic{$locus}{'DicName'} = $genename;
+	$nodesDic{$locus}{'Name'} = $genename;
 }
 
 #### Now dump dictionary
 foreach my $curNode (keys %nodesDic) {
 	
-	print $outputDictionaryFile "$curNode," . $nodesDic{$curNode}{'Type'} . "," .
-						  $nodesDic{$curNode}{'DicName'} . "," .
-						  $nodesDic{$curNode}{'Species'} . "," .
-						  $nodesDic{$curNode}{'Family'} . "," .
-						  $nodesDic{$curNode}{'Clade1'} . "," .										
-						  $nodesDic{$curNode}{'Clade2'} . "," .
-						  $nodesDic{$curNode}{'Start'} . "," .
-						  $nodesDic{$curNode}{'Length'} . "\n";											
+	print $outputDictionaryFile join(",",$curNode,
+						  $nodesDic{$curNode}{'Type'},
+						  $nodesDic{$curNode}{'Name'},
+						  $nodesDic{$curNode}{'Species'},
+						  $nodesDic{$curNode}{'Family'},
+						  $nodesDic{$curNode}{'Level'},										
+						  $nodesDic{$curNode}{'ORF'},
+						  $nodesDic{$curNode}{'Classification_1'},
+						  $nodesDic{$curNode}{'Classification_2'},
+						  $nodesDic{$curNode}{'Classification_3'},
+						  $nodesDic{$curNode}{'Classification_4'},
+						  $nodesDic{$curNode}{'Classification_5'},
+						  $nodesDic{$curNode}{'Classification_6'}) . "\n";
+										
 }
+close($mergedCNSFile);
+close($nodeFile);
+
 
 close($outputSIFFile);
 close($outputDictionaryFile);

@@ -1,0 +1,45 @@
+_LpostPerCat
+------------
+1. produce it
+gainLoss::startRate4Site
+	rate4siteGL::computeRate4site
+		computeEB_EXP_siteSpecificRate(_rates,_BayesianSTD,_BayesianLowerBound,_BayesianUpperBound,_sc,*_sp,_tr,_alphaConf,&_LpostPerCat,_unObservableData_p);
+		sperate: 		
+			LofPos_givenRateCat = likelihoodComputation::getLofPos(pos,et,sc,cpg[cat],sp);
+			pGivenR[cat] = LofPos_givenRateCat * sp.ratesProb(cat);
+			Assign:
+			if (LpostPerCat){
+				(*LpostPerCat)[j][pos]= convert(pGivenR[j]);
+		
+2. get it
+	_LpostPerCat = r4s.getLpostPerCat();
+	
+3. use it
+	startComputePosteriorExpectationOfChange(_sc,_tr,_sp,gainLossOptions::_outDir,_LpostPerCat);
+	if(LpostPerCat.size()==0  )
+	{	
+		resizeMatrix(LpostPerCat,sp->categories(),sc.seqLen()) ;
+		if(sp->categories()>1){	// to fill LpostPerCat - run computeRate4site()
+			rate4siteGL r4s(sc,tr,sp,outDir, _unObservableData_p);
+			r4s.run();
+			LpostPerCat = r4s.getLpostPerCat();
+		}
+		else{
+			oneMatrix(LpostPerCat);
+		}
+	}	
+	computeCountsGL countsGL(sc,tr,sp,outDir,LpostPerCat);
+	
+		_expV01[pos]+=exp01*_LpostPerCat[rateIndex][pos];
+		_expV10[pos]+=exp10*_LpostPerCat[rateIndex][pos];
+
+		_probV01[pos]+=prob01*_LpostPerCat[rateIndex][pos];
+		_probV10[pos]+=prob10*_LpostPerCat[rateIndex][pos];
+
+		_probChanges_PosNodeXY[pos][i][j][k] += probChangesForBranchPerRateCategoryPerPos[i][j][k]*_LpostPerCat[rateIndex][pos];
+		_expChanges_PosNodeXY[pos][i][j][k] += expChangesForBranchPerRateCategoryPerPos[i][j][k]*_LpostPerCat[rateIndex][pos];
+	
+	
+
+
+	

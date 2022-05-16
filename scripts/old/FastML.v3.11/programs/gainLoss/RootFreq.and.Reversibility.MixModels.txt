@@ -1,0 +1,18 @@
+Previously, The model was defined by terms from DNA and Protein Alphabet.
+There were either "reversible" or "Non-reversible" models, where in the first: 	
+ _Q[1][0] = _Q[0][1] * _freq[0] / _freq[1]; // stated that we find lossRate from gainRate and stationary freq.
+ 
+ The freq value is also used as the Root freq at each likelihood computation,
+ so using the "reversible" model alse means that the stationary freq = Root freq, where if lossRate was estimated independently
+ in the "Non-reversible" - than the _freq is only addressed as Root freq.
+ 
+ The models free parameters:
+ M1 - gainRate, freq (both stat and root)
+ M2 - gainRate, LossRate, freq (only root)
+ 
+ In the royal society the model was re-written equivantly as:
+ M1 - r_Q, freq (both stat and root) [where gainRate = r_Q*freq[1]] 
+ M2 - r_Q, freq_Stat, and freq_Root [where freq_Stat was seperated since it was not used in _Q[1][0] = _Q[0][1] * _freq[0] / _freq[1];]
+ 
+
+ 

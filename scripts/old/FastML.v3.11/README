@@ -1,0 +1,88 @@
+                FastML - program for computing maximum likelihood
+                         ancestral sequence reconstruction
+
+The FastML program is a bioinformatics tool for the reconstruction of ancestral sequences based on the phylogenetic relations between homologous sequences. 
+The program runs several algorithms that reconstruct the ancestral sequences with emphasis on an accurate reconstruction of both indels and characters. 
+
+URL: http://fastml.tau.ac.il/
+
+Authors: Haim Ashkenazy, Osnat Penn, Adi Doron-Faigenboim, Ofir Cohen, Gina Cannarozzi, Oren Zomer and Tal Pupko
+
+When using the FastML algorithm please cite:
+[1] Ashkenazy H, Penn O, Doron-Faigenboim A, Cohen O, Cannarozzi G, Zomer O, Pupko T. 2012
+FastML: a web server for probabilistic reconstruction of ancestral sequences 
+Nucleic Acids Res. 40(Web Server issue):W580-4.
+
+[2] Pupko T, Pe'er I, Hasegawa M, Graur D, Friedman N. 2002
+A branch-and-bound algorithm for the inference of ancestral amino-acid sequences when the replacement rate varies among sites: Application to the evolution of five gene families. 
+Bioinformatics 18(8): 1116-1123. [pdf] [abs] 
+
+[3] Pupko T, Pe'er I, Shamir R, Graur D. 2000.
+A fast algorithm for joint reconstruction of ancestral amino-acid sequences.
+Mol. Biol. Evol. 17(6): 890-896. [pdf] [abs] 
+
+[4] Pupko, T. and Pe'er I. 2000.
+Maximum likelihood reconstruction of ancestral amino-acid sequences.
+Currents in Computational Molecular Biology. Ed. Miyano, S., Shamir, R, and Takagi, T. pp. 184-185. Universal Academy Press, Tokyo, Japan. [pdf]
+
+Installation
+============
+
+  1. Unpack the archive by typing:
+        % tar -xzf FastML.v3.1.tgz
+
+  2. Compile the package by typing:
+        % cd FastML.v3.1
+        % make
+     (Running `make' takes a while)
+
+  3A. FastML uses Perl:
+      Type "perl -v" and check that Perl is installed.
+      If it's not installed, download and install it from: http://www.perl.org/
+
+	3B. To reconstruct the ML tree during FastML run RAxML and BioPerl should be installed in your system.
+
+	   RAxML: Type "which raxmlHPC" and check that the program is found
+   	 If it's not installed, download and install RAxML from:  http://sco.h-its.org/exelixis/web/software/raxml/index.html
+	   BioPerl: Type "perl -e 'use Bio::SeqIO'" to check that BioPerl is installed.
+     If it's not installed, download and install it from: http://www.bioperl.org/
+         
+
+Usage
+=====
+
+Run the Perl script: FastML.v3.1/www/fastml/FastML_Wrapper.pl
+(Note that you cannot move this script from of its directory, because it uses relative paths to other files in other directories. Sorry)
+FastML uses flags in the command line arguments: (for help, type: "perl FastML_Wrapper.pl")
+
+USAGE: perl FastML_Wrapper.pl --MSA_File MSA_File --seqType [AA|NUC|CODON] --outDir OUTDIR
+
+Required parameters:
+  --MSA_File     Input multiple sequence alignment in FASTA format
+  --seqType      Sequence type may be either of: nuc (nucleotides), aa (amino acids),
+                 or codon (nucleotides that will be treated as whole codons)
+  --outDir       FULL PATH of the output directory where all output files will be created
+                 (NOTE: EACH RUN must have its UNIQUE outDir.
+                  In case the outDir does not exists it will be created automatically)
+Optional parameters:
+  --Tree <phylogenetic tree>
+  --TreeAlg <NJ | RAxML> - How to reconstruct the tree when a tree is not provided by the user; default=NJ
+  --SubMatrix <JTT | LG | mtREV | cpREV | WAG | DAYHOFF > amino acid options, the default is JTT.
+              <JC_Nuc | T92 | HKY | GTR> nucleotide options, the default is JC_Nuc.
+              <yang | empiriCodon> codon options, the default is yang.
+  --OptimizeBL <yes | no> default: yes
+  --UseGamma   <yes | no> default: yes
+  --Alpha      <User provide alpha>   (relevant only when UseGamma==yes)
+                                       user alpha parameter of the gamma distribution [if alpha is not given, alpha and branches will be evaluated from the data]
+  --jointReconstruction <yes | no> default: yes
+  --indelReconstruction <PARSIMONY|ML|BOTH> - which method is used for indel reconstruction
+  --indelCutOff <Cutoff for indel vs Char> deafult = 0.5
+
+EXAMPLE:
+> perl FastML.v3.1/www/fastml/FastML_Wrapper.pl --MSA_File MSA.aln --outDir /home/MSA.FastML --seqType aa --Tree tree.newick    
+Will reconstruct ancestral sequences (both "joint" and "marginal") based on the proteins MSA in "MSA.aln" and the tree in "tree,newick" and output all results to the diretory "MSA.FastML" at the home directory
+
+Copyrights
+==========
+    * To modify the code, or use parts of it for other purposes, permission should be requested. Please contact Tal Pupko: talp@post.tau.ac.il
+    * Please note that the use of the FastML program is for academic use only

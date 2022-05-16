@@ -1,0 +1,38 @@
+ testing the "split" class
+make set - max=5
+size =0   0 1 2 3 4  | 
+toggle(4)
+size =1   0 1 2 3  | 4 
+toggle(4)
+size =0   0 1 2 3 4  | 
+toggle(4)
+size =1   0 1 2 3  | 4 
+toggle(3)
+size =2   0 1 2  | 3 4 
+toggle(3)
+size =1   0 1 2 3  | 4 
+toggle(0)
+size =2   0 4  | 1 2 3 
+toggle(1);
+size =2   0 1 4  | 2 3 
+toggle(1);
+size =2   0 4  | 1 2 3 
+toggle(1);
+size =2   0 1 4  | 2 3 
+toggle(0)
+size =2   0 2 3  | 1 4 
+toggle(0)
+size =2   0 1 4  | 2 3 
+
+test split constractor from iterator
+size =2   0 2 4  | 1 3 
+size =2   0 1  | 2 3 4 
+
+
+Testing competability
+size =2   0 1 4  | 2 3 
+ and size =2   0 2 4  | 1 3 
+	:0
+size =2   0 1 4  | 2 3 
+ and size =2   0 1  | 2 3 4 
+	:1

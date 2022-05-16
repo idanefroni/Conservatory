@@ -1,0 +1,449 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>phylogenyLib</ProjectName>
+    <ProjectGuid>{BEB52DB0-2B2A-41F0-BB49-9EC9817ACBEE}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Debug\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Release\</IntDir>
+    <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+    <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+    <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+    <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <OutputFile>$(OutDir)phylogeny.lib</OutputFile>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <OutputFile>$(OutDir)phylogeny.lib</OutputFile>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <None Include="adrianCodon.dat.q" />
+    <None Include="cpREV45.dat.q" />
+    <None Include="dayhoff.dat.q" />
+    <None Include="HIVb.dat.q" />
+    <None Include="HIVw.dat.q" />
+    <None Include="jones.dat.q" />
+    <None Include="LG.dat.q" />
+    <None Include="mtREV24.dat.q" />
+    <None Include="wag.dat.q" />
+    <None Include="Makefile" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="alphabet.cpp" />
+    <ClCompile Include="amino.cpp" />
+    <ClCompile Include="bblLSProportionalEB.cpp" />
+    <ClCompile Include="codon.cpp" />
+    <ClCompile Include="extremeValDistribution.cpp" />
+    <ClCompile Include="gainLossAlphabet.cpp" />
+    <ClCompile Include="geneticCodeHolder.cpp" />
+    <ClCompile Include="indel.cpp" />
+    <ClCompile Include="integerAlphabet.cpp" />
+    <ClCompile Include="mulAlphabet.cpp" />
+    <ClCompile Include="nucleotide.cpp" />
+    <ClCompile Include="oneTwoMoreModel.cpp" />
+    <ClCompile Include="threeStateAlphabet.cpp" />
+    <ClCompile Include="evaluateCharacterFreq.cpp" />
+    <ClCompile Include="samplingSequences.cpp" />
+    <ClCompile Include="seqContainerTreeMap.cpp" />
+    <ClCompile Include="seqeuncesFilter.cpp" />
+    <ClCompile Include="sequence.cpp" />
+    <ClCompile Include="sequenceContainer.cpp" />
+    <ClCompile Include="betaDistribution.cpp" />
+    <ClCompile Include="betaDistributionFixedCategories.cpp" />
+    <ClCompile Include="betaDistributionFixedCategoriesWithOmegaUniform.cpp" />
+    <ClCompile Include="betaOmegaDistribution.cpp" />
+    <ClCompile Include="betaUtilities.cpp" />
+    <ClCompile Include="distribution.cpp" />
+    <ClCompile Include="distributionPlusCategory.cpp" />
+    <ClCompile Include="distributionPlusInvariant.cpp" />
+    <ClCompile Include="gammaDistribution.cpp" />
+    <ClCompile Include="gammaDistributionFixedCategories.cpp" />
+    <ClCompile Include="gammaDistributionLaguerre.cpp" />
+    <ClCompile Include="gammaDistributionPlusInvariant.cpp" />
+    <ClCompile Include="gammaUtilities.cpp" />
+    <ClCompile Include="GamMixtureOptimizer.cpp" />
+    <ClCompile Include="generalGammaDistribution.cpp" />
+    <ClCompile Include="generalGammaDistributionFixedCategories.cpp" />
+    <ClCompile Include="generalGammaDistributionLaguerre.cpp" />
+    <ClCompile Include="generalGammaDistributionPlusInvariant.cpp" />
+    <ClCompile Include="mixtureDistribution.cpp" />
+    <ClCompile Include="optGammaMixtureEM.cpp" />
+    <ClCompile Include="optGammaMixtureLS.cpp" />
+    <ClCompile Include="suffStatGammaMixture.cpp" />
+    <ClCompile Include="uniDistribution.cpp" />
+    <ClCompile Include="uniformDistribution.cpp" />
+    <ClCompile Include="datMatrixHolder.cpp" />
+    <ClCompile Include="fromQtoPt.cpp" />
+    <ClCompile Include="granthamChemicalDistances.cpp" />
+    <ClCompile Include="readDatMatrix.cpp" />
+    <ClCompile Include="ussrvModel.cpp" />
+    <ClCompile Include="chebyshevAccelerator.cpp" />
+    <ClCompile Include="pijAccelerator.cpp" />
+    <ClCompile Include="aaJC.cpp" />
+    <ClCompile Include="codonJC.cpp" />
+    <ClCompile Include="goldmanYangModel.cpp" />
+    <ClCompile Include="gtrModel.cpp" />
+    <ClCompile Include="hky.cpp" />
+    <ClCompile Include="indelModel.cpp" />
+    <ClCompile Include="nucJC.cpp" />
+    <ClCompile Include="replacementModel.cpp" />
+    <ClCompile Include="replacementModelSSRV.cpp" />
+    <ClCompile Include="tamura92.cpp" />
+    <ClCompile Include="threeStateModel.cpp" />
+    <ClCompile Include="wYangModel.cpp" />
+    <ClCompile Include="multipleStochasticProcess.cpp" />
+    <ClCompile Include="stochasticProcess.cpp" />
+    <ClCompile Include="stochasticProcessSSRV.cpp" />
+    <ClCompile Include="allTrees.cpp" />
+    <ClCompile Include="allTreesSeparateModel.cpp" />
+    <ClCompile Include="bootstrap.cpp" />
+    <ClCompile Include="fastStartTree.cpp" />
+    <ClCompile Include="readTree.cpp" />
+    <ClCompile Include="simulateTree.cpp" />
+    <ClCompile Include="tree.cpp" />
+    <ClCompile Include="treeInference.cpp" />
+    <ClCompile Include="treeIt.cpp" />
+    <ClCompile Include="treeUtil.cpp" />
+    <ClCompile Include="Nni.cpp" />
+    <ClCompile Include="NNiProp.cpp" />
+    <ClCompile Include="NNiSep.cpp" />
+    <ClCompile Include="clustalFormat.cpp" />
+    <ClCompile Include="fastaFormat.cpp" />
+    <ClCompile Include="maseFormat.cpp" />
+    <ClCompile Include="molphyFormat.cpp" />
+    <ClCompile Include="nexusFormat.cpp" />
+    <ClCompile Include="phylipFormat.cpp" />
+    <ClCompile Include="phylipSequentialFormat.cpp" />
+    <ClCompile Include="recognizeFormat.cpp" />
+    <ClCompile Include="computeDownAlg.cpp" />
+    <ClCompile Include="computeMarginalAlg.cpp" />
+    <ClCompile Include="computePijComponent.cpp" />
+    <ClCompile Include="computeUpAlg.cpp" />
+    <ClCompile Include="computeUpAlgFactors.cpp" />
+    <ClCompile Include="likeDist2Codon.cpp" />
+    <ClCompile Include="likelihoodComputation.cpp" />
+    <ClCompile Include="likelihoodComputation2Codon.cpp" />
+    <ClCompile Include="likelihoodComputation2USSRV.cpp" />
+    <ClCompile Include="likelihoodComputationFactors.cpp" />
+    <ClCompile Include="likelihoodComputationGL.cpp" />
+    <ClCompile Include="suffStatComponent.cpp" />
+    <ClCompile Include="bblEM.cpp" />
+    <ClCompile Include="bblEM2codon.cpp" />
+    <ClCompile Include="bblEM2USSRV.cpp" />
+    <ClCompile Include="bblEMfixRoot.cpp" />
+    <ClCompile Include="bblEMProportionalEB.cpp" />
+    <ClCompile Include="bblEMProprtional.cpp" />
+    <ClCompile Include="bblEMSeperate.cpp" />
+    <ClCompile Include="bestAlpha.cpp" />
+    <ClCompile Include="bestAlphaAndK.cpp" />
+    <ClCompile Include="bestAlphaAndNu.cpp" />
+    <ClCompile Include="bestAlphaManyTrees.cpp" />
+    <ClCompile Include="bestGtrModelParams.cpp" />
+    <ClCompile Include="bestHKYparam.cpp" />
+    <ClCompile Include="bestParamUSSRV.cpp" />
+    <ClCompile Include="bestTamura92param.cpp" />
+    <ClCompile Include="C_evalParamUSSRV.cpp" />
+    <ClCompile Include="computeCounts.cpp" />
+    <ClCompile Include="countTableComponent.cpp" />
+    <ClCompile Include="fromCountTableComponentToDistance2Codon.cpp" />
+    <ClCompile Include="fromCountTableComponentToDistancefixRoot.cpp" />
+    <ClCompile Include="getRandomWeights.cpp" />
+    <ClCompile Include="split.cpp" />
+    <ClCompile Include="splitMap.cpp" />
+    <ClCompile Include="splitTreeUtil.cpp" />
+    <ClCompile Include="distanceBasedSeqs2Tree.cpp" />
+    <ClCompile Include="distanceTable.cpp" />
+    <ClCompile Include="fromCountTableComponentToDistance.cpp" />
+    <ClCompile Include="fromCountTableComponentToDistance2USSRV.cpp" />
+    <ClCompile Include="fromCountTableComponentToDistanceProp.cpp" />
+    <ClCompile Include="fromCountTableComponentToDistancePropEB.cpp" />
+    <ClCompile Include="givenRatesMLDistance.cpp" />
+    <ClCompile Include="likeDist.cpp" />
+    <ClCompile Include="likeDist2USSRV.cpp" />
+    <ClCompile Include="likeDistfixRoot.cpp" />
+    <ClCompile Include="likeDistProp.cpp" />
+    <ClCompile Include="likeDistPropEB.cpp" />
+    <ClCompile Include="nj.cpp" />
+    <ClCompile Include="njConstrain.cpp" />
+    <ClCompile Include="pairwiseGammaDistance.cpp" />
+    <ClCompile Include="posteriorDistance.cpp" />
+    <ClCompile Include="ssrvDistanceSeqs2Tree.cpp" />
+    <ClCompile Include="AddLog.cpp" />
+    <ClCompile Include="codonUtils.cpp" />
+    <ClCompile Include="computePosteriorExpectationOfSubstitutions.cpp" />
+    <ClCompile Include="computePosteriorExpectationOfSubstitutions_nonReversibleSp.cpp" />
+    <ClCompile Include="computeSubstitutionCounts.cpp" />
+    <ClCompile Include="ConversionUtils.cpp" />
+    <ClCompile Include="errorMsg.cpp" />
+    <ClCompile Include="fromInstructionFile.cpp" />
+    <ClCompile Include="getopt.c" />
+    <ClCompile Include="getopt1.c" />
+    <ClCompile Include="logFile.cpp" />
+    <ClCompile Include="matrixUtils.cpp" />
+    <ClCompile Include="normalDist.cpp" />
+    <ClCompile Include="numRec.cpp" />
+    <ClCompile Include="simulateCodonsJumps.cpp" />
+    <ClCompile Include="simulateJumps.cpp" />
+    <ClCompile Include="simulateJumpsAbstract.cpp" />
+    <ClCompile Include="simulateRateShiftJumps.cpp" />
+    <ClCompile Include="someUtil.cpp" />
+    <ClCompile Include="talRandom.cpp" />
+    <ClCompile Include="siteSpecificRate.cpp" />
+    <ClCompile Include="cmdline2EvolObjs.cpp" />
+    <ClCompile Include="doubleRep.cpp" />
+    <ClCompile Include="findRateOfGene.cpp" />
+    <ClCompile Include="GLaguer.cpp" />
+    <ClCompile Include="khTest.cpp" />
+    <ClCompile Include="logRep.cpp" />
+    <ClCompile Include="Parameters.cpp" />
+    <ClCompile Include="searchStatus.cpp" />
+    <ClCompile Include="computeJumps.cpp" />
+    <ClCompile Include="unObservableData.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="alphabet.h" />
+    <ClInclude Include="amino.h" />
+    <ClInclude Include="bblLSProportionalEB.h" />
+    <ClInclude Include="codon.h" />
+    <ClInclude Include="extremeValDistribution.h" />
+    <ClInclude Include="gainLossAlphabet.h" />
+    <ClInclude Include="geneticCodeHolder.h" />
+    <ClInclude Include="indel.h" />
+    <ClInclude Include="integerAlphabet.h" />
+    <ClInclude Include="mulAlphabet.h" />
+    <ClInclude Include="nucleotide.h" />
+    <ClInclude Include="oneTwoMoreModel.h" />
+    <ClInclude Include="threeStateAlphabet.h" />
+    <ClInclude Include="evaluateCharacterFreq.h" />
+    <ClInclude Include="samplingSequences.h" />
+    <ClInclude Include="seqContainerTreeMap.h" />
+    <ClInclude Include="seqeuncesFilter.h" />
+    <ClInclude Include="sequence.h" />
+    <ClInclude Include="sequenceContainer.h" />
+    <ClInclude Include="betaDistribution.h" />
+    <ClInclude Include="betaDistributionFixedCategories.h" />
+    <ClInclude Include="betaDistributionFixedCategoriesWithOmegaUniform.h" />
+    <ClInclude Include="betaOmegaDistribution.h" />
+    <ClInclude Include="betaUtilities.h" />
+    <ClInclude Include="distribution.h" />
+    <ClInclude Include="distributionPlusCategory.h" />
+    <ClInclude Include="distributionPlusInvariant.h" />
+    <ClInclude Include="gammaDistribution.h" />
+    <ClInclude Include="gammaDistributionFixedCategories.h" />
+    <ClInclude Include="gammaDistributionLaguerre.h" />
+    <ClInclude Include="gammaDistributionPlusInvariant.h" />
+    <ClInclude Include="gammaUtilities.h" />
+    <ClInclude Include="GamMixtureOptimizer.h" />
+    <ClInclude Include="generalGammaDistribution.h" />
+    <ClInclude Include="generalGammaDistributionFixedCategories.h" />
+    <ClInclude Include="generalGammaDistributionLaguerre.h" />
+    <ClInclude Include="generalGammaDistributionPlusInvariant.h" />
+    <ClInclude Include="mixtureDistribution.h" />
+    <ClInclude Include="optGammaMixtureEM.h" />
+    <ClInclude Include="optGammaMixtureLS.h" />
+    <ClInclude Include="suffStatGammaMixture.h" />
+    <ClInclude Include="uniDistribution.h" />
+    <ClInclude Include="uniformDistribution.h" />
+    <ClInclude Include="datMatrixHolder.h" />
+    <ClInclude Include="fromQtoPt.h" />
+    <ClInclude Include="granthamChemicalDistances.h" />
+    <ClInclude Include="readDatMatrix.h" />
+    <ClInclude Include="ussrvModel.h" />
+    <ClInclude Include="alphaTrivialAccelerator.h" />
+    <ClInclude Include="chebyshevAccelerator.h" />
+    <ClInclude Include="pijAccelerator.h" />
+    <ClInclude Include="trivialAccelerator.h" />
+    <ClInclude Include="aaJC.h" />
+    <ClInclude Include="codonJC.h" />
+    <ClInclude Include="goldmanYangModel.h" />
+    <ClInclude Include="gtrModel.h" />
+    <ClInclude Include="hky.h" />
+    <ClInclude Include="indelModel.h" />
+    <ClInclude Include="nucJC.h" />
+    <ClInclude Include="replacementModel.h" />
+    <ClInclude Include="replacementModelSSRV.h" />
+    <ClInclude Include="tamura92.h" />
+    <ClInclude Include="threeStateModel.h" />
+    <ClInclude Include="wYangModel.h" />
+    <ClInclude Include="multipleStochasticProcess.h" />
+    <ClInclude Include="stochasticProcess.h" />
+    <ClInclude Include="stochasticProcessSSRV.h" />
+    <ClInclude Include="allTrees.h" />
+    <ClInclude Include="allTreesSeparateModel.h" />
+    <ClInclude Include="bootstrap.h" />
+    <ClInclude Include="fastStartTree.h" />
+    <ClInclude Include="readTree.h" />
+    <ClInclude Include="simulateTree.h" />
+    <ClInclude Include="tree.h" />
+    <ClInclude Include="treeInference.h" />
+    <ClInclude Include="treeIt.h" />
+    <ClInclude Include="treeUtil.h" />
+    <ClInclude Include="Nni.h" />
+    <ClInclude Include="NNiProp.h" />
+    <ClInclude Include="NNiSep.h" />
+    <ClInclude Include="clustalFormat.h" />
+    <ClInclude Include="fastaFormat.h" />
+    <ClInclude Include="maseFormat.h" />
+    <ClInclude Include="molphyFormat.h" />
+    <ClInclude Include="nexusFormat.h" />
+    <ClInclude Include="phylipFormat.h" />
+    <ClInclude Include="phylipSequentialFormat.h" />
+    <ClInclude Include="recognizeFormat.h" />
+    <ClInclude Include="computeDownAlg.h" />
+    <ClInclude Include="computeMarginalAlg.h" />
+    <ClInclude Include="computePijComponent.h" />
+    <ClInclude Include="computeUpAlg.h" />
+    <ClInclude Include="likeDist2Codon.h" />
+    <ClInclude Include="likelihoodComputation.h" />
+    <ClInclude Include="likelihoodComputation2Codon.h" />
+    <ClInclude Include="likelihoodComputation2USSRV.h" />
+    <ClInclude Include="likelihoodComputationFactors.h" />
+    <ClInclude Include="likelihoodComputationGL.h" />
+    <ClInclude Include="suffStatComponent.h" />
+    <ClInclude Include="bblEM.h" />
+    <ClInclude Include="bblEM2codon.h" />
+    <ClInclude Include="bblEM2USSRV.h" />
+    <ClInclude Include="bblEMfixRoot.h" />
+    <ClInclude Include="bblEMProportional.h" />
+    <ClInclude Include="bblEMProportionalEB.h" />
+    <ClInclude Include="bblEMSeperate.h" />
+    <ClInclude Include="bestAlpha.h" />
+    <ClInclude Include="bestAlphaAndK.h" />
+    <ClInclude Include="bestAlphaAndNu.h" />
+    <ClInclude Include="bestAlphaManyTrees.h" />
+    <ClInclude Include="bestGtrModelParams.h" />
+    <ClInclude Include="bestHKYparam.h" />
+    <ClInclude Include="bestParamUSSRV.h" />
+    <ClInclude Include="bestTamura92param.h" />
+    <ClInclude Include="C_evalParamUSSRV.h" />
+    <ClInclude Include="computeCounts.h" />
+    <ClInclude Include="countTableComponent.h" />
+    <ClInclude Include="fromCountTableComponentToDistance2Codon.h" />
+    <ClInclude Include="fromCountTableComponentToDistancefixRoot.h" />
+    <ClInclude Include="getRandomWeights.h" />
+    <ClInclude Include="split.h" />
+    <ClInclude Include="splitMap.h" />
+    <ClInclude Include="splitTreeUtil.h" />
+    <ClInclude Include="distanceBasedSeqs2Tree.h" />
+    <ClInclude Include="distanceMethod.h" />
+    <ClInclude Include="distances2Tree.h" />
+    <ClInclude Include="distanceTable.h" />
+    <ClInclude Include="fromCountTableComponentToDistance.h" />
+    <ClInclude Include="fromCountTableComponentToDistance2USSRV.h" />
+    <ClInclude Include="fromCountTableComponentToDistanceProp.h" />
+    <ClInclude Include="fromCountTableComponentToDistancePropEB.h" />
+    <ClInclude Include="givenRatesMLDistance.h" />
+    <ClInclude Include="jcDistance.h" />
+    <ClInclude Include="likeDist.h" />
+    <ClInclude Include="likeDist2USSRV.h" />
+    <ClInclude Include="likeDistfixRoot.h" />
+    <ClInclude Include="likeDistProp.h" />
+    <ClInclude Include="likeDistPropEB.h" />
+    <ClInclude Include="nj.h" />
+    <ClInclude Include="njConstrain.h" />
+    <ClInclude Include="pairwiseGammaDistance.h" />
+    <ClInclude Include="pDistance.h" />
+    <ClInclude Include="posteriorDistance.h" />
+    <ClInclude Include="ssrvDistanceSeqs2Tree.h" />
+    <ClInclude Include="AddLog.h" />
+    <ClInclude Include="codonUtils.h" />
+    <ClInclude Include="computePosteriorExpectationOfSubstitutions.h" />
+    <ClInclude Include="computePosteriorExpectationOfSubstitutions_nonReversibleSp.h" />
+    <ClInclude Include="computeSubstitutionCounts.h" />
+    <ClInclude Include="ConversionUtils.h" />
+    <ClInclude Include="definitions.h" />
+    <ClInclude Include="errorMsg.h" />
+    <ClInclude Include="fromInstructionFile.h" />
+    <ClInclude Include="getopt.h" />
+    <ClInclude Include="logFile.h" />
+    <ClInclude Include="matrixUtils.h" />
+    <ClInclude Include="normalDist.h" />
+    <ClInclude Include="numRec.h" />
+    <ClInclude Include="simulateCodonsJumps.h" />
+    <ClInclude Include="simulateJumps.h" />
+    <ClInclude Include="simulateJumpsAbstract.h" />
+    <ClInclude Include="simulateRateShiftJumps.h" />
+    <ClInclude Include="someUtil.h" />
+    <ClInclude Include="talRandom.h" />
+    <ClInclude Include="siteSpecificRate.h" />
+    <ClInclude Include="checkcovFanctors.h" />
+    <ClInclude Include="checkcovFanctorsWithFactors.h" />
+    <ClInclude Include="cmdline2EvolObjs.h" />
+    <ClInclude Include="cmdline2EvolObjs.separate_template_classes.h" />
+    <ClInclude Include="createSPFromArgsInfo.h" />
+    <ClInclude Include="doubleRep.h" />
+    <ClInclude Include="findRateOfGene.h" />
+    <ClInclude Include="GLaguer.h" />
+    <ClInclude Include="khTest.h" />
+    <ClInclude Include="logRep.h" />
+    <ClInclude Include="Parameters.h" />
+    <ClInclude Include="searchStatus.h" />
+    <ClInclude Include="computeJumps.h" />
+    <ClInclude Include="unObservableData.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

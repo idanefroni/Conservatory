@@ -8,37 +8,15 @@ use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
 
-print STDERR "\nUsage: buildCNSTables referenceGenome cnsFile mapFile teGFFfile\n\nAccepts CNS and alignment map files and output generate two files:\n\n";
-print STDERR "\t\t[family].cns.table.csv\t\tFiltered CNS file\n\t\t[family].cns.position.table.csv\t\tThe position of the CNS in each of the family genomes\n";
-print STDERR "\n\nThe filtered CNS table has the following fields:\n";
-print STDERR "\tCNS_Unique_Name_In_Reference, ReferenceGenome, Chromosome, Start, End, ORFCheck, TECheck\n\n";
-print STDERR "The position table has the following fields:\n";
-print STDERR "\tCNS_Unique_Name, ReferenceGene, Genome, Gene, RelativeStart, UporDown, phyloP-pvalue\n\n\n";
+print STDERR "\nUsage: buildCNSTables referenceGenome cnsFile mapFile\n\nAccepts CNS and alignment map files and output generate two files:\n\n";
+print STDERR "\t\t[referenceGenome].cns.table.csv\t\tFiltered and merged CNS file\n\t\t[referenceGenome].cns.position.table.csv\t\tThe position of the CNS in each genomes\n";
 
 if(scalar @ARGV< 3) {
 	die "\n\nERROR: No CNS and map file provided.\n";
 }
 
-open (my $CNSInputFile,"sort -t',' -k6,6 -k7,7n $ARGV[1] |") ||  die "ERROR: Cannot find CNS file $ARGV[1].\n";
+open (my $CNSInputFile,"sort -t',' -k1,1 -k3,3 -k4,4n $ARGV[1] |") ||  die "ERROR: Cannot find CNS file $ARGV[1].\n";
 
-
-################### Identify the reference genome
-my $referenceGenome=$ARGV[0];
-my $referenceGenomeFamily;
-my $referenceSpecies;
-
-my $conservatoryDir=abs_path(".");
-my $genomedbFile = $conservatoryDir . "/genome_database.csv";
-open (my $genomeDatabase, "<", $genomedbFile) || die "ERROR: Cannot open genome database $genomedbFile.\n";
-my $header = <$genomeDatabase>;
-while((my $curgenomeline = <$genomeDatabase>) && $referenceGenomeFamily eq "") {
-	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
-	if($curgenomeName eq $referenceGenome) {
-		$referenceGenomeFamily = $curgenomeFamily;
-		$referenceSpecies = $curgenomeSpecies;
-	}
-}
-die "ERROR: Cannot find reference genome $referenceGenome in genome_database.csv" unless $referenceGenomeFamily ne "";
 
 my %CNSDB;
 my $CNSCounter=1;
@@ -73,26 +51,6 @@ while(<$mapInputFile>) {
 close($mapInputFile);
 print "\n" . localtime() . ": Done.";
 
-####### Load TE GFF
-my $markTE=0;
-my $gff;
-my $gffFilename= $ARGV[3];
-my $curTE;
-
-if($gffFilename ne "") {
-	if(-e $gffFilename) {
-		$markTE=1;
-	}
-}
-
-if($markTE) {
-	print "\n" . localtime() . ": Opening TE GFF.";
-	$gff = Bio::Tools::GFF->new(-file => $gffFilename,
-				   -gff_version => 3);
-	$curTE = $gff->next_feature;
-}
-
-
 ## A CNS Object has the following fields: Name, Chromosome, Start, End, ORFCheck, TECheck, ConservationLevel, PositionVariability
 ##     
 
@@ -107,44 +65,11 @@ while(<$CNSInputFile>) {
 	
 	chomp;
 	my ($locus, $startRel, $endRel, $pval,$upordown, $chromosome, $start, $end, $orf) = split /,/;
-	if($orf eq "ORF" || $orf eq "1") { $orf = "1"; } else { $orf = "0"; }
 	### Check for overlaps 
 	if($previousCNS ne "") {
 		if($CNSDB{$previousCNS}{'Chromosome'} == $chromosome && overlap($start, $end, $CNSDB{$previousCNS}{'Start'},$CNSDB{$previousCNS}{'End'})) {
 			$overlapCNS = $previousCNS;
 		}
-	}
-	
-	if($markTE) {
-		### first, get to the right chromosome
-		while(!$doneWithTE && ($chromosome ne $curTE->seq_id)) {
-			my $tmpCurTE = $gff->next_feature;
-			if($tmpCurTE) {
-				$curTE=$tmpCurTE;
-			} else {
-				$doneWithTE=1;
-			}
-
-		}
-		## now get to the right place
-		while(!$doneWithTE && ($chromosome eq $curTE->seq_id && $curTE->end < $start )) {
-			my $tmpCurTE = $gff->next_feature;
-			if($tmpCurTE) {
-				$curTE=$tmpCurTE;
-			} else {
-				$doneWithTE=1;
-			}
-		}
-
-		## If the TE is in more than 20% of the CNS, mark the overlap
-		if($curTE->seq_id eq $chromosome && overlap($start, $end, $curTE->start, $curTE->end)>0.2) {
-			$overlapTE="1";
-		} else {
-			$overlapTE="0";
-		}
-		
-	} else {
-		$overlapTE="0";
 	}
 	
 	if($overlapCNS eq "") {
@@ -222,9 +147,6 @@ while(<$CNSInputFile>) {
 print localtime() . ": Done collecting positions from reference.\n";
 
 close ($CNSInputFile);
-####### Done filtering and indexing
-### Now calculate CNS level statistics
-
 
 print localtime() . ": Done calculating statistics.\n";
 ######### Finally, dump the tables

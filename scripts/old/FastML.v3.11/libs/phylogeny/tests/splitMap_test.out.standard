@@ -1,0 +1,35 @@
+
+Test the splitMap
+s1: size =2   0 1 4  | 2 3 
+s2: size =2   0 2 3  | 1 4 
+
+add s1
+1	size =2   0 1 4  | 2 3 
+
+add s2
+1	size =2   0 1 4  | 2 3 
+1	size =2   0 2 3  | 1 4 
+
+add s1
+2	size =2   0 1 4  | 2 3 
+1	size =2   0 2 3  | 1 4 
+
+add s1
+3	size =2   0 1 4  | 2 3 
+1	size =2   0 2 3  | 1 4 
+
+add s1
+4	size =2   0 1 4  | 2 3 
+1	size =2   0 2 3  | 1 4 
+
+
+print test
+4	size =2   0 1 4  | 2 3 
+1	size =2   0 2 3  | 1 4 
+
+
+reverse the map
+4 size =2   0 1 4  | 2 3 
+
+1 size =2   0 2 3  | 1 4 
+

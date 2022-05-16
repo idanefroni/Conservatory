@@ -1,0 +1,10 @@
+This program computes for the HKY model, the ML estimate of a given tree (when the branch lengths are given).
+ the freq of nuc 0 is: 0.388844
+ the freq of nuc 1 is: 0.176599
+ the freq of nuc 2 is: 0.197551
+ the freq of nuc 3 is: 0.237007
+computing the log likelihood of the tree...
+ starting L = -2151.38
+final likelihood: -2138.61
+best HKY parameter: 1.5181
+(Aal:0.052945,(Ese:0.061027,(Ttt:0.015761,Mtr:0.050395):0.065493):0.039148,(Eco:0.095915,(Dvi:0.107929,Meu:0.044734):0.093162):0.034430);

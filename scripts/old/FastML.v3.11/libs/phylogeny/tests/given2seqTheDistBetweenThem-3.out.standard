@@ -1,0 +1,4 @@
+This program computes for the JC model, when two sequences are given, and the distance between these two sequences is known, the likelihood.
+ the likelihood of these 2 sequences is:-16.986
+ the optimal distance between the distances is:0.823959
+ the optimal likelihood of these 2 sequences is:-10.515

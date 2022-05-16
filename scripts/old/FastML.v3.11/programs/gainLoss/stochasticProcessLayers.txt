@@ -1,0 +1,6 @@
+stochasticProcess contains:
+	distribution (rate dist. e.g., gamma)
+	trivialAccelerator contains:
+		replacementModel = gainLossModel (or others)
+
+ 

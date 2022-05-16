@@ -1,0 +1,3 @@
+This program computes for the HKY model, when two sequences are given, and the distance between these two sequences is known, the likelihood.
+ the likelihood of these 2 sequences is:-10.515
+ the ML distance between these 2 sequences is:0.94261

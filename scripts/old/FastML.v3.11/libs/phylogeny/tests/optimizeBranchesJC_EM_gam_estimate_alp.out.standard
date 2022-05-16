@@ -1,0 +1,6 @@
+This program computes for the JC model, the likelihood of a given tree (when the branch lengths are given).
+computing the log likelihood of the tree...
+ starting L = -2189.77
+final likelihood: -2172.99
+best Alpha: 0.501635
+(Aal:0.059683,(Ese:0.068312,(Ttt:0.017214,Mtr:0.052743):0.072642):0.043677,(Eco:0.114730,(Dvi:0.133475,Meu:0.039589):0.117996):0.033172);

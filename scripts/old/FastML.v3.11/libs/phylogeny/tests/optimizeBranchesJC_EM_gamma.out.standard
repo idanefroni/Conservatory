@@ -1,0 +1,5 @@
+This program computes for the JC model, the likelihood of a given tree (when the branch lengths are given).
+computing the log likelihood of the tree...
+ starting L = -2189.77
+ end L, after bbl = -2179.45590941
+(Aal:0.059126005932,(Ese:0.066030633739,(Ttt:0.017928742924,Mtr:0.051557833141):0.069475141702):0.041343973825,(Eco:0.106662142475,(Dvi:0.124009000428,Meu:0.040988634764):0.105976705171):0.033194854881);
