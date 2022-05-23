@@ -19,13 +19,13 @@ my @threadPids;
 my $version=2;
 
 my $skipConservation=0;
+my $justFamilyAlignment=0;
 my $minIdentity=0;
 my $minSpeciesNum= -1;
 my $minPhyloPscore=0;
 my $skipMissingGenomes=0;
 my $referenceGenome="";
 my $geneListFileName;
-my $global=1;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"reference=s" => \$referenceGenome,
@@ -37,13 +37,14 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-species=i" => \$minSpeciesNum,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"skip-conservation" => \$skipConservation,
+			"just-family-alignment" => \$justFamilyAlignment,
 			"force" => \$force,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
 
 			
-if($help || (!$global && $family eq "") || ($version != 1 && $version !=2) || ($global && $referenceGenome eq "")) {
-	print "Conservatory version 0.0.1\n\n";
+if($help || $referenceGenome eq "") {
+	print "Conservatory version 2.0.1\n\n";
 	
 	print "processConservation --family <family>\n\n";
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
@@ -55,6 +56,7 @@ if($help || (!$global && $family eq "") || ($version != 1 && $version !=2) || ($
 	print "\t--skip-missing-genomes\t\tSkip genomes with incomplete data and continue analysis (DEFAULT: terminate with error message).\n";
 	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";	
 	print "\t--skip-conservation\t\tSkip conservation calculation step (just merge existing files).\n";
+	print "\t--just-family-alignment\t\tPerform just the alignment step (no CNS or deep CNS calculations).\n";
 	print "\t--force\t\tForce rebuilding alignments.\n";
 	print "\t--threads\t\tNumber of threads to use.\n";
 	print "\t--verbose\t\tOutput extra progress messages.\n";
@@ -64,10 +66,8 @@ if($help || (!$global && $family eq "") || ($version != 1 && $version !=2) || ($
 
 #################### Set up files
 my $genomedb_file = "$conservatoryDir/genome_database.csv";
-my $outputDir = "$conservatoryDir/alignments/$family";
-if($global) {
-	$outputDir = "$conservatoryDir/alignments/$referenceGenome";
-}
+my $outputDir = "$conservatoryDir/alignments/$referenceGenome";
+
 my $conservationDir = "$conservatoryDir/CNS";
 my $alignmentDir = "$conservatoryDir/alignments";
 my $genomesDir = "$conservatoryDir/genomes";
@@ -97,15 +97,12 @@ my $header=<$genomedb>;
 while(my $curgenomeline= <$genomedb>) {
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference) = split /,/, $curgenomeline;
 
-	if( (!$global && ($family eq $curgenomeFamily && $curgenomeName eq $curgenomeReference)) || ($global && $curgenomeName eq $referenceGenome) ) {
+	if( $curgenomeName eq $referenceGenome ) {
 		$genomeWasProcessed=1;
 		
 		#### First, genome sanity check. See that we have all files.
-		if($global) {
-			print localtime() . ": START processing conservation for  reference genome $referenceGenome\n";
-		} else {
-			print localtime() . ": START processing conservation for $family (reference genome $curgenomeName)\n";
-		}
+		print localtime() . ": START processing conservation for  reference genome $referenceGenome\n";
+		
 		if($geneListFileName eq "") {
 			$geneListFileName = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.footprint.gff3";
 		}
@@ -139,21 +136,15 @@ while(my $curgenomeline= <$genomedb>) {
 						print localtime() . ": Thread $placeForProcess is processing $curLocus.\n";
 						my $alignmentParams;
 						
-						if ($global) {
-							$alignmentParams = "--reference $referenceGenome --locus $curLocus --skip-bam-dump";
-						} else {
-							$alignmentParams = "--family $family --locus $curLocus ";
-						}						
+						$alignmentParams = "--reference $referenceGenome --locus $curLocus --skip-bam-dump";
+
 						if($minIdentity>0) { $alignmentParams .= " --min-identity $minIdentity"; }
 						if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
 						if($minPhyloPscore>0) { $alignmentParams .= " --min-phylop-score $minPhyloPscore"; }   		
 						if($force) { $alignmentParams .= " --force"; }
 						if($skipMissingGenomes) { $alignmentParams .= " --skip-missing-genomes"; }
-						if($global) {
-							system("perl $conservatoryDir/scripts/buildConservation $alignmentParams");
-						} else {
-							system("perl $conservatoryDir/scripts/buildConservationForFamily$version $alignmentParams");
-						}
+						if($justFamilyAlignment) { $alignmentParams .= " --just-family-alignment"; }
+						system("perl $conservatoryDir/scripts/buildConservation $alignmentParams");
 						exit;
 					} else {
 						$threadPids[$placeForProcess] = $forkChildPid;
@@ -166,12 +157,15 @@ while(my $curgenomeline= <$genomedb>) {
 			close($geneListFile);
 			print localtime() . ": END Finished processing all alignments.\n";
 		}
+		
+		if($justFamilyAlignment) {
+		die "END: --justFamilyAlignment selected. All alignments completed.\n"; 
+		}
 		## Merge all BAM, sort and index
 		print localtime() . ": START data merge and sort.\n";
-		if($global) {
-			$family = $referenceGenome;
-			$curgenomeReference = $referenceGenome;
-		}
+		$family = $referenceGenome;
+		$curgenomeReference = $referenceGenome;
+
 #		unlink("$alignmentDir/$family.bam");
 #		system("find $outputDir -name \"*.bam\" > $outputDir/$family.bams.txt");
 #		system("ulimit -n 200000; samtools merge -b  $outputDir/$family.bams.txt $alignmentDir/$family.tmp.bam");

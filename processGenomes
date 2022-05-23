@@ -78,6 +78,12 @@ die "ERROR: Cannot find bgzip in path. Please make sure it is installed.\n" unle
 my $samtools = `sh -c 'command -v samtools'`;
 die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" unless ($samtools ne "");  
 
+my $agatCheck = `sh -c 'command -v agat_sp_extract_sequences.pl'`;
+die "ERROR: Cannot find samtools in path. Please make sure AGAT is installed.\n" unless ($agatCheck ne "");
+
+my $seqkit = `sh -c 'command -v seqkit'`;
+die "ERROR: Cannot find seqkit in path. Please make sure seqkit is installed.\n" unless ($seqkit ne "");
+
 ### Check all scripts are found
 die "ERROR: Cannot find the buildOrthologDB executable in the scripts directory.\n" unless (-x "$conservatoryDir/scripts/buildOrthologDB");
 die "ERROR: Cannot find the buildRegulatorySeqDB executable in the scripts directory.\n" unless (-x "$conservatoryDir/scripts/buildRegulatorySeqDB");
@@ -112,14 +118,22 @@ while(my $curgenomeline= <$genomedb>) {
 	if(substr($curgenomeline,0,1) ne "#" ) { ### If not commented
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;
 		my $genomeFastaFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta.gz";
+		my $genomeFastaFileUncompressed = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta";		
 		my $genomeProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.proteins.fasta";
 		my $genomeGFFFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.genes.gff3";
 		my $genomeTEFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.te.gff3";
 		
 		if(!( -e $genomeFastaFile)) {
-			$foundError=1;
-			print localtime() . ": ERROR Cannot find genome fasta file ($genomeFastaFile)\n";
+			#### Maybe it is here but not compressed. check
+			if( -e $genomeFastaFileUncompressed) {
+				print localtime() . ": Genome file was found, but was not compressed. Zipping $genomeFastaFileUncompressed ...\n";
+				system("bgzip -f $genomeFastaFileUncompressed");
+			} else {
+				$foundError=1;
+				print localtime() . ": ERROR Cannot find genome fasta file ($genomeFastaFile)\n";
+			}
 		}
+		
 		if(!(-e $genomeProteinFile)) {
 			$foundError=1;
 			print localtime() . ": ERROR Cannot find proteins fasta file ($genomeFastaFile)\n";
@@ -177,6 +191,7 @@ while(my $curgenomeline= <$genomedb>) {
 
 			print localtime() . ": START processing genome $curgenomeName\n";
 			my $genomeFastaFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta.gz";
+			my $genomeFastaFileUncompressed = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta";
 			my $genomeProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.proteins.fasta";
 			my $genomeGFFFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.genes.gff3";
 			
@@ -255,6 +270,7 @@ while(my $curgenomeline= <$genomedb>) {
 			######### Stage 3: Build regulatory sequence database
 			my $upstreamDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.upstream.fasta";
 			my $downstreamDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.downstream.fasta";
+			my $cdsDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.cds.fasta";
 			## Introns would be here...
 		
 			if(! -e "$upstreamDB.gz" || $force) {
@@ -297,6 +313,24 @@ while(my $curgenomeline= <$genomedb>) {
 				system("samtools faidx $downstreamDB.gz");
 				print localtime() . ": $curgenomeName : END building downstream sequence database.\n";			
 			}  elsif ($verbose) { print localtime() . ": SKIP Downstream sequence database already exists (use --force to rebuild)\n"; }
+			
+			#### Make sure we have CDS file if this is the reference
+			if(($curgenomeFamily eq $globalReferenceGenomeFamily) && !(-e $cdsDB)) {
+				### openup the genome
+				print localtime() . ": $curgenomeName : START building CDS sequence database.\n";
+				
+				system("bgzip -d $genomeFastaFile");
+				#### AGAT doesn't like single line fasta files
+				system("mv $genomeFastaFileUncompressed $genomeFastaFileUncompressed.tmp");
+				system("seqkit seq -w 80 $genomeFastaFileUncompressed.tmp > $genomeFastaFileUncompressed");
+				unlink("$genomeFastaFileUncompressed.tmp");
+				unlink("$genomeFastaFileUncompressed.index");
+				
+#				system("agat_sp_extract_sequences.pl --gff $genomeGFFFile --fasta $genomeFastaFileUncompressed -t cds -o $cdsDB >/dev/null 2>/dev/null");
+				system("agat_sp_extract_sequences.pl --gff $genomeGFFFile --fasta $genomeFastaFileUncompressed -t cds -o $cdsDB");
+				system("bgzip -f $genomeFastaFileUncompressed");
+				print localtime() . ": $curgenomeName : END building CDS sequence database.\n";
+			}
 		
 			######## Stage 4: Perform reciprocal blast
 			#make room for blast temporary files

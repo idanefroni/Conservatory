@@ -52,6 +52,7 @@ my $minORFLength="auto";
 my $minHSPthresholdFamily=2000;
 my $minHSPthresholdGlobal=1600;
 my $orthologSelectionStrategy = "bestmean";
+my $justFamilyAlignment = 0;
 
 ########### Reg Seq lengths
 my $upstreamLength;
@@ -69,6 +70,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-align-threshold-global=i" => \$minHSPthresholdGlobal,			
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"min-orf-length=i" => \$minORFLength,
+			"just-family-alignment" => \$justFamilyAlignment,
 			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
@@ -476,6 +478,12 @@ if(!$CNSFound) {
 	unlink($tmpCNSFileName);
 	
 	die "END: No CNS found for $locus.\n";
+}
+
+if($justFamilyAlignment) {
+	unlink($tmpCNSFileName);
+	
+	die "END: --justFamilyAlignment is selected. Finish performing family alignments\n";
 }
 ###############################################################################################################################
 ### Prepare the reconstructed ancesteral sequence of the CNS

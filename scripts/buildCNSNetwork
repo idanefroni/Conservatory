@@ -88,7 +88,7 @@ open(my $allCNSFile, $mergedCNSFileName) || die ("Internal error");
 
 while(my $cnsLine = <$allCNSFile>) {
 	chomp($cnsLine);
-	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/;
+	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/, $cnsLine;
 
 	$cnsDic{$CNSID} = {
 				'ReferenceGenome' => $referenceGenome,
@@ -113,7 +113,7 @@ while(my $cnsLine = <$allCNSFile>) {
 	$nodesDic{$CNSID}{'Species'} = $referenceGenome;
 	$nodesDic{$CNSID}{'Family'}="CNS";
 	$nodesDic{$CNSID}{'Level'}=$level;
-	$nodesDic{$CNSID}{'ORF'}=$orfLength;
+	$nodesDic{$CNSID}{'ORF'}= floor( (1+$orfLength)/3);
 	$nodesDic{$CNSID}{'Classification_1'}="";
 	$nodesDic{$CNSID}{'Classification_2'}="";
 	$nodesDic{$CNSID}{'Classification_3'}="";
@@ -179,6 +179,21 @@ while(my $lociLine = <$lociListFile>) {
 #### Now dump dictionary
 foreach my $curNode (keys %nodesDic) {
 	
+	print $outputDictionaryFile join(",",
+									"ID",
+									"Type",
+									"Name",
+									"Species",
+									"Family",
+									"Level",
+									"ORFLength",
+									"Classification 1",
+									"Classification 2",
+									"Classification 3",
+									"Classification 4",
+									"Classification 5",
+									"Classification 6") . "\n";									
+									
 	print $outputDictionaryFile join(",",$curNode,
 						  $nodesDic{$curNode}{'Type'},
 						  $nodesDic{$curNode}{'Name'},
