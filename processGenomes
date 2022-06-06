@@ -12,6 +12,7 @@ my $MAX_REGULATORY_SEQ_LEN=100;
 my $conservatoryDir=abs_path(".");
 my $genomeDatabaseFileName = "genome_database.csv";
 my $genome="";
+my $family="";
 my $force=0;
 my $forceOrthology=0;
 my $verbose=0;
@@ -31,6 +32,7 @@ my $calculateRecommendedRegulatoryLen;
 GetOptions ("conservatory-dir=s" => \$conservatoryDir,
 			"genome-database=s" => \$genomeDatabaseFileName,
 			"genome=s" => \$genome,
+			"family=s" => \$family,
 			"reference=s" => \$referenceGenomeName,
 			"threads=i" => \$threads,
 			"force" => \$force,
@@ -43,6 +45,9 @@ if($referenceGenomeName eq "") {
 	print "\n\nERROR: No reference genome provided (--reference).\n\n";
 	$help =1;
 }
+if($genome ne "" && $family ne ""){
+	print "\n\nERROR: Please select either a family or a genome to process.\n\n";
+}
 
 if($help) {
 	print "Conservatory version 0.0.1\n\n";
@@ -50,7 +55,8 @@ if($help) {
 	print "processGenomes\n\n";
 	print "\t--conservatory-dir\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
 	print "\t--genome-database\t\tGenome database file name (DEFAULT: genome_database.csv).\n";
-	print "\t--genome\t\tLimit genome processing to a specific genome (DEFAULT process all genomes). \n";
+	print "\t--genome\t\tLimit genome processing to a specific genome (DEFAULT process all genomes). Incompatible with --family \n";
+	print "\t--family\t\tLimit genome processing to a specific family (DEFAULT process all genomes). Incompatible with --genome \n";	
 	print "\t--reference\t\tReference genome name.\n";
 	print "\t--threads\t\tNumber of threads to use (DEAFULT: 16). \n";
 	print "\t--force\t\t\tForce rebuilding of all databases file (except orthology).\n";
@@ -113,6 +119,7 @@ my $globalReferenceGenomeSpecies="";
 my $globalReferenceGenomeFamily="";
 
 my $foundError=0;
+my $foundGenome=0;
 while(my $curgenomeline= <$genomedb>) {
 	chomp $curgenomeline;
 	if(substr($curgenomeline,0,1) ne "#" ) { ### If not commented
@@ -132,6 +139,9 @@ while(my $curgenomeline= <$genomedb>) {
 				$foundError=1;
 				print localtime() . ": ERROR Cannot find genome fasta file ($genomeFastaFile)\n";
 			}
+		}
+		if($genome ne "" && $genome eq $curgenomeName) {
+			$foundGenome=1;
 		}
 		
 		if(!(-e $genomeProteinFile)) {
@@ -164,6 +174,10 @@ if($globalReferenceGenomeFamily eq "") {
 	$foundError=1;
 	print localtime() . ": ERROR Cannot file reference genome $referenceGenomeName in genome database file.\n";
 }
+if($genome ne "" && !$foundGenome) {
+	$foundError=1;
+	print localtime() . ": ERROR Cannot file genome $genome in genome database file.\n";	
+}
 if($foundError) {
 	die localtime() . ": ERROR Cannot locate all genome files. ABORT execution.\n";
 } else {
@@ -186,7 +200,7 @@ while(my $curgenomeline= <$genomedb>) {
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $clade) = split /,/, $curgenomeline;
 		my $curgenomeReferenceFamily = $curgenomeFamily;
 	
-		if(($genome ne "" && $genome eq $curgenomeName) || ($genome eq "")) {
+		if(($genome ne "" && $genome eq $curgenomeName) || ($family ne "" && $family eq $curgenomeFamily) || ($genome eq "" && $family eq "")) {
 			$genomeWasProcessed=1;
 
 			print localtime() . ": START processing genome $curgenomeName\n";
@@ -315,7 +329,7 @@ while(my $curgenomeline= <$genomedb>) {
 			}  elsif ($verbose) { print localtime() . ": SKIP Downstream sequence database already exists (use --force to rebuild)\n"; }
 			
 			#### Make sure we have CDS file if this is the reference
-			if(($curgenomeFamily eq $globalReferenceGenomeFamily) && !(-e $cdsDB)) {
+			if(($curgenomeFamily eq $globalReferenceGenomeFamily) && (!(-e $cdsDB) || $force)) {
 				### openup the genome
 				print localtime() . ": $curgenomeName : START building CDS sequence database.\n";
 				

@@ -140,6 +140,7 @@ if($mode eq "upstream") {
 
 				$mylastgeneend_pos = max($genefields[3], $genefields[4]);
 			} else {
+				print $output ">". $genename . "\n" . ('N' x $seq_len) . "\n";
 				#print ("ERROR when processing line $gffline.\n Chromosome $chromosome does not exists\n"); 
 			}
 		}
