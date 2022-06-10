@@ -223,7 +223,7 @@ while(my $curgenomeline= <$genomedb>) {
 			########### Now process processing genome.
 			#######  Stage 1: Make blast database
 		 
-			if(($curgenomeName ne $curgenomeReference) && !( -e "$conservatoryDir/genomes/blastdb/$curgenomeName.phr" || $force)) {
+			if(($curgenomeName ne $curgenomeReference) && !( ( -e "$conservatoryDir/genomes/blastdb/$curgenomeName.phr") || $force)) {
 				print localtime() . ": $curgenomeName : START building protein blast database\n";
 				system("makeblastdb -in $genomeProteinFile -input_type fasta -dbtype prot -out \"$conservatoryDir/genomes/blastdb/$curgenomeName\" >>processGenome.log 2>&1 ");
 				print localtime() . ": $curgenomeName : END building protein blast database\n";
@@ -333,7 +333,7 @@ while(my $curgenomeline= <$genomedb>) {
 				### openup the genome
 				print localtime() . ": $curgenomeName : START building CDS sequence database.\n";
 				
-				system("bgzip -d $genomeFastaFile");
+				system("gunzip -k $genomeFastaFile");
 				#### AGAT doesn't like single line fasta files
 				system("mv $genomeFastaFileUncompressed $genomeFastaFileUncompressed.tmp");
 				system("seqkit seq -w 80 $genomeFastaFileUncompressed.tmp > $genomeFastaFileUncompressed");
@@ -342,7 +342,8 @@ while(my $curgenomeline= <$genomedb>) {
 				
 #				system("agat_sp_extract_sequences.pl --gff $genomeGFFFile --fasta $genomeFastaFileUncompressed -t cds -o $cdsDB >/dev/null 2>/dev/null");
 				system("agat_sp_extract_sequences.pl --gff $genomeGFFFile --fasta $genomeFastaFileUncompressed -t cds -o $cdsDB");
-				system("bgzip -f $genomeFastaFileUncompressed");
+				unlink($genomeFastaFileUncompressed);
+
 				print localtime() . ": $curgenomeName : END building CDS sequence database.\n";
 			}
 		

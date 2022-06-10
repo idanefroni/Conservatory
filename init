@@ -1,0 +1,2 @@
+conda activate conservatory2
+export PERL5LIB="/home/idane/miniconda3/envs/conservatory2/lib/perl5/site_perl/"
