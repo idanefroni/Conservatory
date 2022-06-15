@@ -175,7 +175,7 @@ close($CNSInputFile);
 
 
 ###### Now go to the deeper merge - merge across different references
-if($verbose) { print "PROGRESS: Begin merge deep CNS.\n" };
+if($verbose) { print "PROGRESS: Begin merging deep CNS.\n" };
 
 ### First, build a map of hits indexed by gene
 my %positionLocusMap;
@@ -196,9 +196,10 @@ foreach my $curCNS (keys %positionTable) {
 		}	
 }
 
+
 ### Now Identify CNS to merge
 my %CNSToMerge;
-
+my %CNSToMergeHitMap;
 
 ### Scan all the hits to the locus. See if an alignment is hitting Two CNSs. If so, merge them.
 
@@ -221,6 +222,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 				
 						if($CNSToMerge{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} } == $minOverlappingSpeciesForMerge && $CNSToMerge{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} } < $minOverlappingSpeciesForMerge) {
 							if($verbose) { print "Merge: $firstHit->{'CNSID'} and $secondHit->{'CNSID'}. Because ( $curLocus: $firstHit->{'TargetPosition'}, $firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'Length'}  )\n"; }
+							
 							$CNSMerged++;
 							$deepCNSMerged++;
 						}
@@ -232,6 +234,13 @@ foreach my $curLocus (keys %positionLocusMap) {
 	}
 }
 
+if($verbose) { print "PROGRESS: Found " . $deepCNSMerged . " CNS to merge. Begin atomizing CNS.\n" };
+
+########## Atomize CNSs
+for my $CNSToAtomize (keys %CNSToMerge) {
+	my @overlappingCNSs = keys %{ $CNSToMerge{$CNSToAtomize} };
+#	print "$CNSToAtomize: found " . @overlappingCNSs . " overlapping CNS:" . join(",", @overlappingCNSs) ."\n";
+}
 
 
 ########### Output files

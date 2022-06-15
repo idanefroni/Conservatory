@@ -99,7 +99,6 @@ my %cdsSeqDB;
 
 
 foreach my $curGenome (@genomesInReferenceFamily) {
-#	$curGenome = "Esalsugineum";
 	print "PROGRESS: Reading $curGenome...";
 	my $proteinTranslatorForGenome = $proteinNameTranslator{$curGenome};
 	my $geneNameTranslatorForGenome = $geneNameTranslator{$curGenome};
@@ -116,10 +115,6 @@ foreach my $curGenome (@genomesInReferenceFamily) {
 		my $fullGeneName = $genomeToSpecies{$curGenome} . "-$curGenome-$locus";
   		$proteinSeqDB{$fullGeneName} = $seq->seq();
   		$totalProteins++;
-  #		if($curGenome eq "Esalsugineum") {
-  #			print "protein: $fullGeneName.\n";
-  #			last;
-  #		}
 	}
 	print "$totalProteins protein sequences found...";
 
@@ -139,10 +134,6 @@ foreach my $curGenome (@genomesInReferenceFamily) {
    			#print "ERROR: Found cds $fullGeneName with no protein for genome $curGenome.\n";
    		}
 
-#  		if($curGenome eq "Sparvula") {
-#  			print "cds: $fullGeneName.\n";
-  		#	die;
-#  		}
 	}
 	print "$totalCDS CDS sequences found.\n";
 }
@@ -169,8 +160,14 @@ foreach my $curCREOrth (@CREorthologFiles) {
 		}
 	}
 	close( $curCREOrthFile);
-	if( (keys %speciesInOrth) + 1 == $numOfSpeciesInFamily) {
+
+
+	if( (keys %speciesInOrth) +1 == $numOfSpeciesInFamily) {
 		push @singlehitOrthologs, $curCREOrth;
+	} else {
+#		print "$curCREOrth: " . ((keys %speciesInOrth) + 0) . "($numOfSpeciesInFamily)\n";  ### DEBUG OUTPUT
+		## find out the missing genomes...
+		
 	}
 }
 
@@ -217,7 +214,6 @@ foreach my $CREOrthologsFileName (@singlehitOrthologs) {
 	while(my $curCREOrthologs = <$CREOrthologFile>) {
 		
 		my ($CRESpecies, $CREgenename) = split /\t/, $curCREOrthologs;
-	#	print "Checking $CREgenename \n";
 		if(! (defined $orthologSpecies{$CRESpecies})) {
 			$orthologSpecies{$CRESpecies}=1;  #### Only one gene per species. Pick the best one
 			
@@ -242,7 +238,6 @@ foreach my $CREOrthologsFileName (@singlehitOrthologs) {
                 
                 push @orthologProteins, $curProtein;
 			    $orthologCDSs{$CRESpecies} =  $curCDS;
-	#		    print "Adding $CREgenename \n";
 			    
 			} else {
 				print "ERROR: Cannot find gene $CREgenename.\n";
@@ -285,7 +280,6 @@ foreach my $CREOrthologsFileName (@singlehitOrthologs) {
 			if($just4posVar->length() >0) {
 				foreach my $seq ($just4posVar->each_seq) {
 					$FourVarPosSequence{ $genomeToSpecies{$seq->id()} } .= $seq->seq();
-					#print $genomeToSpecies{$seq->id()} . ":" . $seq->seq();
 				}
 			}
 

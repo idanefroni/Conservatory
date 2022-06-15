@@ -2,6 +2,8 @@
 use POSIX;
 
 use strict;
+no warnings 'experimental'; 
+
 use Cwd 'abs_path';
 use Getopt::Long;
 
@@ -19,12 +21,14 @@ my $referenceGenomeSpecies="";
 my $family="";
 my $species;
 my $genomefound = 0;
+my $verbose =0;
 
 my $line;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 				"genome-database=s" => \$genomeDatabaseFileName,
 			"genome=s" => \$genome,
 			"reference=s" => \$referenceGenome,
+			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
 			
 			
@@ -35,8 +39,9 @@ if( $genome eq "" || $help) {
 	print "\t--conservatoryDirectory\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
 	print "\t--genome-database\t\tGenome database file name (DEFAULT: genome_database.csv).\n";	
 	print "\t--reference\t\tReference genome name (for global mode). \n";
-	print "\t--genome\t\tGenome name for which to build putative ortholog databse (REQUIRED). \n\n";
-    exit();
+	print "\t--genome\t\tGenome name for which to build putative ortholog databse (REQUIRED). \n";
+	print "\t--verbose\t\tPrint extra infromation.\n\n";
+    	exit();
 }
 my $genomedb_file = "$conservatoryDir/$genomeDatabaseFileName";
 
@@ -125,6 +130,7 @@ while(my $curline = <$g2ref>) {
 	$locus = "$species-$genome-$locus";
 	$refLocus = "$referenceGenomeSpecies-$referenceGenome-$refLocus";
 	
+	
 	if($eval < $MIN_EVAL) {
 		if($eval ==0) { 
 			$eval = 400;
@@ -137,6 +143,8 @@ while(my $curline = <$g2ref>) {
 		if($orthologCounts < $MAX_ORTH) {
 		
 			my $key = "$locus;$refLocus";
+			if($verbose) { print "Found $key.\n"; }
+
 			if(defined $genome2RefHits{$key}) {
 				if($eval > $genome2RefHits{$key}) {
 					$genome2RefHits{$key} = $eval;

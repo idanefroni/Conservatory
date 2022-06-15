@@ -57,34 +57,40 @@ while(my $curgenomeline = <$genomeDatabase>) {
 my $allCNSFileName = "$conservatoryDir/output/All.cns.csv.tmp";
 my $allPositionsFileName = "$conservatoryDir/output/All.map.csv.tmp";
 
+my $allCNSMergedFileName = "$conservatoryDir/output/All.merged.cns.csv";
+my $allPositionsMergedFileName = "$conservatoryDir/output/All.merged.map.csv";
+my $allMergedDeepCNSFileName = "$conservatoryDir/output/All.merged.deep.cns.csv";
+
 my $myLociPositionsFileName = "$conservatoryDir/output/$networkName.map.csv";
 
-my $mergedCNSFileName = "$conservatoryDir/output/$networkName.cns.csv";
-my $mergedMapFileName = "$conservatoryDir/output/$networkName.map.csv";
-my $mergedDeepCNSFileName = "$conservatoryDir/output/$networkName.merged.deep.cns.csv";
+#my $mergedCNSFileName = "$conservatoryDir/output/$networkName.cns.csv";
+#my $mergedMapFileName = "$conservatoryDir/output/$networkName.map.csv";
 
 
-unlink("$mergedCNSFileName");
-unlink("$myLociPositionsFileName");
-unlink("$mergedMapFileName");
+## If we don't have the merged CNS files, generate them
+if(!((-e $allCNSMergedFileName) & (-e $allPositionsMergedFileName))) {
+	print localtime(). ": Assemble all alignments...\n";
+	system("cat $conservatoryDir/CNS/*.map.csv > $allPositionsFileName");
 
-print localtime(). ": Assemble all alignments...\n";
-system("cat $conservatoryDir/CNS/*.map.csv > $allPositionsFileName");
+	print localtime(). ": Assemble all CNS...\n";
+	system("cat $conservatoryDir/CNS/*.cns.csv > $allCNSFileName");
 
-print localtime(). ": Assemble all CNS...\n";
-system("cat $conservatoryDir/CNS/*.cns.csv > $allCNSFileName");
+	###### merge CNS
+	system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $allCNSFileName --in-map $allPositionsFileName --out-cns $allCNSMergedFileName --out-map $allPositionsMergedFileName --out-merged $allMergedDeepCNSFileName");
+	unlink($allCNSFileName);
+	unlink($allPositionsFileName);
+}
 
-###### Filter the gene list and merge CNS
+#### Now filter just for the loci we want
 
-system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsFileName > $myLociPositionsFileName");
-system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $allCNSFileName --in-map $myLociPositionsFileName --out-cns $mergedCNSFileName --out-map $mergedMapFileName --out-merged $mergedDeepCNSFileName");
+system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsMergedFileName > $myLociPositionsFileName");
 
 ### Build the CNS dictionary hash
 my %cnsDic;
 my %nodesDic;
 
 my %nodeCNSHistory;
-open(my $allCNSFile, $mergedCNSFileName) || die ("Internal error");
+open(my $allCNSFile, $allCNSMergedFileName) || die ("Internal error");
 
 while(my $cnsLine = <$allCNSFile>) {
 	chomp($cnsLine);
@@ -129,12 +135,13 @@ my $outputDictionaryFileName = "$conservatoryDir/output/$networkName.dic.csv";
 
 open(my $outputSIFFile, ">$outputSIFFileName");
 open(my $outputDictionaryFile, ">$outputDictionaryFileName");
+my %usedCNS;
 
-open (my $nodeFile, $mergedMapFileName) || die ("Internal error");
+open (my $nodeFile, $myLociPositionsFileName) || die ("Internal error");
 while(my $curNodeLine = <$nodeFile>) {
 	chomp($curNodeLine);
 	my ($CNSID, $targetGenome, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length) = split /,/, $curNodeLine;
-	
+	$usedCNS{$CNSID} =1;	
 	my @classification = split /-/, $genomeDatabase{$targetGenome}{'Classification'};
 
 	$nodesDic{$targetLocus}{'Type'} = "Locus";
@@ -158,13 +165,14 @@ while(my $curNodeLine = <$nodeFile>) {
 }
 
 
-open (my $mergedCNSFile, $mergedDeepCNSFileName);
+open (my $mergedCNSFile, $allMergedDeepCNSFileName);
 while(my $curMergedCNSLine = <$mergedCNSFile>) {
 	chomp ($curMergedCNSLine);
 	my ($CNSIDA,$CNSIDB) = split /,/, $curMergedCNSLine;
-	print $outputSIFFile  "$CNSIDA is $CNSIDB\n";
+	if((defined $usedCNS{$CNSIDA}) || (defined $usedCNS{$CNSIDB})) {
+		print $outputSIFFile  "$CNSIDA is $CNSIDB\n";
+	}
 }
-
 
 ## read the short name
 open (my $lociListFile, $lociListFileName) || die ("Internal error");
@@ -177,22 +185,22 @@ while(my $lociLine = <$lociListFile>) {
 }
 
 #### Now dump dictionary
+print $outputDictionaryFile join(",",
+				"ID",
+				"Type",
+				"Name",
+				"Species",
+				"Family",
+				"Level",
+				"ORFLength",
+				"Classification 1",
+				"Classification 2",
+				"Classification 3",
+				"Classification 4",
+				"Classification 5",
+				"Classification 6") . "\n";									
+
 foreach my $curNode (keys %nodesDic) {
-	
-	print $outputDictionaryFile join(",",
-									"ID",
-									"Type",
-									"Name",
-									"Species",
-									"Family",
-									"Level",
-									"ORFLength",
-									"Classification 1",
-									"Classification 2",
-									"Classification 3",
-									"Classification 4",
-									"Classification 5",
-									"Classification 6") . "\n";									
 									
 	print $outputDictionaryFile join(",",$curNode,
 						  $nodesDic{$curNode}{'Type'},
