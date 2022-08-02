@@ -42,7 +42,7 @@ my $minCNSLength=8;
 my $CNSMergeLength=10;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 my $keep_tmp = 0;
 my $verbose = 0;
-my $force=0;
+my $force=1;   #### There is an option to use the family alignment if already exists. This does not currently work!
 my $dump_bam = 1;
 my $skipDumpBam=0;
 my $help = 0;
@@ -812,96 +812,94 @@ while(<$genomeDatabase>) {
 					unlink($MAFUpFileName);
 					unlink($MAFDownFileName);
 				}					
-			}
-		 }
-		  close($orthologFile);
 		}
-	  }
+	 }
+	  close($orthologFile);
+	}
   }
-  close ($genomeDatabase);
+}
+close ($genomeDatabase);
   
-  if(!$keep_tmp) {
+if(!$keep_tmp) {
 	unlink($ancesteralLocusCNSFileName);
-  }
+}
   
-  my @minSpeciesPerConservationLevel= (60,60,60,20,5,5);
+my @minSpeciesPerConservationLevel= (60,60,60,20,5,5);
 
-  ## First, filter CNS for unlikely and sporious alignments
-  ## Then classify the conservation level of the CNS 
-  foreach my $curCNS (keys %mapAlignmentDeepCNS) {
-  	  my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
-  	  my $numberOfSpecies = keys %{ $mapAlignmentDeepCNS{$curCNS} };
+## First, filter CNS for unlikely and sporious alignments
+## Then classify the conservation level of the CNS 
+foreach my $curCNS (keys %mapAlignmentDeepCNS) {
+  my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
+  my $numberOfSpecies = keys %{ $mapAlignmentDeepCNS{$curCNS} };
 
-	  #### Now calculate conservation levels
-  	  my @referenceClassification = split /-/ , $speciesClassification{$referenceGenomeSpecies};
-  	  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
-    	 	my @classification = split /-/ , $speciesClassification{$curSpecies};
-    	 	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
-    	 	 	if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
-    	 	 	 	$CNSConservationLevel[$curClassificationLevel]++;  
-    	 	 	}
-    	     }
-  	  }
-  	  if($verbose) { print "PROGRESS: Testing CNS $curCNS. $numberOfSpecies species have the CNS. Conservation levels are (" . join(",",@CNSConservationLevel) .").\n"; }
+  #### Now calculate conservation levels
+  my @referenceClassification = split /-/ , $speciesClassification{$referenceGenomeSpecies};
+  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
+  	  my @classification = split /-/ , $speciesClassification{$curSpecies};
+    	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
+    	 	if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
+    	 	 	$CNSConservationLevel[$curClassificationLevel]++;  
+    	 	}
+    	}
+  }
+  if($verbose) { print "PROGRESS: Testing CNS $curCNS. $numberOfSpecies species have the CNS. Conservation levels are (" . join(",",@CNSConservationLevel) .").\n"; }
   	  
-  	  # check for possible misalignments by making sure we are no skipping levels.
+  # check for possible misalignments by making sure we are no skipping levels.
   	  
-  	  foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-2)) {
-  	  	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1) ||
-  	  	  	  $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]) {
-  	  	  	  if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for $curCNS at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
-  	  	  	  if($verbose && ($numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) { print "PROGRESS: Number of species too low to support alignments at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
-			  ### Remove the misalignment
-			  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
-    	 		my @classification = split /-/ , $speciesClassification{$curSpecies};
-				if($classification[$levelToCheck] ne $referenceClassification[$levelToCheck]) {
-  	  	  	  		if($verbose) { print "PROGRESS: Removing alignment of $curSpecies for $curCNS.\n"; }
-					delete ($mapAlignmentDeepCNS{$curCNS}{$curSpecies});
-					$numberOfSpecies--;
-				}
+  foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-2)) {
+   	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1) ||
+   	  	  $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]) {
+   	  	  if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for $curCNS at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
+  	  	  if($verbose && ($numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) { print "PROGRESS: Number of species too low to support alignments at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
+  	  	  ### Remove the misalignment
+		  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
+		  	  my @classification = split /-/ , $speciesClassification{$curSpecies};
+		  	  if($classification[$levelToCheck] ne $referenceClassification[$levelToCheck]) {
+  	  	  	  	if($verbose) { print "PROGRESS: Removing alignment of $curSpecies for $curCNS.\n"; }
+				delete ($mapAlignmentDeepCNS{$curCNS}{$curSpecies});
+				$numberOfSpecies--;
 			  }
-  	  	  }
+		  }
   	  }
-	  ### Recalculate conservation levels after filtering
-  	  @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	  
-
-  	  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
-    	 	my @classification = split /-/ , $speciesClassification{$curSpecies};
-    	 	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
-    	 	 	if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
-    	 	 	 	$CNSConservationLevel[$curClassificationLevel]++;  
-    	 	 	}
-    	     }
-  	  }
-	
-	  # Now mark the "Deepness" level of each CNS
-	  $CNSforLocus{$curCNS}{'ConservationLevel'}="Family";
-	  foreach my $curLevel (0..$CLASSIFICATION_CLASSES_NUM) {
-	  	  if($CNSforLocus{$curCNS}{'ConservationLevel'} eq "Family" && $CNSConservationLevel[$curLevel]>0) {
-	  	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}="Level" . ($CLASSIFICATION_CLASSES_NUM-$curLevel);
-	  	  }
-	  }
-	  $CNSforLocus{$curCNS}{'NumberOfSpecies'}=$numberOfSpecies;
   }
-  
-  if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writing output files...\n";	}
-  
-  
-  ###########################################################
-  #### Now we are done. Export CNS table and position maps  
-  
-  open(my $finalCNSFile, ">$finalCNSFileName");
-  open (my $finalMapFile, ">$finalMapFileName");
-  foreach my $curCNS (keys %CNSforLocus) {
-  	  print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Chromosome'},$CNSforLocus{$curCNS}{'Strand'},$CNSforLocus{$curCNS}{'absStart'},$CNSforLocus{$curCNS}{'absEnd'},$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'End'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ORF'},$CNSforLocus{$curCNS}{'ORFDir'},$CNSforLocus{$curCNS}{'omega'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
-  	  print $finalMapFile "$curCNS,$referenceGenomeSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Start'}," . ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'}) . "\n";
-  } 
-  close($finalCNSFile);
+  ### Recalculate conservation levels after filtering
+  @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	  
 
+  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
+  	  my @classification = split /-/ , $speciesClassification{$curSpecies};
+    	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
+    		if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
+    			$CNSConservationLevel[$curClassificationLevel]++;  
+    	 	 }
+   	  }
+  }
+	
+  # Now mark the "Deepness" level of each CNS
+  $CNSforLocus{$curCNS}{'ConservationLevel'}="Family";
+  foreach my $curLevel (0..$CLASSIFICATION_CLASSES_NUM) {
+  	  if($CNSforLocus{$curCNS}{'ConservationLevel'} eq "Family" && $CNSConservationLevel[$curLevel]>0) {
+  	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}="Level" . ($CLASSIFICATION_CLASSES_NUM-$curLevel);
+  	  }
+  }
+  $CNSforLocus{$curCNS}{'NumberOfSpecies'}=$numberOfSpecies;
+}
   
+if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writing output files...\n";	}
+  
+  
+###########################################################
+#### Now we are done. Export CNS table and position maps  
+  
+open(my $finalCNSFile, ">$finalCNSFileName");
+open (my $finalMapFile, ">$finalMapFileName");
+foreach my $curCNS (keys %CNSforLocus) {
+	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Chromosome'},$CNSforLocus{$curCNS}{'Strand'},$CNSforLocus{$curCNS}{'absStart'},$CNSforLocus{$curCNS}{'absEnd'},$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'End'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ORF'},$CNSforLocus{$curCNS}{'ORFDir'},$CNSforLocus{$curCNS}{'omega'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
+  	print $finalMapFile "$curCNS,$referenceGenomeSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Start'}," . ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'}) . "\n";
+} 
+close($finalCNSFile);
 
-  ### First output the family alignments
-  foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
+## First output the family alignments
+foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 	foreach my $curHit ( @{ $mapAlignmentFamily{$locusFullName}{$curSpecies} } ) {
 		## Find the CNS that overlaps this alignment
 		my ($start,$end);
@@ -915,6 +913,7 @@ while(<$genomeDatabase>) {
 		foreach my $curCNS (keys %CNSforLocus) {
 			### Check for overlap. translate coordinates from relative to locus to
 			###  relative to CNS and output alignment line
+			print "Outputing $curCNS - $start to $end - compareed to (" . $CNSforLocus{$curCNS}{'Start'} . " to " . $CNSforLocus{$curCNS}{'End'} . ")\n";
 			if (overlap($start, $end, $CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'})) {
 				my $startInTargetCNS = max(0, $start-$CNSforLocus{$curCNS}{'Start'});
 				my $seq;
@@ -928,18 +927,17 @@ while(<$genomeDatabase>) {
 			}
 		}
 	}
-  }
-  
-  ### Then the deep CNS alignments
-  foreach my $curCNS (keys %CNSforLocus) {
-   	  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {	  	   	  	  
-  	  	  foreach my $curHit ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} } ) {
-  	  	  	print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetRelativePosition'},$curHit->{'ReferenceRelativePosition'},$curHit->{'Length'}\n";
-    	  }
-    }
 }
   
-			
+### Then the deep CNS alignments
+foreach my $curCNS (keys %CNSforLocus) {
+	foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {	  	   	  	  
+		foreach my $curHit ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} } ) {
+			print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetRelativePosition'},$curHit->{'ReferenceRelativePosition'},$curHit->{'Length'}\n";
+		}
+    }
+}
+ 	
 close($finalMapFile);
 
 #### Go back to the original directory, and we are done!
