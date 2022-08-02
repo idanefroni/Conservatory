@@ -25,7 +25,7 @@ my $referenceGenomeName;
 my $threads=16;
 my $upstreamLength;
 my $downstreamLength;
-
+my $ignoreMissingFiles=0;
 my $calculateRecommendedRegulatoryLen;
 
 
@@ -38,6 +38,7 @@ GetOptions ("conservatory-dir=s" => \$conservatoryDir,
 			"force" => \$force,
 			"force-orthology" => \$forceOrthology,
 			"force-run" => \$forceRun,
+			"ignore-missing-files" => \$ignoreMissingFiles,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
 
@@ -178,7 +179,7 @@ if($genome ne "" && !$foundGenome) {
 	$foundError=1;
 	print localtime() . ": ERROR Cannot file genome $genome in genome database file.\n";	
 }
-if($foundError) {
+if($foundError && !$ignoreMissingFiles) {
 	die localtime() . ": ERROR Cannot locate all genome files. ABORT execution.\n";
 } else {
 	print localtime() . ": END All genome files verified.\n";

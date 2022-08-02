@@ -4,22 +4,38 @@ use List::Util qw(min max);
 use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
+#################################
+#####  Run mode
+#####   the program can run in two modes - Truncate or mask
+#####   In trucate mode, the upstream\downstream sequences are truncated at the next annotated gene
+#####   In mask mode, the entire length of the regulatory sequence is used and all annotated genes are masked (XXX)
+#####
+#####  In version 2, the default is mask
+#####
+#####
+
+my $RUN_MODE = "mask";
+
+#my $RUN_MODE = "truncate";
+####
 
 if( @ARGV < 3) {
    print "buildRegulatorySeqDB <upstream|downstream> <FastaFile> <GFFFile> <Length> <OutputFastaFile> [TE Annotation GFF File]\n";
    exit();
 }
-
-open (DB, "gunzip -c $ARGV[1] |") || die "can`t open file $ARGV[0]";
-open (my $gfffile, "$ARGV[2]") || die "can't open file $ARGV[1]";
-open (my $output, ">", "$ARGV[4]");
-
 my $seq;
 my $seq_len = $ARGV[3];
 my $mode = $ARGV[0];
 my $teAnnotationFileName = $ARGV[5];
+my $gffFileName = $ARGV[2];
 
-# read genomeg
+
+open (DB, "gunzip -c $ARGV[1] |") || die "can`t open file $ARGV[0]";
+open (my $gfffile, $gffFileName) || die "can't open file $gffFileName";
+open (my $output, ">", "$ARGV[4]");
+
+# read genomes
+
 my @chromosomes;
 my @chromosomes_names;
 my $cur_chr_num = 0;
@@ -70,6 +86,20 @@ if(-e $teAnnotationFileName) {
 	}
 }
 
+##### Mask coding sequences (if in mask mode)
+if($RUN_MODE eq "mask") {
+	my $gff = Bio::Tools::GFF->new(-file => $gffFileName,
+				   -gff_version => 3);
+	while(my $curGene = $gff->next_feature) {
+		my $chromosome = "C" . $curGene->seq_id;
+		if(defined $index{$chromosome}) {
+			my $chromosome_num = $index{$chromosome};
+			substr($chromosomes[$chromosome_num], $curGene->start, $curGene->end - $curGene->start) = "X" x ($curGene->end - $curGene->start);
+		}
+	}
+
+}
+
 my $mylastgeneend_pos=0;
 my $mylastchromosome_num=0;
 
@@ -99,7 +129,7 @@ if($mode eq "upstream") {
 					my $loc = $genefields[3];
 					my $pstart = $loc - $seq_len;
 				
-					if($pstart < $mylastgeneend_pos) {
+					if($pstart < $mylastgeneend_pos && $RUN_MODE eq "truncate") {
 						# one exterme case - overlapping genes. In this case, promoter is NULL. Maybe there is a better way of dealing with this. The problem
 						# of using gene coding sequence as promoter is that coding sequences have much higher conservation rates that promoters which will confuse downstream analysis
 						if($mylastgeneend_pos >= $loc) {
@@ -122,7 +152,7 @@ if($mode eq "upstream") {
 					my $nextgenestart = $peekgenefields[3];
 					seek($gfffile, $curfilepos,0);
   				
-					if($loc + $seq_len > $nextgenestart) {
+					if($loc + $seq_len > $nextgenestart && $RUN_MODE eq "truncate") {
 						# check for overlapping genes...
 						if($nextgenestart < $loc) {
 							$prom="";
@@ -186,7 +216,7 @@ if($mode eq "upstream") {
   						$curseq_len = $seq_len;
 
   						# get sequence until the next gene
-  						if($pstart+$seq_len > $nextgenestart) {
+  						if($pstart+$seq_len > $nextgenestart && $RUN_MODE eq "truncate") {
   							# one exterme case - overlapping genes. In this case, promoter is NULL. Maybe there is a better way of dealing with this. The problem
   							# of usign gene coding sequence as promoter is that coding sequences have much higher conservation rates that promoters which will confiuse downstream analysis
   							if($nextgenestart <= $pstart) {
@@ -205,7 +235,7 @@ if($mode eq "upstream") {
 						$curseq_len = $geneend;
 					}
    	     	  
-					if($pstart < $mylastgeneend_pos) {
+					if($pstart < $mylastgeneend_pos && $RUN_MODE eq "truncate") {
 						if($geneend < $mylastgeneend_pos) {
 							$curseq_len=0;
 						} else {
