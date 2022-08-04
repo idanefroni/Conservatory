@@ -94,7 +94,11 @@ if($RUN_MODE eq "mask") {
 		my $chromosome = "C" . $curGene->seq_id;
 		if(defined $index{$chromosome}) {
 			my $chromosome_num = $index{$chromosome};
-			substr($chromosomes[$chromosome_num], $curGene->start, $curGene->end - $curGene->start) = "X" x ($curGene->end - $curGene->start);
+#			print $chromosome . "-" . $curGene->start . " -- Length: " . length($chromosomes[$chromosome_num]) . "\n";
+			### Make sure no error in annotation placed a gene outside contig limits
+			if($curGene->end < length($chromosomes[$chromosome_num] )) {
+				substr($chromosomes[$chromosome_num], $curGene->start-1, $curGene->end - $curGene->start) = "X" x ($curGene->end - $curGene->start);
+			}
 		}
 	}
 

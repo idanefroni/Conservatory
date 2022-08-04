@@ -65,7 +65,6 @@ my %geneNameTranslator;
 my %FourVarPosSequence;
 
 open (my $genomeDatabase, "<", $genomedbFile);
-my $header = <$genomeDatabase>;
 while((my $curgenomeline = <$genomeDatabase>)) {
 	if(substr($curgenomeline,0,1) ne "#") { 
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;

@@ -155,6 +155,11 @@ die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" u
 my $t_phyloP = `sh -c 'command -v phyloP'`;
 die "ERROR: Cannot find phyloP in path. Please make sure phast is installed.\n" unless ($t_phyloP ne "");  
 
+my $t_wig2bed = `sh -c 'command -v wig2bed'`;
+die "ERROR: Cannot find wig2bed in path. Please make sure bedops is installed.\n" unless ($t_wig2bed ne "");  
+my $t_muscle = `sh -c 'command -v muscle'`;
+die "ERROR: Cannot find muscle in path. Please make sure muscle v3.8.1551 is installed.\n" unless ($t_muscle ne "");  
+
 die "ERROR: Cannot find fastMLexecutable at $conservatoryDir/scripts/fastml.\n" unless (-x "$conservatoryDir/scripts/fastml");
 
 ###############################################
@@ -164,7 +169,6 @@ if($verbose) { print "START: Begin conservatory analysis for $locus.\n"; }
 ##### Now set things up
 ##### Find out what is our reference genome family and length parameters
 open (my $genomeDatabase, "<", $genomedbFile);
-my $header = <$genomeDatabase>;
 while((my $curgenomeline = <$genomeDatabase>)) {
 	if(substr($curgenomeline,0,1) ne "#")  {
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;
@@ -242,8 +246,6 @@ if(!(-e $finalFASTAUpFileName && -e $finalFASTADownFileName) || $force) {
 	##############################################################################
 	# First pass. Determine CNS for family
   
-	$header = <$genomeDatabase>;
-
 	while(<$genomeDatabase>) {
 		chomp;
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/;
@@ -766,7 +768,6 @@ my %deepCNSFasta;
 my %mapAlignmentDeepCNS;
 
 open (my $genomeDatabase, "<", $genomedbFile);
-$header = <$genomeDatabase>;
 
 while(<$genomeDatabase>) {
 	chomp;
@@ -913,7 +914,7 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 		foreach my $curCNS (keys %CNSforLocus) {
 			### Check for overlap. translate coordinates from relative to locus to
 			###  relative to CNS and output alignment line
-			print "Outputing $curCNS - $start to $end - compareed to (" . $CNSforLocus{$curCNS}{'Start'} . " to " . $CNSforLocus{$curCNS}{'End'} . ")\n";
+		#	print "Outputting $curCNS - $start to $end - compared to (" . $CNSforLocus{$curCNS}{'Start'} . " to " . $CNSforLocus{$curCNS}{'End'} . ")\n";
 			if (overlap($start, $end, $CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'})) {
 				my $startInTargetCNS = max(0, $start-$CNSforLocus{$curCNS}{'Start'});
 				my $seq;

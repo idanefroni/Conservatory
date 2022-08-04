@@ -76,7 +76,6 @@ die "ERROR: Cannot find input file ($infileName)\n" unless (-e $infileName || $i
 
 ################### Read Genome DB
 open(my $genomedb, "<", $genomedbFile);
-my $header=<$genomedb>;
 while(my $curgenomeline= <$genomedb>) {
 	chomp $curgenomeline;
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $curUpstreamLength, $curDownstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/, $curgenomeline;

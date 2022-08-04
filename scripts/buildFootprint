@@ -33,7 +33,6 @@ die "ERROR: Cannot find file genome database file ($genomedb_file)\n" unless -e 
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/genomes");
 
 open(my $genomedb, "<", $genomedb_file);
-my $header=<$genomedb>;
 
 ## set up hash for CDS
 my %CDS;

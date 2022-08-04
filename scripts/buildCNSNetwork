@@ -42,7 +42,6 @@ my $genomedbFile = "$conservatoryDir/$genomeDatabaseFileName";
 my $tmpDir = "$conservatoryDir/tmp/";
 
 open (my $genomeDatabase, "<", $genomedbFile);
-my $header = <$genomeDatabase>;
 while(my $curgenomeline = <$genomeDatabase>) {
 	if(substr($curgenomeline,0,1) ne "#")  {
 		chomp($curgenomeline);

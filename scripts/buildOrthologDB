@@ -51,7 +51,6 @@ die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n"
 
 ######### Find out what is the reference genome and the processing REGEX
 open(my $genomedb, "<", $genomedb_file);
-my $header=<$genomedb>;
 my $geneProcessingREGEX="";
 my $referenceGeneProcessingREGEX="";
 
