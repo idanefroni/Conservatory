@@ -89,7 +89,12 @@ my %CNSTable;
 while(<$CNSInputFile>) {
 	chomp;
 	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/;
-
+	my $regulatorySeqPart;
+	if($start<0) {
+		$regulatorySeqPart = "Upstream";
+	} else {
+		$regulatorySeqPart = "Downstream";
+	}
 	$CNSTable{$CNSID} = {
 				'ReferenceGenome' => $referenceGenome,
 				'CNSID' => $CNSID,
@@ -105,17 +110,36 @@ while(<$CNSInputFile>) {
 				'ORFLength' => $orfLength,
 				'ORFDir' => $orfDir,
 				'Omega' => $omega,
-				'AncesteralSeq' => $ancesteralSeq
+				'AncesteralSeq' => $ancesteralSeq,
+				'RegulatorySeqPart' => $regulatorySeqPart
 	};
 	
 	
 	if($lastCNS eq "") {
 		$lastCNS = $CNSID;
 	} else {
-		### If this CNS overlap with last, merge them
+		### If this CNS overlap with last, merge them or pick one gene to associate it with
+		###
 		if($CNSTable{$lastCNS}{'ReferenceGenome'} eq $referenceGenome && 
 			$CNSTable{$lastCNS}{'Chromosome'} eq $chromosome &&
 			overlap($CNSTable{$lastCNS}{'Start'},$CNSTable{$lastCNS}{'End'}, $start, $end)) {
+
+				### If the genes are same orientation and the CNS is in the same part of the regulatory sequence (Up/downstream)
+				###  then associate with the closest gene.
+				my $CNSToDelete= "";
+				
+				if( $CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart &&
+					$CNSTable{$lastCNS}{'Strand'} eq $strand &&
+					$regulatorySeqPart eq "Upstream") {
+						if($end > $CNSTable{$lastCNS}{'End'}) {  ### If the current CNS is closer, delete the lastone
+							$CNSToDelete = $lastCNS;
+						} else {   ## else, delete the current one
+							$CNSToDelete = $CNSID;
+						}
+				}
+			
+
+				### If orientation is different then merge into one CNS.
 
 				if($verbose) { print "PROGRESS: Merging family CNS $lastCNS and $CNSID...\n"; }
 
