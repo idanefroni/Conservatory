@@ -51,6 +51,7 @@ my %conservationLevelDic = ( "Family" => 0,
 my %CNSTable;
 my %positionTable;
 my $CNSMerged=0;
+my $CNSDeleted=0;
 my $deepCNSMerged=0;
 
 print "START: Merging CNSs.\n";
@@ -90,7 +91,7 @@ while(<$CNSInputFile>) {
 	chomp;
 	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/;
 	my $regulatorySeqPart;
-	if($start<0) {
+	if($relStart<0) {
 		$regulatorySeqPart = "Upstream";
 	} else {
 		$regulatorySeqPart = "Downstream";
@@ -120,77 +121,85 @@ while(<$CNSInputFile>) {
 	} else {
 		### If this CNS overlap with last, merge them or pick one gene to associate it with
 		###
+		my $CNSToDelete= "";
 		if($CNSTable{$lastCNS}{'ReferenceGenome'} eq $referenceGenome && 
 			$CNSTable{$lastCNS}{'Chromosome'} eq $chromosome &&
 			overlap($CNSTable{$lastCNS}{'Start'},$CNSTable{$lastCNS}{'End'}, $start, $end)) {
 
 				### If the genes are same orientation and the CNS is in the same part of the regulatory sequence (Up/downstream)
 				###  then associate with the closest gene.
-				my $CNSToDelete= "";
-				
-				if( $CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart &&
-					$CNSTable{$lastCNS}{'Strand'} eq $strand &&
-					$regulatorySeqPart eq "Upstream") {
-						if($end > $CNSTable{$lastCNS}{'End'}) {  ### If the current CNS is closer, delete the lastone
+
+				if( ($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart) &&
+					($CNSTable{$lastCNS}{'Strand'} eq $strand) &&
+					($regulatorySeqPart eq "Upstream")) {
+						if($relEnd > $CNSTable{$lastCNS}{'RelEnd'}) {  ### If the current CNS is closer, delete the lastone
 							$CNSToDelete = $lastCNS;
 						} else {   ## else, delete the current one
 							$CNSToDelete = $CNSID;
 						}
-				}
-			
-
-				### If orientation is different then merge into one CNS.
-
-				if($verbose) { print "PROGRESS: Merging family CNS $lastCNS and $CNSID...\n"; }
-
-				my $diffInCNSPos = $start-$CNSTable{$lastCNS}{'Start'};
-			
-				## Merge coordinates
-				$CNSTable{$lastCNS}{'End'} = max($CNSTable{$lastCNS}{'End'}, $end);
-				if($end >0) {
-					$CNSTable{$lastCNS}{'relEnd'} = max($CNSTable{$lastCNS}{'relEnd'}, $end);
-				} else {
-					$CNSTable{$lastCNS}{'relEnd'} = min($CNSTable{$lastCNS}{'relEnd'}, $end);
-				}
-				## Update all the positions
-				foreach my $mapping (@{ $positionTable{$CNSID}{'Positions'} }) {
-					$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
-					push( @{ $CNSTable{$lastCNS}{'Positions'} } , $mapping);
-				}
-
-				### Merge level
-				if($CNSTable{$CNSID}{'Level'} ne $CNSTable{$lastCNS}{'Level'}) {
-					my $bestLevel = max($conservationLevelDic{ $CNSTable{$CNSID}{'Level'} }, $conservationLevelDic{ $CNSTable{$lastCNS}{'Level'} });
-					my @levels = keys %conservationLevelDic;
-					$CNSTable{$CNSID}{'Level'} = $levels[$bestLevel-1];			
-				}
-				### Merge Hits
-				$CNSTable{$lastCNS}{'SupportingSpecies'} = max($CNSTable{$lastCNS}{'SupportingSpecies'}, $supportingSpecies);
-
-				### Merge sequence (Future)
-				if($diffInCNSPos != 0) {
-					$CNSTable{$lastCNS}{'AncesteralSeq'} = "";
-#					print "Merge sequence:\n";
-#					my $lastCNSSeq = Bio::Seq->new(-seq => $CNSTable{$lastCNS}{'AncesteralSeq'});
-#					my $curCNSSeq = Bio::Seq->new(-seq => $CNSTable{$CNSID}{'AncesteralSeq'});
-#					my $curCNSSeqRev = $curCNSSeq->revcom;
-#					my $overlapLast = substr($lastCNSSeq->seq, $diffInCNSPos-2);
-#					my $overlapCur = substr($lastCNSSeq->seq, 0);
-#					my $overlapCurRev = substr($curCNSSeqRev->seq, 0);
-
-#					my $mergedSeq = substr($lastCNSSeq,0, $diffInCNSPos) . $curCNSSeq;
-
-#					print "----\n$overlapLast\n$overlapCur\n$overlapCurRev\n";
-#					print "Diff: $diffInCNSPos  Merge:" . length($mergedSeq) . " --- of len:" . ($CNSTable{$lastCNS}{'End'} - $CNSTable{$lastCNS}{'Start'}) . "\n"; 
-				}
-				
-				
-#				# and remove the old CNS
-				delete $positionTable{$CNSID};
-				delete $CNSTable{$CNSID};
-				$CNSMerged++;
+						$CNSDeleted++;
+				} elsif(($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart) &&
+						($CNSTable{$lastCNS}{'Strand'} ne $strand) &&
+						($regulatorySeqPart eq "Downstream")) {
+							
+						if($relStart < $CNSTable{$lastCNS}{'RelStart'}) { ## If the current CNS is closer, delete the last one
+							$CNSToDelete = $lastCNS;
+						} else {
+							$CNSToDelete = $CNSID;
+						}
+						$CNSDeleted++;
+				} else { ### If orientation is different then merge into one CNS.
+	
+					if($verbose) { print "PROGRESS: Merging family CNS $lastCNS and $CNSID...\n"; }
+					my $diffInCNSPos = $start-$CNSTable{$lastCNS}{'Start'};
+					## Merge coordinates
+					$CNSTable{$lastCNS}{'End'} = max($CNSTable{$lastCNS}{'End'}, $end);
+					if($end >0) {
+						$CNSTable{$lastCNS}{'relEnd'} = max($CNSTable{$lastCNS}{'relEnd'}, $end);
+					} else {
+						$CNSTable{$lastCNS}{'relEnd'} = min($CNSTable{$lastCNS}{'relEnd'}, $end);
+					}
+					## Update all the positions
+					foreach my $mapping (@{ $positionTable{$CNSID}{'Positions'} }) {
+						$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
+						push( @{ $CNSTable{$lastCNS}{'Positions'} } , $mapping);
+					}
+					### Merge level
+					if($CNSTable{$CNSID}{'Level'} ne $CNSTable{$lastCNS}{'Level'}) {
+						my $bestLevel = max($conservationLevelDic{ $CNSTable{$CNSID}{'Level'} }, $conservationLevelDic{ $CNSTable{$lastCNS}{'Level'} });
+						my @levels = keys %conservationLevelDic;
+						$CNSTable{$CNSID}{'Level'} = $levels[$bestLevel-1];			
+					}
+					### Merge Hits
+					$CNSTable{$lastCNS}{'SupportingSpecies'} = max($CNSTable{$lastCNS}{'SupportingSpecies'}, $supportingSpecies);
+					### Merge sequence (Future)
+					if($diffInCNSPos != 0) {
+						$CNSTable{$lastCNS}{'AncesteralSeq'} = "";
+	#					print "Merge sequence:\n";
+	#					my $lastCNSSeq = Bio::Seq->new(-seq => $CNSTable{$lastCNS}{'AncesteralSeq'});
+	#					my $curCNSSeq = Bio::Seq->new(-seq => $CNSTable{$CNSID}{'AncesteralSeq'});
+	#					my $curCNSSeqRev = $curCNSSeq->revcom;
+	#					my $overlapLast = substr($lastCNSSeq->seq, $diffInCNSPos-2);
+	#					my $overlapCur = substr($lastCNSSeq->seq, 0);
+	#					my $overlapCurRev = substr($curCNSSeqRev->seq, 0);
+	#					my $mergedSeq = substr($lastCNSSeq,0, $diffInCNSPos) . $curCNSSeq;
+		#				print "----\n$overlapLast\n$overlapCur\n$overlapCurRev\n";
+		#				print "Diff: $diffInCNSPos  Merge:" . length($mergedSeq) . " --- of len:" . ($CNSTable{$lastCNS}{'End'} - $CNSTable{$lastCNS}{'Start'}) . "\n"; 
+					}
+					
+					
+		#			# and remove the old CNS
+					$CNSToDelete = $CNSID;
+					$CNSMerged++;
+			}
 		} else {
 			$lastCNS = $CNSID;
+		}
+
+		if($CNSToDelete ne "") {
+				delete $positionTable{$CNSToDelete};
+				delete $CNSTable{$CNSToDelete};
+				if($CNSToDelete eq $lastCNS) { $lastCNS=$CNSID; }
 		}
 	}
 }
@@ -317,7 +326,7 @@ if($outputMergedCNSFileName ne "") {
 }
 
 
-print "END: Merged $CNSMerged CNSs, of which $deepCNSMerged deep CNSs.\n";
+print "END: Deleted $CNSDeleted duplicated CNSs; Merged $CNSMerged CNSs, of which $deepCNSMerged deep CNSs.\n";
 
 
 

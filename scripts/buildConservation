@@ -825,7 +825,7 @@ if(!$keep_tmp) {
 	unlink($ancesteralLocusCNSFileName);
 }
   
-my @minSpeciesPerConservationLevel= (60,60,60,20,5,5);
+my @minSpeciesPerConservationLevel= (60,60,60,20,5,5,5);
 
 ## First, filter CNS for unlikely and sporious alignments
 ## Then classify the conservation level of the CNS 
@@ -847,7 +847,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   	  
   # check for possible misalignments by making sure we are no skipping levels.
   	  
-  foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-2)) {
+  foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-1)) {
    	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1) ||
    	  	  $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]) {
    	  	  if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for $curCNS at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
