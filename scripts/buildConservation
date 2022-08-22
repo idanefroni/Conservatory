@@ -548,7 +548,7 @@ while(my $CNSLine = <$CNSFile>) {
 	chomp($CNSLine);
 	my ($cnsLocus,$cnsRelStart,$cnsRelEnd,$pval,$upOrDown,$chromosome,$absStart,$absEnd) = split /,/,$CNSLine;
 	
-	if(($cnsRelEnd - $cnsRelStart)> $minCNSLength) {
+	if(($cnsRelEnd - $cnsRelStart)>= $minCNSLength) {
 		
 		my $curCNSLength = ($cnsRelEnd - $cnsRelStart);	
 		my $shortestAlignment = $curCNSLength;
@@ -825,7 +825,7 @@ if(!$keep_tmp) {
 	unlink($ancesteralLocusCNSFileName);
 }
   
-my @minSpeciesPerConservationLevel= (60,60,60,20,5,5,5);
+my @minSpeciesPerConservationLevel= (150,100,60,20,5,5,5);
 
 ## First, filter CNS for unlikely and sporious alignments
 ## Then classify the conservation level of the CNS 
