@@ -82,7 +82,7 @@ if(!((-e $allCNSMergedFileName) & (-e $allPositionsMergedFileName))) {
 
 #### Now filter just for the loci we want
 
-system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsMergedFileName > $myLociPositionsFileName");
+system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsMergedFileName | cut -d',' -f1 | grep -f - $allPositionsMergedFileName > $myLociPositionsFileName");
 
 ### Build the CNS dictionary hash
 my %cnsDic;

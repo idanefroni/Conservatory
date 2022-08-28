@@ -43,16 +43,19 @@ my $CNSMergeLength=10;   # What is the maximum distance between conserved nucleo
 my $keep_tmp = 0;
 my $verbose = 0;
 my $force=1;   #### There is an option to use the family alignment if already exists. This does not currently work!
-my $dump_bam = 1;
-my $skipDumpBam=0;
-my $help = 0;
+my $dumpBam = 0;
 my $skipMissingGenomes=0;
 my $minPhyloPscore=1.5;
+my $minCNSCoverage=0.2; ### The minimum coverage of the CNS to be acceptable for a deep alignment
+my @minSpeciesPerConservationLevel= (150,100,100,50,5,5);
+my $minSpeciesPerConservationLevelString="";
 my $minORFLength="auto";
 my $minHSPthresholdFamily=2000;
 my $minHSPthresholdGlobal=1600;
 my $orthologSelectionStrategy = "bestmean";
 my $justFamilyAlignment = 0;
+
+my $help = 0;
 
 ########### Reg Seq lengths
 my $upstreamLength;
@@ -60,6 +63,7 @@ my $downstreamLength;
 
 my %upstreamLengthReference;
 my %downstreamLengthReference;
+
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
@@ -69,18 +73,28 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-align-threshold-family=i" => \$minHSPthresholdFamily,
 			"min-align-threshold-global=i" => \$minHSPthresholdGlobal,			
 			"min-phylop-score=f" => \$minPhyloPscore,
+			"min-deep-cns-coverage" => \$minCNSCoverage,
+			"min-species-per-conservation-level" => \$minSpeciesPerConservationLevelString,
 			"min-orf-length=i" => \$minORFLength,
 			"just-family-alignment" => \$justFamilyAlignment,
 			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
-			"skip-bam-dump" =>\$skipDumpBam,
+			"bam-dump" =>\$dumpBam,
 			"skip-missing-genomes" => \$skipMissingGenomes,
 			"help" => \$help) or die ("Error in command line arguments\n");
-			
+
+if($verbose) { print "Conservatory version 2.0.1\n\n"; }
+
+if($minCNSCoverage <0 || $minCNSCoverage>1) {
+	print "\n\nBad parameters: min-deep-cns-coverage must be between 0 and 1.\n\n";
+	$help = 1;
+}
+if($minSpeciesPerConservationLevelString ne "") {
+
+}
 
 if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrategy eq "bestmean" or $orthologSelectionStrategy eq "bestsum" ) ) {
-	print "Conservatory version 2.0.1\n\n";
 	if($locus eq "" or $referenceGenome eq "") {
 		print "\n\nMissing parameter: must supply both reference genome and locus.\n\n";
 	}
@@ -98,8 +112,10 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    print "\t--min-align-threshold-family\t\tMimimum alignment score threshold for within family alignments. Default is 2000.\n";
    print "\t--min-align-threshold-global\t\tMimimum alignment score threshold for global alignments. Default is 1600.\n";
    print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS (default: 1.5).\n";
+   print "\t--min-deep-cns-coverage\t\tMimimum alignment coverage for deep CNS (Expressed as ratio of CNS length: 0-1). Default is 0.2.\n";
+   print "\t--min-species-per-conservation-level\t\tSpecies number filter for level conservation. Defines the mimimum number of species a CNS has to be found it to allow a certain conservation level. A string of 6 comma delimited values. Default is 150,100,100,50,5,5.\n";   
    print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS. Deafult is \"auto\" which is automatically calculated based on expected random ORF occurance in data.\n";
-   print "\t--skip-bam-dump\t\tDo not generate bam files for the alignments.\n";
+   print "\t--bam-dump\t\tGenerate bam files for the alignments.\n";
    print "\t--skip-missing-genomes\t\tIf genome information can't be found, skip and continue analysis (DEFAULT: Terminate with error message),\n";
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
  
@@ -110,8 +126,6 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    
    exit();
 }
-
-if($skipDumpBam) { $dump_bam=0; }
 
 ### Set up directory and file access
 my $genomedbFile = $conservatoryDir . "/genome_database.csv";
@@ -456,11 +470,24 @@ if($refGeneDir eq "+") {
 	
 #### Run phyloP 
 my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method LRT --mode CON";
+my $alternativephyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
 my $CNSFound=0;
 
 if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
 	system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
-	if(-s "$tmpDir/$locus.up.bed"> $EMPTY_FILE) { 
+
+	if((-s "$tmpDir/$locus.up.bed") <= $EMPTY_FILE) {
+		if($verbose) { print "PROGRESS: phyloP outputfile is empty...\n"; }
+		### There is a bug in phyloP (t=nan) for some reason. If failed, try with a different method
+		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName > /dev/null");
+		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
+		if($testPhylopbug!=0) {
+			if($verbose) { print("PROGRESS: phyloP failed (internal bug?). Retrying with alternative parameters...\n"); }
+			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
+		}
+	}
+
+	if((-s "$tmpDir/$locus.up.bed") > $EMPTY_FILE) { 
 		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
 		if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
 			$CNSFound=1;
@@ -573,12 +600,14 @@ while(my $CNSLine = <$CNSFile>) {
 		my $tmpCNSFastaFileName = "$tmpDir/$CNSName.cns.fasta";
 		open (my $tmpCNSFile, ">$tmpCNSFastaFileName");
 		my $cnsSeq;
+		my $numOfSpeciesWithCNS=0;
 		if($cnsRelStart <= 0 ) { ## If this is upstream seqeunce
 			for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {
 				
 				if(defined $fastaUpstreamAlignment{$locusFullName}{$curSpecies}) {
 					$cnsSeq=substr($fastaUpstreamAlignment{$locusFullName}{$curSpecies}, $upstreamLengthReference{$locusFullName}+$cnsRelStart, $cnsRelEnd-$cnsRelStart);
 					$cnsSeqs{$curSpecies}=$cnsSeq;
+					$numOfSpeciesWithCNS++;
 				} else {				
 					$cnsSeq = ("-" x ($cnsRelEnd-$cnsRelStart));
 				}
@@ -590,6 +619,7 @@ while(my $CNSLine = <$CNSFile>) {
 				if(defined $fastaDownstreamAlignment{$locusFullName}{$curSpecies}) {
 					$cnsSeq = substr($fastaDownstreamAlignment{$locusFullName}{$curSpecies}, $cnsRelStart, $cnsRelEnd-$cnsRelStart);
 					$cnsSeqs{$curSpecies}=$cnsSeq;
+					$numOfSpeciesWithCNS++;
 				} else {					
 					$cnsSeq = ("-" x ($cnsRelEnd-$cnsRelStart));
 				}				
@@ -603,6 +633,9 @@ while(my $CNSLine = <$CNSFile>) {
 		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -qf -b -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
 		unlink($tmpCNSFastaFileName);
 		unlink("log.txt");
+		if($verbose) {
+			print("PROGRESS: Reconstructed $locus.$cnsRelStart. Length: " . ($cnsRelEnd-$cnsRelStart) . "\n")
+		}
 		my $ancesteralCNS;
 		open(my $ancesteralCNSFasta, $ancesteralCNSFileName) || die ("INTERNAL ERROR ($locusFullName).\n");
 		while((my $seqName = <$ancesteralCNSFasta>) && $ancesteralCNS eq "") {
@@ -614,9 +647,13 @@ while(my $CNSLine = <$CNSFile>) {
 		close($ancesteralCNSFasta);
 		unlink($ancesteralCNSFileName);
 
+		###### Mask ancesteral sequence for homopolymers
+		my $ancesteralCNSMasked = $ancesteralCNS;
+		$ancesteralCNSMasked =~ s/(A{10}|T{10}|C{10}|G{10})/XXXXXXXXXX/g;
+
 		$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
 		
-		print $ancesteralLocusCNSFasta ">$CNSName\n$ancesteralCNS\n";
+		print $ancesteralLocusCNSFasta ">$CNSName\n$ancesteralCNSMasked\n";
 		$totalCNSLength += $curCNSLength;
 		$CNSNum++;
 		
@@ -803,8 +840,9 @@ while(<$genomeDatabase>) {
 						if($verbose) {
 								print "PROGRESS: Found deep CNS hit ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n";
 						}
-						MAFtoFASTA($MAFUpFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "U");
-						MAFtoFASTA($MAFDownFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D");
+						### Log alignment to fasta, but only if long enough (covers more than minCNSCoverage of the CNS)
+						MAFtoFASTA($MAFUpFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "U",$minCNSCoverage);
+						MAFtoFASTA($MAFDownFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D",$minCNSCoverage);
 					}
 
 				if(!$keep_tmp) {
@@ -825,7 +863,6 @@ if(!$keep_tmp) {
 	unlink($ancesteralLocusCNSFileName);
 }
   
-my @minSpeciesPerConservationLevel= (150,100,60,20,5,5,5);
 
 ## First, filter CNS for unlikely and sporious alignments
 ## Then classify the conservation level of the CNS 
@@ -839,7 +876,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   	  my @classification = split /-/ , $speciesClassification{$curSpecies};
     	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
     	 	if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
-    	 	 	$CNSConservationLevel[$curClassificationLevel]++;  
+    	 	 	$CNSConservationLevel[$curClassificationLevel]++;
     	 	}
     	}
   }
@@ -918,6 +955,11 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 			if (overlap($start, $end, $CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'})) {
 				my $startInTargetCNS = max(0, $start-$CNSforLocus{$curCNS}{'Start'});
 				my $seq;
+				### This is the family alignment - so the alignments are for the whole region, before identification of phyloP conservation
+				### Trim the alignment to the conserved region
+				if($curHit->{'Length'} + $start > $CNSforLocus{$curCNS}{'End'} ) {
+					$curHit->{'Length'} = $CNSforLocus{$curCNS}{'End'} - $start;
+				}
 				my ($tsp,$targetGenome) = split /-/, $curHit->{'TargetLocus'};
 				if($curHit->{'TargetRelativePosition'}<0) {
 					$seq = substr($curHit->{'Sequence'}, $curHit->{'TargetRelativePosition'}+ $regulatoryRegionLengthDatabase{$targetGenome}{'upstreamLength'}, $curHit->{'Length'});
@@ -1075,9 +1117,14 @@ sub overlap {
 }
 
 ################### Load MAF file and return a FASTA array in reference coordinates
-sub MAFtoFASTA {
-	(my $mafFileName, my $seqLengthRef, my $targetSeqLength, my $inFASTARef,my $mapRef, my $dir) = @_;
+# alignmentLengthFilter is a number 0-1 indicating what is the minimum overlap (in percent) of the alignment to the reference species
+#  to consider an alignment.
+#
+#
 
+sub MAFtoFASTA {
+	(my $mafFileName, my $seqLengthRef, my $targetSeqLength, my $inFASTARef,my $mapRef, my $dir, my $alignmentLengthFilter) = @_;
+	
 	my $refseqname;
 	my $reflocus;
 	my $refstart = -1;
@@ -1104,6 +1151,7 @@ sub MAFtoFASTA {
 		       $inFASTARef->{$reflocus}{$species} = "N" x $seqLengthRef->{$reflocus};
 		   }
 
+
 		   if($species eq $refseqname) {
 	   		 # Identify all insertions from the sequence to keep the seq in reference coordinates		 
 		   	 @insertions = findAll($newspseq, "-");
@@ -1123,60 +1171,64 @@ sub MAFtoFASTA {
 			$refstart = $alignseq->start()-1;
 			$reflen = length($newspseq);
 		   } else {
-			#### Log the alignment
-			my $refRelative, my $targetRelative;
-			$refRelative = $refstart;
-			if($dir eq "U") {
-				$targetRelative = $alignseq->start() -1 - $targetSeqLength;
-			} else {
-				$targetRelative = $alignseq->start() - 1;
-			}
-			if(not defined $mapRef->{$reflocus}{$species}) {
-				$mapRef->{$reflocus}{$species} = [];
-			}
-			
-			push @{ $mapRef->{$reflocus}{$species} }, {
-				"ReferenceLocus" => $reflocus,
-				"ReferenceRelativePosition" => $refRelative,
-				"ReferenceUpDown" => $dir,
-				"Length" => $reflen,
-				"TargetSpecies" => $species,
-				"TargetLocus" => $locus,
-				"TargetRelativePosition" => $targetRelative }; 
-  		   }
 
-		   # Check if we are overriding sequences
-		   my $curspseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
-		   if( $curspseq eq  "N" x length($curspseq)) {
-			   my $tmpseq = $inFASTARef->{$reflocus}{$species};
-		   	   substr($tmpseq, $refstart, $reflen) = $newspseq;
-			   $inFASTARef->{$reflocus}{$species} = $tmpseq;
-		   } else {
-			# if there was something there, merge the sequences
-			if(substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen) ne $newspseq) {
-					
-				my $curseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
-				my $refseq = substr($inFASTARef->{$reflocus}{$refseqname}, $refstart, $reflen);
-				my $conseq;
-				for my $curchr (0 .. $reflen) {
-					my $selectedMergedNuc;
-					# if one is a gap, pick the nucleotide
-					if(substr($curseq, $curchr,1) eq "N") {
-						$selectedMergedNuc = substr($newspseq,$curchr,1);
-					} elsif (substr($newspseq, $curchr,1) eq "N") {
-						$selectedMergedNuc = substr($curseq,$curchr,1);
-					} else { #if we have a conflict - pick the one that is similar to the reference
-						if((substr($curseq,$curchr,1) eq substr($refseq,$curchr,1)) || (substr($curseq,$curchr,1) eq substr($refseq,$curchr,1))) {
-							$selectedMergedNuc = substr($refseq,$curchr,1);
-						} else {
-							$selectedMergedNuc = substr($curseq,$curchr,1); # or if not, the default is the first one.
-						}
-					}
-					$conseq .= $selectedMergedNuc;
+			
+			#### Log the alignment, if it is at the right length
+			if($alignmentLengthFilter==0 || $reflen > $alignmentLengthFilter*$seqLengthRef->{$reflocus} ) {
+				my $refRelative, my $targetRelative;
+				$refRelative = $refstart;
+				if($dir eq "U") {
+					$targetRelative = $alignseq->start() -1 - $targetSeqLength;
+				} else {
+					$targetRelative = $alignseq->start() - 1;
 				}
-				my $tmpseq = $inFASTARef->{$reflocus}{$species};
-				substr($tmpseq, $refstart, $reflen) = $conseq;
-			   	$inFASTARef->{$reflocus}{$species} = $tmpseq;
+				if(not defined $mapRef->{$reflocus}{$species}) {
+					$mapRef->{$reflocus}{$species} = [];
+				}
+			
+				push @{ $mapRef->{$reflocus}{$species} }, {
+					"ReferenceLocus" => $reflocus,
+					"ReferenceRelativePosition" => $refRelative,
+					"ReferenceUpDown" => $dir,
+					"Length" => $reflen,
+					"TargetSpecies" => $species,
+					"TargetLocus" => $locus,
+					"TargetRelativePosition" => $targetRelative }; 
+  		   		}
+
+		   		# Check if we are overriding sequences
+		   		my $curspseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
+		   		if( $curspseq eq  "N" x length($curspseq)) {
+			   		my $tmpseq = $inFASTARef->{$reflocus}{$species};
+		   	   		substr($tmpseq, $refstart, $reflen) = $newspseq;
+			   		$inFASTARef->{$reflocus}{$species} = $tmpseq;
+		   		} else {
+				# if there was something there, merge the sequences
+				if(substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen) ne $newspseq) {
+					
+					my $curseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
+					my $refseq = substr($inFASTARef->{$reflocus}{$refseqname}, $refstart, $reflen);
+					my $conseq;
+					for my $curchr (0 .. $reflen) {
+						my $selectedMergedNuc;
+						# if one is a gap, pick the nucleotide
+						if(substr($curseq, $curchr,1) eq "N") {
+							$selectedMergedNuc = substr($newspseq,$curchr,1);
+						} elsif (substr($newspseq, $curchr,1) eq "N") {
+							$selectedMergedNuc = substr($curseq,$curchr,1);
+						} else { #if we have a conflict - pick the one that is similar to the reference
+							if((substr($curseq,$curchr,1) eq substr($refseq,$curchr,1)) || (substr($curseq,$curchr,1) eq substr($refseq,$curchr,1))) {
+								$selectedMergedNuc = substr($refseq,$curchr,1);
+							} else {
+								$selectedMergedNuc = substr($curseq,$curchr,1); # or if not, the default is the first one.
+							}
+						}
+						$conseq .= $selectedMergedNuc;
+					}
+					my $tmpseq = $inFASTARef->{$reflocus}{$species};
+					substr($tmpseq, $refstart, $reflen) = $conseq;
+			   		$inFASTARef->{$reflocus}{$species} = $tmpseq;
+				}
 			}
 		}
 	   }
@@ -1310,13 +1362,20 @@ sub getLongestORF {
       while ($strand{$direction}=~m/(taa|tga|tag)/gi) {
          push @ends,pos($strand{$direction})-2;
       }
-      push @ends,($dna->length-2,$dna->length-1,$dna->length);
- 
+      push @ends,($dna->length+2,$dna->length+1,$dna->length);
+
+
       for my $s (@starts) {
          for my $e (@ends) {
             if ($e%3==$s%3 and $e>$s) {
-               if ($e-$s>$best) {
-                  $best=$e-$s;
+               my $ORFlength = $e-$s;
+               if($e > $dna->length) {
+                  $ORFlength -= ($e - $dna->length -1);
+                  ### If we have partial codon - remove it
+                  $ORFlength -= ($ORFlength%3);
+               }
+               if ($ORFlength >$best) {
+                  $best= $ORFlength;
                   ($bests,$beste,$beststrand)=($s,$e,$direction);
                }
                last
@@ -1328,9 +1387,9 @@ sub getLongestORF {
    }
    my $bestORF;
    if($beststrand eq "+") {
-   	   $bestORF = substr($dna->seq,$bests+2, $best)
+   	   $bestORF = substr($dna->seq,$bests-1, $best)
    } else {
-   	   $bestORF = substr($dna->revcom->seq,$bests+2, $best)
+   	   $bestORF = substr($dna->revcom->seq,$bests-1, $best)
    }
    
    return (length($bestORF), $bestORF, $beststrand ); ## Returns the length of the longest ORF and its sequence	

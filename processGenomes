@@ -51,7 +51,7 @@ if($genome ne "" && $family ne ""){
 }
 
 if($help) {
-	print "Conservatory version 0.0.1\n\n";
+	print "Conservatory version 2.0.1\n\n";
 	
 	print "processGenomes\n\n";
 	print "\t--conservatory-dir\tPath of the main conservatory directory. See README for directory structure. (DEFAULT: current directory)\n";
@@ -62,7 +62,7 @@ if($help) {
 	print "\t--threads\t\tNumber of threads to use (DEAFULT: 16). \n";
 	print "\t--force\t\t\tForce rebuilding of all databases file (except orthology).\n";
 	print "\t--force-orthology\tForce rebuilding orthology database.\n";
-	print "\t--force-run\t\tDo not verify the status of the last run.\n\t\t\t\t[WARNING: This can cause data corruption if two processGenomes processes are starting in parallel.\n\t\t\t\tOnly use this if you know what you are doing]\n";  
+	print "\t--force-run\t\tDo not verify the status of the last run.\n\t\t\t\t[WARNING: This can cause data corruption if two processGenomes processes are starting in parallel.\n\t\t\t\tOnly use if you know what you are doing]\n";  
 	print "\t--verbose\t\tOutput extra progress messages.\n";
 	print "\t--help\t\t\tPrints this message.\n\n";
 	exit(0);

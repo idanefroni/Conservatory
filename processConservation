@@ -136,7 +136,7 @@ while(my $curgenomeline= <$genomedb>) {
 						print localtime() . ": Thread $placeForProcess is processing $curLocus.\n";
 						my $alignmentParams;
 						
-						$alignmentParams = "--reference $referenceGenome --locus $curLocus --skip-bam-dump";
+						$alignmentParams = "--reference $referenceGenome --locus $curLocus ";
 
 						if($minIdentity>0) { $alignmentParams .= " --min-identity $minIdentity"; }
 						if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
