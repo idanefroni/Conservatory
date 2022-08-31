@@ -35,6 +35,7 @@ my $referenceGenomeSpecies;
 my $referenceGenomeFamily;
 
 #### Parameters
+my $homoPolymerFilterLength = 12;
 my $minIdentityFamily= 70;
 my $minIdentityGlobal= 70;
 my $minQuality = 1000;
@@ -47,7 +48,7 @@ my $dumpBam = 0;
 my $skipMissingGenomes=0;
 my $minPhyloPscore=1.5;
 my $minCNSCoverage=0.2; ### The minimum coverage of the CNS to be acceptable for a deep alignment
-my @minSpeciesPerConservationLevel= (150,100,100,50,5,5);
+my @minSpeciesPerConservationLevel= (150,100,100,90,5,5);
 my $minSpeciesPerConservationLevelString="";
 my $minORFLength="auto";
 my $minHSPthresholdFamily=2000;
@@ -649,7 +650,8 @@ while(my $CNSLine = <$CNSFile>) {
 
 		###### Mask ancesteral sequence for homopolymers
 		my $ancesteralCNSMasked = $ancesteralCNS;
-		$ancesteralCNSMasked =~ s/(A{10}|T{10}|C{10}|G{10})/XXXXXXXXXX/g;
+
+		$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFilterLength);
 
 		$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
 		
@@ -996,12 +998,78 @@ sub mean {
     return sum(@_)/@_;
 }
 
+
+### Rewrite filter to be fuzzy.
 sub extractFastaToFile {
 	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
-	my $linearise = "perl -e ' { while (<>) { if(!/^>/) {chomp;} print; } print(\"\n\"); }'";
-	my $maskdinucrep = " sed -r 's/((AG){5}|(CT){5}|(CA){5}|(CC){5}|(GG){5}|(TG){5})/XXXXXXXXXX/g'";
-	my $maskseq = " sed -r 's/([C|G|A]TT){4}/XXXXXXXXXXXX/g' | sed -r 's/[A|T]{10}/XXXXXXXXXX/g' | sed -r 's/(TCTA){4}/XXXXXXXXXXXXXXXX/g' | sed 's/NNN/XXX/g'";
-	system("samtools faidx $fastaFile $locus | $linearise | $maskdinucrep | $maskseq  >$outputFastaFile");
+
+	open (my $inFasta, "samtools faidx $fastaFile $locus |");
+	my $fastaHeader = <$inFasta>;
+	chomp($fastaHeader);
+	my $seq;
+	my @seqLines;
+	while(my $curLine = <$inFasta>) {
+		chomp($curLine);
+		push @seqLines, $curLine;
+	}
+	close($inFasta);
+	$seq = join("", @seqLines);
+
+	my $origSeq = $seq;
+	### Now mask homopolymers and AT rich regions
+	$seq = fuzzyFilterHomopolymers($seq,$homoPolymerFilterLength);
+	$seq = fuzzyFilterATRich($seq,$homoPolymerFilterLength);   ### This could be more strict?? (maybe 8)
+	### and repeating dimers
+	$seq =~ s/((AG){5}|(CT){5}|(CA){5}|(CC){5}|(GG){5}|(TG){5})/XXXXXXXXXX/g;
+	### and repeating trimers
+	$seq =~ s/([C|G|A]TT){4}/XXXXXXXXXXXX/g;
+	#### and repeating tetramers
+	$seq =~ s/(TCTA){4}/XXXXXXXXXXXXXXXX/g;
+	### and ambigious sequences
+	$seq =~ s/NNN/XXX/g;
+
+	## and write to file
+	open(my $outFasta, ">$outputFastaFile");
+	print $outFasta "$fastaHeader\n$seq\n";
+	close($outFasta);
+}
+
+##### Fuzzy filter homopolymers
+sub fuzzyFilterHomopolymers {
+	my ($inSeq, $polymerLength) = @_;
+	my @polymers = ('A' x $polymerLength,
+					'T' x $polymerLength,
+					'C' x $polymerLength,
+					'G' x $polymerLength);
+	my $fuzzySearchString="($polymers[1]";
+	my $replacementString = 'X' x $polymerLength;
+	for my $curPolymer (@polymers) {
+		for my $curNuc (1..$polymerLength) {
+			my $curSearch = $curPolymer;
+			substr($curSearch,$curNuc-1,1) = ".";
+			$fuzzySearchString .= "|$curSearch"
+		}
+	}
+	$fuzzySearchString .= ")";
+
+	$inSeq =~ s/$fuzzySearchString/$replacementString/g;
+	return($inSeq);
+}
+
+sub fuzzyFilterATRich {
+	my ($inSeq, $ATrichLength) = @_;
+	my $atRichSearch = "[A|T]" x $ATrichLength;
+	my $replacementString = 'X' x $ATrichLength;
+	my $fuzzyFilterATRich = "($atRichSearch";
+
+	for my $curNuc (1..$ATrichLength) {
+		my $curSearch = $atRichSearch;
+		substr($curSearch, ($curNuc-1)*5,5) = ".";
+		$fuzzyFilterATRich .= "|$curSearch";
+	}
+	$fuzzyFilterATRich .= ")";
+	$inSeq =~ s/$fuzzyFilterATRich/$replacementString/g;
+	return($inSeq);
 }
 
 sub getMAFQuality {
