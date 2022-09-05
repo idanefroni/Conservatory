@@ -37,7 +37,7 @@ my $referenceGenomeFamily;
 
 #### Filtering and alignment parameters
 my $homoPolymerFilterLength = 10;
-my $atRichRegionFilterLength = 10;
+my $atRichRegionFilterLength = 12;
 my $dimerPolymerFilterLength = 5;
 #my $filterCharacter = 'N';
 my $filterCharacter = 'X';
@@ -50,8 +50,11 @@ my $CNSMergeLength=10;   # What is the maximum distance between conserved nucleo
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
 my $minPhyloPscore=1.5;
-my $minCNSCoverage=0.333; ### The minimum coverage of the CNS to be acceptable for a deep alignment (1/3 is default)
+my $minCNSCoverage=0.2; ### The minimum coverage of the CNS to be acceptable for a deep alignment
 my @minSpeciesPerConservationLevel= (150,100,100,90,5,5);
+my $maxSpeciesToInitiateCNSSplit = 100; ## Do not split CNS if it is supported by atleast this number of species
+									 ## To avoid spliting of very highly conserved CNSs
+
 my $minSpeciesPerConservationLevelString="";
 my $minORFLength="auto";
 my $minHSPthresholdFamily=2000;
@@ -1680,7 +1683,9 @@ sub getCNSbreakpoints {
 	my $lastBreakpointPos=0;
 
 	foreach my $pos (0..(scalar @CNSdelta)) {
-		if((abs($CNSdelta[$pos]) > $deltaSD *3) && ($pos - $lastBreakpointPos > $minCNSLength )) {
+		### split CNS if larger than minCNSlength and high variability. But don't split CNS with many species
+		if((abs($CNSdelta[$pos]) > $deltaSD *3) && ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit)) {
+			if($verbose) { print "PROGRESS: Splitting CNS at $pos (" . abs($CNSdelta[$pos]) . "," . $CNSCoverage[$pos] . ").\n"; }
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
 		}

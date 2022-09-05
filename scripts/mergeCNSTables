@@ -115,7 +115,6 @@ while(<$CNSInputFile>) {
 				'RegulatorySeqPart' => $regulatorySeqPart
 	};
 	
-	
 	if($lastCNS eq "") {
 		$lastCNS = $CNSID;
 	} else {
@@ -188,7 +187,6 @@ while(<$CNSInputFile>) {
 					$CNSTable{$lastCNS}{'SupportingSpecies'} = max($CNSTable{$lastCNS}{'SupportingSpecies'}, $supportingSpecies);
 					### Merge sequence (Future)
 					if($diffInCNSPos != 0) {
-						$CNSTable{$lastCNS}{'AncesteralSeq'} = "";
 	#					print "Merge sequence:\n";
 	#					my $lastCNSSeq = Bio::Seq->new(-seq => $CNSTable{$lastCNS}{'AncesteralSeq'});
 	#					my $curCNSSeq = Bio::Seq->new(-seq => $CNSTable{$CNSID}{'AncesteralSeq'});
@@ -211,7 +209,7 @@ while(<$CNSInputFile>) {
 		}
 
 		if($CNSToDelete ne "") {
-				if($verbose) { print "Deleting $CNSToDelete.\n"; }
+				if($verbose) { print "PROGRESS: Deleting $CNSToDelete.\n"; }
 				delete $positionTable{$CNSToDelete};
 				delete $CNSTable{$CNSToDelete};
 				if($CNSToDelete eq $lastCNS) { $lastCNS=$CNSID; }
@@ -262,34 +260,100 @@ foreach my $curLocus (keys %positionLocusMap) {
 				#print "Checking $firstHit->{'CNSID'} and $secondHit->{'CNSID'} of $curLocus ($firstHit->{'Start'}, $firstHit->{'End'}, $secondHit->{'Start'}, $secondHit->{'End'}).\n";  
 				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'})) {
 					### We should merge the CNS
-					if(!defined $CNSToMerge{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} } && !defined $CNSToMerge{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} } ) { 
-						$CNSToMerge{ $firstHit->{'CNSID'} } { $secondHit->{'CNSID'} }=1;
+					my $first;
+					my $second;
 
+					if(defined $CNSToMerge{ $firstHit->{'CNSID'} }) {
+						$first = $firstHit->{'CNSID'};
+						$second = $secondHit->{'CNSID'};
 					} else {
-						$CNSToMerge{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }++;
+						$first = $secondHit->{'CNSID'};
+						$second = $firstHit->{'CNSID'};
+					}
+
+					if(!defined $CNSToMerge{ $first }{ $second }  ) { 
+						$CNSToMerge{ $first } { $second }=1;
+					} else {
+						### make sure we keep the CNS association unidirectional and unique
+
+						$CNSToMerge{ $first }{ $second }++;
 				
-						if($CNSToMerge{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} } == $minOverlappingSpeciesForMerge && $CNSToMerge{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} } < $minOverlappingSpeciesForMerge) {
-							if($verbose) { print "Merge: $firstHit->{'CNSID'} and $secondHit->{'CNSID'}. Because ( $curLocus: $firstHit->{'TargetPosition'}, $firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'Length'}  )\n"; }
-							
+						if($CNSToMerge{ $first }{ $second } == $minOverlappingSpeciesForMerge) {
+						#	if($verbose) { print "PROGRESS: Merge deep CNS $first and $second.\n"; }						
 							$CNSMerged++;
 							$deepCNSMerged++;
 						}
 					}
-
 				}
 			}
 		}
 	}
 }
 
-if($verbose) { print "PROGRESS: Found " . $deepCNSMerged . " CNS to merge. Begin atomizing CNS.\n" };
+if($verbose) { print "PROGRESS: Found " . $deepCNSMerged . " CNS to merge.\n"; }
 
-########## Atomize CNSs
-for my $CNSToAtomize (keys %CNSToMerge) {
-	my @overlappingCNSs = keys %{ $CNSToMerge{$CNSToAtomize} };
-#	print "$CNSToAtomize: found " . @overlappingCNSs . " overlapping CNS:" . join(",", @overlappingCNSs) ."\n";
+if($verbose) { print "PROGRESS: Forming deep CNS groups.\n"; }
+
+my %CNSGroups;
+
+foreach my $curCNS (keys %CNSToMerge) {
+	# filter low support alignments
+	foreach my $cnsB (keys %{ $CNSToMerge{$curCNS } }) {
+		if($CNSToMerge{$curCNS}{$cnsB}< $minOverlappingSpeciesForMerge) {
+			delete $CNSToMerge{$curCNS}{$cnsB};
+		}
+	}
+
+	my @otherCNSs = keys %{ $CNSToMerge{$curCNS} };
+
+	if($verbose) { print "PROGRESS: Merging $curCNS (" . $CNSTable{$curCNS}{'Level'} . ") with " . join (",", @otherCNSs) . "\n"; }
+
+	if( @otherCNSs >0) {
+		my $CNSGroupName = "Super.$curCNS";
+
+		$CNSTable{$CNSGroupName} = {
+				'ReferenceGenome' => "SuperCNS",
+				'CNSID' => $CNSGroupName,
+				'Chromosome' => "",
+				'Strand' => "",
+				'Start' => "",	
+				'End' => "",
+				'Locus' => "",
+				'RelStart' => "",
+				'RelEnd' => "",
+				'Level' => $CNSTable{$curCNS}{'Level'},
+				'SupportingSpecies' => 0,
+				'ORFLength' => "",
+				'ORFDir' => "",
+				'Omega' => "",
+				'AncesteralSeq' => "",
+				'RegulatorySeqPart' => ""};
+		my @CNSsToJoin = ($curCNS, keys %{ $CNSToMerge{$curCNS} });
+	
+		$CNSGroups{$CNSGroupName} = \@CNSsToJoin;
+
+		$positionTable{$CNSGroupName}{'Positions'} = ();
+
+		my $remappedPositions=0;
+
+		foreach my $curCNSToJoin ( @CNSsToJoin ) {
+			foreach my $mapping ( @{ $positionTable{$curCNS}{'Positions'} }  ) {
+
+			push ( @{ $positionTable{$CNSGroupName}{'Positions'} } , 	{
+					'TargetGenome' => $mapping->{'TargetGenome'},
+					'TargetLocus' => $mapping->{'TargetLocus'},
+					'TargetPosition' => $mapping->{'TargetPosition'},
+					'ReferenceRelativePos' => $mapping->{'ReferenceRelativePos'},
+					'Length' => $mapping->{'Length'}
+				});
+				$remappedPositions++;
+			}
+		}
+		if($verbose) { print "PROGRESS: Created $CNSGroupName ($remappedPositions):" . join(",", @CNSsToJoin) . "\n"; }
+	}
 }
 
+if($verbose) { print "PROGRESS: Done. Output files.\n"; }
 
 ########### Output files
 ### New CNS files
@@ -332,17 +396,15 @@ close($outputMapFile);
 ##########
 if($outputMergedCNSFileName ne "") {
 	open (my $outputMergedCNSFile, ">$outputMergedCNSFileName") || die ("INTERNAL ERROR.\n");
-	foreach my $curCNS (sort keys %CNSToMerge) {
-		foreach my $targetCNS (sort keys %{ $CNSToMerge{$curCNS} }) {
-			print $outputMergedCNSFile "$curCNS,$targetCNS\n";
+	foreach my $groupCNS (sort keys %CNSGroups) {
+		foreach my $subCNS (@{ $CNSGroups{$groupCNS} } ) {
+			print $outputMergedCNSFile "$groupCNS,$subCNS\n";
 		}
 	}
 	close ($outputMergedCNSFile);
 }
 
-
 print "END: Deleted $CNSDeleted duplicated CNSs; Merged $CNSMerged CNSs, of which $deepCNSMerged deep CNSs.\n";
-
 
 
 ### Compute overlap between two fragments

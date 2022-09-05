@@ -76,8 +76,8 @@ if(!((-e $allCNSMergedFileName) & (-e $allPositionsMergedFileName))) {
 
 	###### merge CNS
 	system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $allCNSFileName --in-map $allPositionsFileName --out-cns $allCNSMergedFileName --out-map $allPositionsMergedFileName --out-merged $allMergedDeepCNSFileName");
-	unlink($allCNSFileName);
-	unlink($allPositionsFileName);
+#	unlink($allCNSFileName);
+#	unlink($allPositionsFileName);
 }
 
 #### Now filter just for the loci we want
