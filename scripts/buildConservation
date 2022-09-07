@@ -36,8 +36,8 @@ my $referenceGenomeSpecies;
 my $referenceGenomeFamily;
 
 #### Filtering and alignment parameters
-my $homoPolymerFilterLength = 10;
-my $atRichRegionFilterLength = 12;
+my $homoPolymerFilterLength = 8;
+my $atRichRegionFilterLength = 10;
 my $dimerPolymerFilterLength = 5;
 #my $filterCharacter = 'N';
 my $filterCharacter = 'X';
@@ -46,11 +46,11 @@ my $minIdentityFamily= 70;
 my $minIdentityGlobal= 70;
 my $minQuality = 1000;
 my $minCNSLength=8;
-my $CNSMergeLength=10;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
+my $CNSMergeLength=11;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
-my $minPhyloPscore=1.5;
-my $minCNSCoverage=0.2; ### The minimum coverage of the CNS to be acceptable for a deep alignment
+my $minPhyloPscore=1.6;
+my $minCNSCoverage=0.33; ### The minimum coverage of the CNS to be acceptable for a deep alignment (1/3 is default)
 my @minSpeciesPerConservationLevel= (150,100,100,90,5,5);
 my $maxSpeciesToInitiateCNSSplit = 100; ## Do not split CNS if it is supported by atleast this number of species
 									 ## To avoid spliting of very highly conserved CNSs
@@ -66,6 +66,7 @@ my $keep_tmp = 0;
 my $verbose = 0;
 my $force=1;   #### There is an option to use the family alignment if already exists. This does not currently work!
 my $dumpBam = 0;
+my $skipKaKs=0;
 my $skipMissingGenomes=0;
 my $justFamilyAlignment = 0;
 
@@ -77,7 +78,6 @@ my $downstreamLength;
 
 my %upstreamLengthReference;
 my %downstreamLengthReference;
-
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"locus=s" => \$locus,
@@ -95,6 +95,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
 			"bam-dump" =>\$dumpBam,
+			"skip-kaks" => \$skipKaKs,
 			"skip-missing-genomes" => \$skipMissingGenomes,
 			"help" => \$help) or die ("Error in command line arguments\n");
 
@@ -104,8 +105,10 @@ if($minCNSCoverage <0 || $minCNSCoverage>1) {
 	print "\n\nBad parameters: min-deep-cns-coverage must be between 0 and 1.\n\n";
 	$help = 1;
 }
-if($minSpeciesPerConservationLevelString ne "") {
 
+#### Redefine the conservation level filters
+if($minSpeciesPerConservationLevelString ne "") {
+    ## TODO
 }
 
 if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrategy eq "bestmean" or $orthologSelectionStrategy eq "bestsum" ) ) {
@@ -130,6 +133,7 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    print "\t--min-species-per-conservation-level\t\tSpecies number filter for level conservation. Defines the mimimum number of species a CNS has to be found it to allow a certain conservation level. A string of 6 comma delimited values. Default is 150,100,100,50,5,5.\n";   
    print "\t--min-orf-length\t\tMinimum length (in bp) of ORF to identify in CNS. Deafult is \"auto\" which is automatically calculated based on expected random ORF occurance in data.\n";
    print "\t--bam-dump\t\tGenerate bam files for the alignments.\n";
+   print "\t--skip-kaks\t\tSkip KaKs calculation (run faster)\n";
    print "\t--skip-missing-genomes\t\tIf genome information can't be found, skip and continue analysis (DEFAULT: Terminate with error message),\n";
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
  
@@ -166,8 +170,8 @@ my %speciesClassification;
 my %mapAlignmentFamily;
 my %orthologs;
   
-my $lastzParametersFamily = "--gap=200,100 --nochain --recoverseeds --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentityFamily --ydrop=1000 --hspthreshold=$minHSPthresholdFamily --gappedthresh=$minHSPthresholdFamily";
-my $lastzParametersGlobal = "--gap=200,100 --nochain --recoverseeds --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentityGlobal --ydrop=1000 --hspthreshold=$minHSPthresholdGlobal --gappedthresh=$minHSPthresholdGlobal";
+my $lastzParametersFamily = "--gap=200,100 --nochain --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentityFamily --ydrop=1000 --hspthreshold=$minHSPthresholdFamily --gappedthresh=$minHSPthresholdFamily";
+my $lastzParametersGlobal = "--gap=200,100 --nochain --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentityGlobal --ydrop=1000 --hspthreshold=$minHSPthresholdGlobal --gappedthresh=$minHSPthresholdGlobal";
 
 ####### First, sanity checks. Check to see if directory structure is OK and if programs are installed
 ####### 
@@ -664,10 +668,16 @@ while(my $CNSLine = <$CNSFile>) {
 		###### Mask ancesteral sequence for homopolymers
 		my $ancesteralCNSMasked = $ancesteralCNS;
 
-		$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFilterLength);
+		## First, lastz does not handle ambigious characters very well (basically assuming N)
+		# replace W with A. Not ideal, but better than alternative. Also, too many A's will be masked.
+		$ancesteralCNSMasked =~ s/W/A/g;
+
+		$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFilterLength,0);
+		$ancesteralCNSMasked = fuzzyFilterDimers($ancesteralCNSMasked, $dimerPolymerFilterLength,0);
 
 		$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
-		
+#		if($verbose) { print ("PROGRESS: Ancesteral Sequence: $ancesteralCNS. Masked: $ancesteralCNSMasked\n"); }
+
 		print $ancesteralLocusCNSFasta ">$CNSName\n$ancesteralCNSMasked\n";
 		$totalCNSLength += $curCNSLength;
 		$CNSNum++;
@@ -693,115 +703,117 @@ while(my $CNSLine = <$CNSFile>) {
 			
 			### Determine KaKs
 			### First, assemble all ORFs
-			my %cnsORFs;
-			my @cnsPeptides;
-			$cnsORFs{'Reconstructed'} = $ancesteralCNSORF;
-			my $peptide = dropAsterixFromProtein($ancesteralCNSORF->translate);
-			push @cnsPeptides, $peptide;
+			if(!$skipKaKs) {
+				my %cnsORFs;
+				my @cnsPeptides;
+				$cnsORFs{'Reconstructed'} = $ancesteralCNSORF;
+				my $peptide = dropAsterixFromProtein($ancesteralCNSORF->translate);
+				push @cnsPeptides, $peptide;
 
-			foreach my $curCNSSpecies (keys %cnsSeqs) {
-				$cnsSeqs{$curCNSSpecies} =~ s/-//g;
-				if(length($cnsSeqs{$curCNSSpecies})>0) {
-					my ($curLongestORFLength, $curLongestORF, $curLongestORFStand) = getLongestORF($cnsSeqs{$curCNSSpecies},$ancesteralORFStand);
-					my $curCNSORF = Bio::LocatableSeq->new(-seq => $curLongestORF,
-												    	   -id => $curCNSSpecies,
-												    	   -start => 1,
-												    	   -end => $curLongestORFLength);
-					$cnsORFs{$curCNSSpecies} = $curCNSORF;
-					$peptide = dropAsterixFromProtein($curCNSORF->translate);
-					push @cnsPeptides, $peptide;
-				}
-				
-			}
-			
-
-			my $stats = Bio::Align::DNAStatistics->new();
-			my $cnsAlignmentPep = quietAlign(\@cnsPeptides);
-			### Filter low identity alignments
-			my @filteredCNSPeptides;		
-
-			my @seqCharAncesteral = split //, $cnsAlignmentPep->get_seq_by_id('Reconstructed')->seq();
-
-			foreach my $seq ($cnsAlignmentPep->each_seq) {
-				if($seq->id() ne "Reconstructed") {
-					my $pairwiseAln = $cnsAlignmentPep->select_noncont_by_name('Reconstructed', $seq->id());
-					my $nogappairwiseAln = $pairwiseAln->remove_gaps();
-
-					if($nogappairwiseAln->length > 4 && $pairwiseAln->percentage_identity > 60)  { ### If too divergent, do not include sequence
-						my $nogapSeq = $seq->seq();
-						$nogapSeq =~ s/-//g;
-						$seq->seq($nogapSeq);
-						push @filteredCNSPeptides, $seq;
+				foreach my $curCNSSpecies (keys %cnsSeqs) {
+					$cnsSeqs{$curCNSSpecies} =~ s/-//g;
+					if(length($cnsSeqs{$curCNSSpecies})>0) {
+						my ($curLongestORFLength, $curLongestORF, $curLongestORFStand) = getLongestORF($cnsSeqs{$curCNSSpecies},$ancesteralORFStand);
+						my $curCNSORF = Bio::LocatableSeq->new(-seq => $curLongestORF,
+												    	   	-id => $curCNSSpecies,
+												    	   	-start => 1,
+												    	   	-end => $curLongestORFLength);
+						$cnsORFs{$curCNSSpecies} = $curCNSORF;
+						$peptide = dropAsterixFromProtein($curCNSORF->translate);
+						push @cnsPeptides, $peptide;
 					}
 				}
-			}
 			
-			if(@filteredCNSPeptides >1) {
-			
-				my $filteredCNSAlignmentPep = quietAlign(\@filteredCNSPeptides);
-				my $cnsDNAAlignment = Bio::Align::Utilities::aa_to_dna_aln($filteredCNSAlignmentPep, \%cnsORFs);
-				### See that we have something to align, and its not too divergent or not divergent enough
-				my $nogapalignment = $cnsDNAAlignment->remove_gaps();
-				if($nogapalignment->length > 0) {
-					## Calculate KsKa
-					if($verbose) { printf "PROGRESS: $CNSName: Calculating KaKs..."; }
+				my $stats = Bio::Align::DNAStatistics->new();
+				my $cnsAlignmentPep = quietAlign(\@cnsPeptides);
+				### Filter low identity alignments
+				my @filteredCNSPeptides;		
 
-					my $kaks_factory = Bio::Tools::Run::Phylo::PAML::Codeml->new(
-						-verbose => 0,
-						-tree => $tree,
-						-branchlengths => 1,
-						-params => { 'runmode' => -2,
-                      			'seqtype' => 1});
+				my @seqCharAncesteral = split //, $cnsAlignmentPep->get_seq_by_id('Reconstructed')->seq();
 
-                	$kaks_factory->alignment($cnsDNAAlignment);
-                	my ($rc, $parser) = $kaks_factory->run();
-                	$kaks_factory->cleanup();
-			
-                	if($rc>0) {
-                		my $results = $parser->next_result;
-                		my $MLmatrix = $results->get_MLmatrix();
-                		my @outseq = $results->get_seqs();
-                		my $ancesteralPos= -1;
-                		for(my $i=0; $i< @outseq; $i++) {
-                			if($outseq[$i]->display_id eq "Reconstructed") {
-                				$ancesteralPos = $i;
-                			}
-                		}
-                		my $totalOmega=0;
-                		my $totaldN=0;
-                		my $totaldS=0;
-                		for(my $i =0; $i< @outseq; $i++) {
-                			if($outseq[$i]->display_id() ne "Reconstructed") {
-                				$totalOmega = $totalOmega + $MLmatrix->[$ancesteralPos]->[$i]->{'omega'};
-								$totaldN = $totaldN + $MLmatrix->[$ancesteralPos]->[$i]->{'dN'};
-								$totaldS = $totaldS + $MLmatrix->[$ancesteralPos]->[$i]->{'dS'};
-                			}
-                		}
-						my $meanOmega = $totalOmega / (@outseq - 1);
-						my $meandS = $totaldS / (@outseq - 1);
-						my $meandN = $totaldN / (@outseq - 1);
-						### See if we have enough substitutions for omega to make sense
-						### dS > 0.01
-						if($meandS > 0.01) {
-                			$CNSforLocus{$CNSName}{'omega'} = $meanOmega;
- 						} else {
-	          				$CNSforLocus{$CNSName}{'omega'} = -1;   ## dS is too low
+				foreach my $seq ($cnsAlignmentPep->each_seq) {
+					if($seq->id() ne "Reconstructed") {
+						my $pairwiseAln = $cnsAlignmentPep->select_noncont_by_name('Reconstructed', $seq->id());
+						my $nogappairwiseAln = $pairwiseAln->remove_gaps();
+
+						if($nogappairwiseAln->length > 4 && $pairwiseAln->percentage_identity > 60)  { ### If too divergent, do not include sequence
+							my $nogapSeq = $seq->seq();
+							$nogapSeq =~ s/-//g;
+							$seq->seq($nogapSeq);
+							push @filteredCNSPeptides, $seq;
 						}
-
-                		if($verbose) { printf("... Omega: %.2f (dS: %.2f;dN: %.2f)\n", $CNSforLocus{$CNSName}{'omega'}, $meandS, $meandN); }	
-                	} else {
-						if($verbose) { print "..cannot determine(" . $kaks_factory->error_string() .")\n";}
-                		$CNSforLocus{$CNSName}{'omega'} = -99;  ## Error
-                	}
-				} else {
-                	$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
+					}
 				}
-            } else {
-            	$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
-            } 
+			
+				if(@filteredCNSPeptides >1) {
+			
+					my $filteredCNSAlignmentPep = quietAlign(\@filteredCNSPeptides);
+					my $cnsDNAAlignment = Bio::Align::Utilities::aa_to_dna_aln($filteredCNSAlignmentPep, \%cnsORFs);
+					### See that we have something to align, and its not too divergent or not divergent enough
+					my $nogapalignment = $cnsDNAAlignment->remove_gaps();
+					if($nogapalignment->length > 0) {
+						## Calculate KsKa
+						if($verbose) { printf "PROGRESS: $CNSName: Calculating KaKs..."; }
+
+						my $kaks_factory = Bio::Tools::Run::Phylo::PAML::Codeml->new(
+							-verbose => 0,
+							-tree => $tree,
+							-branchlengths => 1,
+							-params => { 'runmode' => -2,
+                      				'seqtype' => 1});
+
+                		$kaks_factory->alignment($cnsDNAAlignment);
+                		my ($rc, $parser) = $kaks_factory->run();
+                		$kaks_factory->cleanup();
+			
+                		if($rc>0) {
+                			my $results = $parser->next_result;
+                			my $MLmatrix = $results->get_MLmatrix();
+                			my @outseq = $results->get_seqs();
+                			my $ancesteralPos= -1;
+                			for(my $i=0; $i< @outseq; $i++) {
+	                			if($outseq[$i]->display_id eq "Reconstructed") {
+                					$ancesteralPos = $i;
+                				}
+                			}
+                			my $totalOmega=0;
+                			my $totaldN=0;
+                			my $totaldS=0;
+                			for(my $i =0; $i< @outseq; $i++) {
+	                			if($outseq[$i]->display_id() ne "Reconstructed") {
+                					$totalOmega = $totalOmega + $MLmatrix->[$ancesteralPos]->[$i]->{'omega'};
+									$totaldN = $totaldN + $MLmatrix->[$ancesteralPos]->[$i]->{'dN'};
+									$totaldS = $totaldS + $MLmatrix->[$ancesteralPos]->[$i]->{'dS'};
+                				}
+                			}
+							my $meanOmega = $totalOmega / (@outseq - 1);
+							my $meandS = $totaldS / (@outseq - 1);
+							my $meandN = $totaldN / (@outseq - 1);
+							### See if we have enough substitutions for omega to make sense
+							### dS > 0.01
+							if($meandS > 0.01) {
+	                			$CNSforLocus{$CNSName}{'omega'} = $meanOmega;
+ 							} else {
+		          				$CNSforLocus{$CNSName}{'omega'} = -1;   ## dS is too low
+							}
+
+                			if($verbose) { printf("... Omega: %.2f (dS: %.2f;dN: %.2f)\n", $CNSforLocus{$CNSName}{'omega'}, $meandS, $meandN); }	
+                		} else {
+							if($verbose) { print "..cannot determine(" . $kaks_factory->error_string() .")\n";}
+                			$CNSforLocus{$CNSName}{'omega'} = -99;  ## Error
+                		}
+					} else {
+                		$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
+					}
+            	} else {
+            		$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
+            	} 
+			} else {
+				$CNSforLocus{$CNSName}{'omega'} = -4; ### No KaKs value calculated
+			}
 		} else {
-			$CNSforLocus{$CNSName}{'ORF'}=0;
-			$CNSforLocus{$CNSName}{'omega'} = -3;  ### There is no ORF
+				$CNSforLocus{$CNSName}{'ORF'}=0;
+				$CNSforLocus{$CNSName}{'omega'} = -3;  ### There is no ORF
 		}
 	}
 	
@@ -935,7 +947,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 			};
 			$cnsReferenceLength{$newSubCNSName} = $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint] ;
 
-#			print "Created $newSubCNSName (len: $cnsReferenceLength{$newSubCNSName}):\n";
 			my $numberOfHitsReassigned=0;
 			## Reassign deep alignments
 			foreach my $curHit (@polishedAlignments) {
@@ -1131,10 +1142,10 @@ sub extractFastaToFile {
 
 	my $origSeq = $seq;
 	### Now mask homopolymers and AT rich regions
-#	$seq = fuzzyFilterHomopolymers($seq,$homoPolymerFilterLength);  ### Not clear if that is required.
+	$seq = fuzzyFilterHomopolymers($seq,$homoPolymerFilterLength,0);  
 
-	$seq = fuzzyFilterATRich($seq,$atRichRegionFilterLength);   
-	$seq = fuzzyFilterDimers($seq, $dimerPolymerFilterLength);
+	$seq = fuzzyFilterATRich($seq,$atRichRegionFilterLength,0);   
+	$seq = fuzzyFilterDimers($seq, $dimerPolymerFilterLength,0);
 	### and repeating trimers
 	$seq =~ s/([C|G|A]TT){4}/XXXXXXXXXXXX/g;
 	#### and repeating tetramers
@@ -1149,31 +1160,51 @@ sub extractFastaToFile {
 }
 
 ##### Fuzzy filter homopolymers
+
+### fuzziness is the number of mismatch positions allowed (either 0 or 1)
 sub fuzzyFilterHomopolymers {
-	my ($inSeq, $polymerLength) = @_;
+	my ($inSeq, $polymerLength, $fuzziness) = @_;
+	my @inSeqArr = split //, $inSeq;
 	my @polymers = ('A' x $polymerLength,
 					'T' x $polymerLength,
 					'C' x $polymerLength,
 					'G' x $polymerLength);
-	my $fuzzySearchString="($polymers[1]";
-	my $replacementString = $filterCharacter x $polymerLength;
+
+	my $fuzzySearchString="(?=($polymers[1]";
+	my @replacementArr = ($filterCharacter) x $polymerLength;
+
 	for my $curPolymer (@polymers) {
-		for my $curNuc (1..$polymerLength) {
-			my $curSearch = $curPolymer;
-			substr($curSearch,$curNuc-1,1) = ".";
-			$fuzzySearchString .= "|$curSearch"
+		if($fuzziness == 1) {
+			for my $curNuc (1..$polymerLength) {
+				my $curSearch = $curPolymer;
+				substr($curSearch,$curNuc-1,1) = ".";
+				$fuzzySearchString .= "|$curSearch"
+			}
+		} else {
+			$fuzzySearchString .= "|$curPolymer";
 		}
 	}
-	$fuzzySearchString .= ")";
+	$fuzzySearchString .= "))";
+	
+	my @polymerOccurences;
+	$_ = $inSeq;
 
-	$inSeq =~ s/$fuzzySearchString/$replacementString/g;
-	return($inSeq);
+	while(/$fuzzySearchString/g) {
+		push @polymerOccurences, pos();
+	}
+	foreach my $curPos (@polymerOccurences) {
+		@inSeqArr[$curPos..($curPos+($polymerLength-1))] = @replacementArr;
+	}
+
+	return join("", @inSeqArr);
 }
 
 ##### Fuzzy filter for repeating dimers sequences
+## Fuzziness is 0 or 1 (number of mismatches accepted)
 sub fuzzyFilterDimers {
-	my ($inSeq, $polymerLength) = @_;
-	my $replacementString = $filterCharacter x ($polymerLength * 2);
+	my ($inSeq, $polymerLength, $fuzziness) = @_;
+	my @inSeqArr = split //, $inSeq;
+	my @replacementArr = ($filterCharacter) x ($polymerLength * 2);
 	my @dimerPolymers;
 
 	for my $nuca ( ('A','T','C','G')) {
@@ -1184,37 +1215,73 @@ sub fuzzyFilterDimers {
 		}
 	}
 
-	my $fuzzySearchString="($dimerPolymers[1]";
+	my $fuzzySearchString="(?=($dimerPolymers[1]";
 
 	for my $curPolymer (@dimerPolymers) {
-		for my $curNuc (1..($polymerLength*2-1)) {
-			my $curSearch = $curPolymer;
-			substr($curSearch,$curNuc-1,1) = ".";
-			$fuzzySearchString .= "|$curSearch"
+		if($fuzziness==1) {
+			for my $curNuc (1..($polymerLength*2-1)) {
+				my $curSearch = $curPolymer;
+				substr($curSearch,$curNuc-1,1) = ".";
+				$fuzzySearchString .= "|$curSearch"
+			}
+		} else {
+				$fuzzySearchString .= "|$curPolymer"
 		}
 	}
-	$fuzzySearchString .= ")";
-	$inSeq =~ s/$fuzzySearchString/$replacementString/g;
-	return($inSeq);
+	$fuzzySearchString .= "))";
+
+	## Now collected all the places where there is a match (accepting overlapping regions)
+	my @dimerOccurences;
+	$_ = $inSeq;
+
+	while(/$fuzzySearchString/g) {
+		push @dimerOccurences, pos();
+	}
+
+	## Now mask Seq
+	foreach my $curPos (@dimerOccurences) {
+		@inSeqArr[$curPos..($curPos+($polymerLength*2-1))] = @replacementArr;
+	}
+
+	return join("", @inSeqArr);
 }
 
 ########################################################################################
 ### Fuzzy filter AT rich regions
+###
 
 sub fuzzyFilterATRich {
-	my ($inSeq, $ATrichLength) = @_;
-	my $atRichSearch = "[A|T]" x $ATrichLength;
-	my $replacementString = $filterCharacter x $ATrichLength;
-	my $fuzzyFilterATRich = "($atRichSearch";
+	my ($inSeq, $ATrichLength, $fuzziness) = @_;
+	my @replacementArr = ($filterCharacter) x $ATrichLength;
 
-	for my $curNuc (1..$ATrichLength) {
-		my $curSearch = $atRichSearch;
-		substr($curSearch, ($curNuc-1)*5,5) = "[C|A|T|G|N|X]";
-		$fuzzyFilterATRich .= "|$curSearch";
+	my $translatedInSeq = $inSeq;
+	$translatedInSeq =~ tr/ATCGXN/001111/;
+
+	my @inSeqArr = split //, $inSeq;
+	my @inSeqTrArr = split //, $translatedInSeq;
+	my $seqLength = (scalar @inSeqArr)-$ATrichLength-1;
+	my @ATrichPos;
+
+	## Look for AT rich positions
+	foreach my $curPos (0..$seqLength) {
+		if(sum(@inSeqTrArr[$curPos..($curPos+$ATrichLength)])<=$fuzziness) {
+			push @ATrichPos, $curPos;	
+		}
 	}
-	$fuzzyFilterATRich .= ")";
+	## Now mask Seq
+	foreach my $curPos (@ATrichPos) {
+		@inSeqArr[$curPos..($curPos+$ATrichLength-1)] = @replacementArr;
+	}
 
-	$inSeq =~ s/$fuzzyFilterATRich/$replacementString/g;
+	return join("", @inSeqArr);
+
+	#Find all overlapping occurences
+	### Now replace all 
+#	foreach my $curPos (@ATrichOccurences) {
+#		substr($inSeq, $curPos, $ATrichLength) = $replacementString;
+#	}
+	
+	#$inSeq =~ s/$fuzzyFilterATRich/$replacementString/g;
 	return($inSeq);
 }
 
