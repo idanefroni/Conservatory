@@ -75,15 +75,17 @@ if(!((-e $allCNSMergedFileName) & (-e $allPositionsMergedFileName))) {
 	system("cat $conservatoryDir/CNS/*.cns.csv > $allCNSFileName");
 
 	###### merge CNS
-	system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $allCNSFileName --in-map $allPositionsFileName --out-cns $allCNSMergedFileName --out-map $allPositionsMergedFileName --out-merged $allMergedDeepCNSFileName");
-#	unlink($allCNSFileName);
-#	unlink($allPositionsFileName);
+	print localtime(). ": Merge deep CNS...\n";
+	system("perl $conservatoryDir/scripts/mergeCNSTables --remove-original-CNS --in-cns $allCNSFileName --in-map $allPositionsFileName --out-cns $allCNSMergedFileName --out-map $allPositionsMergedFileName --out-merged $allMergedDeepCNSFileName");
+	unlink($allCNSFileName);
+	unlink($allPositionsFileName);
 }
 
 #### Now filter just for the loci we want
-
-system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsMergedFileName | cut -d',' -f1 | grep -f - $allPositionsMergedFileName > $myLociPositionsFileName");
-
+print localtime(). ": Filter loci...\n";
+system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsMergedFileName | cut -d',' -f1 | grep -f - $allPositionsMergedFileName > $myLociPositionsFileName.tmp");
+system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - output/angiospermsOrthologs.csv | cut -d',' -f1 | sort | uniq | grep -f - $myLociPositionsFileName.tmp > $myLociPositionsFileName");
+unlink("$myLociPositionsFileName.tmp");
 ### Build the CNS dictionary hash
 my %cnsDic;
 my %nodesDic;

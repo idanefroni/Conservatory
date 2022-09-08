@@ -46,12 +46,14 @@ my $minIdentityFamily= 70;
 my $minIdentityGlobal= 70;
 my $minQuality = 1000;
 my $minCNSLength=8;
-my $CNSMergeLength=11;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
+my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
 my $minPhyloPscore=1.6;
 my $minCNSCoverage=0.33; ### The minimum coverage of the CNS to be acceptable for a deep alignment (1/3 is default)
-my @minSpeciesPerConservationLevel= (150,100,100,90,5,5);
+my @minSpeciesPerConservationLevel= (150,100,100,90,5,5); ## Must have atleast these many alignments to support level assignment
+my @minSpeciesAtConservationLevel= (1,1,1,10,10,10); ## Musty have atleast these many species from each level to support level assignment
+
 my $maxSpeciesToInitiateCNSSplit = 100; ## Do not split CNS if it is supported by atleast this number of species
 									 ## To avoid spliting of very highly conserved CNSs
 
@@ -676,7 +678,6 @@ while(my $CNSLine = <$CNSFile>) {
 		$ancesteralCNSMasked = fuzzyFilterDimers($ancesteralCNSMasked, $dimerPolymerFilterLength,0);
 
 		$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
-#		if($verbose) { print ("PROGRESS: Ancesteral Sequence: $ancesteralCNS. Masked: $ancesteralCNSMasked\n"); }
 
 		print $ancesteralLocusCNSFasta ">$CNSName\n$ancesteralCNSMasked\n";
 		$totalCNSLength += $curCNSLength;
@@ -968,8 +969,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 							"TargetLocus" => $curHit->{'TargetLocus'},
 							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} }; 
 					$numberOfHitsReassigned++;
-#					print "Reassign: $curCNS," . $curHit->{'TargetSpecies'} . "(" . $curHit->{'ReferenceRelativePosition'} . "," . $curHit->{'Length'} . ")";
-#					print " to $newSubCNSName (" . ($curHit->{'ReferenceRelativePosition'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) . "," . (min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName})) . ")\n";
 				}
 			}
 			if($verbose) { print "PROGRESS: Sub CNS $newSubCNSName (Length:$cnsReferenceLength{$newSubCNSName}) has $numberOfHitsReassigned alignments.\n"; }
@@ -983,8 +982,34 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 
 
 #####################################################################
-## First, filter CNS for unlikely and sporious alignments
+## Filter CNS for unlikely and sporious alignments
 ## Then classify the conservation level of the CNS 
+
+### Filter CNSs that switch position (up to downstream)
+
+my $spToDelete;
+foreach my $curCNS (keys %mapAlignmentDeepCNS) {
+	foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
+		$spToDelete = "";
+		foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment} } ) {
+			if(($curAlignment->{'ReferenceUpDown'} eq "U") && ($curAlignment->{'TargetRelativePosition'} >0)) {
+				$spToDelete = $curSpeciesAlignment;
+			}
+			if(($curAlignment->{'ReferenceUpDown'} eq "D") && ($curAlignment->{'TargetRelativePosition'} <0)) {
+				$spToDelete = $curSpeciesAlignment;
+			}
+			if($spToDelete ne "") {
+				if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Orig:" . $curAlignment->{'ReferenceUpDown'} . " Target:" . $curAlignment->{'TargetRelativePosition'} . ".\n"; }
+			}
+		}
+		if($spToDelete ne "") {
+			delete $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment};
+		}
+	}
+}
+
+##### Filter CNS that are too distant without sufficient support
+
 foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
   my $numberOfSpecies = keys %{ $mapAlignmentDeepCNS{$curCNS} };
@@ -1004,10 +1029,14 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   # check for possible misalignments by making sure we are no skipping levels.
   	  
   foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-1)) {
-   	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1) ||
-   	  	  $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]) {
+   	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1)
+	  	  || $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]
+		  || $minSpeciesAtConservationLevel[$levelToCheck] > $CNSConservationLevel[$levelToCheck] ) {
    	  	  if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for $curCNS at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
-  	  	  if($verbose && ($numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) { print "PROGRESS: Number of species too low to support alignments at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
+
+  	  	  if($verbose && ($numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) {
+			print "PROGRESS: Number of species too low to support alignments at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n";
+		}
   	  	  ### Remove the misalignment
 		  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
 		  	  my @classification = split /-/ , $speciesClassification{$curSpecies};
