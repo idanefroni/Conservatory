@@ -86,7 +86,7 @@ my $samtools = `sh -c 'command -v samtools'`;
 die "ERROR: Cannot find samtools in path. Please make sure it is installed.\n" unless ($samtools ne "");  
 
 my $agatCheck = `sh -c 'command -v agat_sp_extract_sequences.pl'`;
-die "ERROR: Cannot find samtools in path. Please make sure AGAT is installed.\n" unless ($agatCheck ne "");
+die "ERROR: Cannot find AGAT in path. Please make sure AGAT is installed.\n" unless ($agatCheck ne "");
 
 my $seqkit = `sh -c 'command -v seqkit'`;
 die "ERROR: Cannot find seqkit in path. Please make sure seqkit is installed.\n" unless ($seqkit ne "");

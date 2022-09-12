@@ -11,7 +11,8 @@ my $genomeDatabaseFileName = "genome_database.csv";
 
 my $MAX_ORTH=8;
 my $MIN_EVAL= 10;
-my $EVAL_CUTOFF_FOR_FAMILY=0.33;
+my $MAX_EVAL = 100;
+my $EVAL_CUTOFF_FOR_FAMILY=0.66;
 my $conservatoryDir=abs_path(".");
 my $help=0;
 my $genome="";
@@ -132,9 +133,12 @@ while(my $curline = <$g2ref>) {
 	
 	if($eval < $MIN_EVAL) {
 		if($eval ==0) { 
-			$eval = 400;
+			$eval = 100;
 		} else {
 			$eval = -log($eval);
+			if($eval > $MAX_EVAL) {
+				$eval = $MAX_EVAL;
+			}
 		}
 		if($locus ne $curlocus) { $orthologCounts=0};
 		$curlocus = $locus;
@@ -175,9 +179,12 @@ while(my $curline = <$ref2g>) {
 	
 	if($eval < $MIN_EVAL) {
 		if($eval ==0) { 
-			$eval = 400;
+			$eval = 100;
 		} else {
 			$eval = -log($eval);
+			if($eval > $MAX_EVAL) {
+				$eval = $MAX_EVAL;
+			}
 		}	
 		if($refLocus ne $curRefLocus) {
 

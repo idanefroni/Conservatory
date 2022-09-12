@@ -367,7 +367,7 @@ foreach my $curCNS (keys %CNSToMerge) {
 		my $remappedPositions=0;
 
 		foreach my $curCNSToJoin ( @CNSsToJoin ) {
-			foreach my $mapping ( @{ $positionTable{$curCNS}{'Positions'} }  ) {
+			foreach my $mapping ( @{ $positionTable{$curCNSToJoin}{'Positions'} }  ) {
 			
 				### Check to see if it is not there yet
 				my $needToRemap=1;

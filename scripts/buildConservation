@@ -50,9 +50,10 @@ my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleo
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
 my $minPhyloPscore=1.6;
-my $minCNSCoverage=0.33; ### The minimum coverage of the CNS to be acceptable for a deep alignment (1/3 is default)
+my $minCNSCoverage=0.2; ### The minimum coverage of the CNS to be acceptable for a deep alignment (1/3 is default)
+my $minSpeciesToSplitCNS=5;
 my @minSpeciesPerConservationLevel= (150,100,100,90,5,5); ## Must have atleast these many alignments to support level assignment
-my @minSpeciesAtConservationLevel= (1,1,1,10,10,10); ## Musty have atleast these many species from each level to support level assignment
+my @minSpeciesAtConservationLevel= (1,1,1,3,6,12); ## Musty have atleast these many species from each level to support level assignment
 
 my $maxSpeciesToInitiateCNSSplit = 100; ## Do not split CNS if it is supported by atleast this number of species
 									 ## To avoid spliting of very highly conserved CNSs
@@ -989,17 +990,18 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 
 my $spToDelete;
 foreach my $curCNS (keys %mapAlignmentDeepCNS) {
+	if($verbose) { print "DEBUG: testing $curCNS for alignmnent mismatches.\n"; }
 	foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
 		$spToDelete = "";
 		foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment} } ) {
-			if(($curAlignment->{'ReferenceUpDown'} eq "U") && ($curAlignment->{'TargetRelativePosition'} >0)) {
+			if(($CNSforLocus{$curCNS}{'Start'}<0) && ($curAlignment->{'TargetRelativePosition'} >0)) {
 				$spToDelete = $curSpeciesAlignment;
 			}
-			if(($curAlignment->{'ReferenceUpDown'} eq "D") && ($curAlignment->{'TargetRelativePosition'} <0)) {
+			if(($CNSforLocus{$curCNS}{'Start'}>0) && ($curAlignment->{'TargetRelativePosition'} <0)) {
 				$spToDelete = $curSpeciesAlignment;
 			}
 			if($spToDelete ne "") {
-				if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Orig:" . $curAlignment->{'ReferenceUpDown'} . " Target:" . $curAlignment->{'TargetRelativePosition'} . ".\n"; }
+				if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Target position: " . $curAlignment->{'TargetRelativePosition'} . ".\n"; }
 			}
 		}
 		if($spToDelete ne "") {
@@ -1031,7 +1033,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-1)) {
    	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1)
 	  	  || $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]
-		  || $minSpeciesAtConservationLevel[$levelToCheck] > $CNSConservationLevel[$levelToCheck] ) {
+		  || $CNSConservationLevel[$levelToCheck] < $minSpeciesAtConservationLevel[$levelToCheck]) {
    	  	  if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for $curCNS at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
 
   	  	  if($verbose && ($numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) {
@@ -1780,7 +1782,8 @@ sub getCNSbreakpoints {
 
 	foreach my $pos (0..(scalar @CNSdelta)) {
 		### split CNS if larger than minCNSlength and high variability. But don't split CNS with many species
-		if((abs($CNSdelta[$pos]) > $deltaSD *3) && ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit)) {
+		## or if the split point is not well supported
+		if((abs($CNSdelta[$pos]) > $deltaSD *3) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit)) {
 			if($verbose) { print "PROGRESS: Splitting CNS at $pos (" . abs($CNSdelta[$pos]) . "," . $CNSCoverage[$pos] . ").\n"; }
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
