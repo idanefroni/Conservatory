@@ -11,7 +11,7 @@ my $genomeDatabaseFileName = "genome_database.csv";
 
 my $MAX_ORTH=8;
 my $MIN_EVAL= 10;
-my $MAX_EVAL = 100;
+my $MAX_EVAL = 150;
 my $EVAL_CUTOFF_FOR_FAMILY=0.66;
 my $conservatoryDir=abs_path(".");
 my $help=0;
@@ -133,7 +133,7 @@ while(my $curline = <$g2ref>) {
 	
 	if($eval < $MIN_EVAL) {
 		if($eval ==0) { 
-			$eval = 100;
+			$eval = $MAX_EVAL;
 		} else {
 			$eval = -log($eval);
 			if($eval > $MAX_EVAL) {
@@ -179,7 +179,7 @@ while(my $curline = <$ref2g>) {
 	
 	if($eval < $MIN_EVAL) {
 		if($eval ==0) { 
-			$eval = 100;
+			$eval = $MAX_EVAL;
 		} else {
 			$eval = -log($eval);
 			if($eval > $MAX_EVAL) {
