@@ -2,6 +2,7 @@
 
 use POSIX;
 use strict;
+use Array::Utils qw(:all);
 use Cwd 'abs_path';
 use List::Util qw(min max);
 use Bio::AlignIO;
@@ -20,7 +21,8 @@ my $superCNSPrefix = "Super";
 
 my $verbose=0;
 my $help=0;
-my $minOverlappingSpeciesForMerge=5; ### How many overlapping hits to merge a CNS
+my $minOverlappingSpeciesForMerge=4; ### How many overlapping hits to merge a CNS
+my $minCNSOverlap = 0.25;
 my $removeOriginalCNS=0;
 
 my %conservationLevelDic = ( "Family" => 0,
@@ -259,7 +261,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 		foreach my $secondHit ( @{ $positionLocusMap{$curLocus}{'Positions'} } ) {
 			# && ($firstHit->{'TargetGenome'} eq $secondHit->{'TargetGenome'})
 			if(($firstHit->{'CNSID'} ne $secondHit->{'CNSID'}) && ($CNSTable{ $firstHit->{'CNSID'} } {'ReferenceGenome'} ne $CNSTable{ $secondHit->{'CNSID'} }{'ReferenceGenome'}) && ($CNSTable{ $firstHit->{'CNSID'} } {'RegulatorySeqPart'} eq $CNSTable{ $secondHit->{'CNSID'} }{'RegulatorySeqPart'}) ) {
-				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'}) >0.25 ) {
+				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'}) > $minCNSOverlap ) {
 					### We should merge the CNS
 					my $first;
 					my $second;
@@ -280,7 +282,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 						$CNSToMerge{ $first }{ $second }++;
 				
 						if($CNSToMerge{ $first }{ $second } == $minOverlappingSpeciesForMerge) {
-#							if($verbose) { print "PROGRESS: Merge deep CNS $first and $second because of $curLocus of (" . $firstHit->{'TargetGenome'} . ").\n"; }
+							if($verbose) { print "PROGRESS: Merge deep CNS $first and $second because of $curLocus of (" . $firstHit->{'TargetGenome'} . ").\n"; }
 							$CNSMerged++;
 							$deepCNSMerged++;
 						}
@@ -296,30 +298,62 @@ if($verbose) { print "PROGRESS: Found " . $deepCNSMerged . " CNS to merge.\n"; }
 if($verbose) { print "PROGRESS: Collating merged CNSs\n";}
 my $CNSMergedInCurrentPass;
 my $superGroupMerged=0;
+my %CNSToCollate;
+
 do {
 	$CNSMergedInCurrentPass=0;
+	%CNSToCollate=();
 	foreach my $curCNS (keys %CNSToMerge) {
+		my @curCNScontent = keys %{ $CNSToMerge{$curCNS} };
+		push @curCNScontent, $curCNS;
 		foreach my $CNSToScan (keys %CNSToMerge) {
 			if($curCNS ne $CNSToScan) {
-				for my $curSuperCNSMember (keys %{ $CNSToMerge{$CNSToScan} } )  {
-#					if ($curSuperCNSMember eq $curCNS && $CNSToMerge{CNSToScan}{$curSuperCNSMember}> $minOverlappingSpeciesForMerge) {  ### If there is an overlap, merge the CNSs
-					if ($curSuperCNSMember eq $curCNS) {  ### If there is an overlap, merge the CNSs
-						if($verbose) { print "PROGRESS: Merging $curCNS and $CNSToScan.\n"; }
+				my @CNSToScanContent = keys %{ $CNSToMerge{$CNSToScan} };
+				push (@CNSToScanContent, $CNSToScan);
 
-						$CNSToMerge{$curCNS}{$CNSToScan} = 1;
-						# now copy superCNS members
-						foreach my $curSuperCNSMemberToCopy (keys %{ $CNSToMerge{$CNSToScan} }) {
-							if($curCNS ne $curSuperCNSMemberToCopy) {
-								$CNSToMerge{$curCNS}{$curSuperCNSMemberToCopy} = $CNSToMerge{$curCNS}{$curSuperCNSMemberToCopy} + $CNSToMerge{$CNSToScan}{$curSuperCNSMember} + $minOverlappingSpeciesForMerge;
-							}
-						}
-						#and delete
-						delete $CNSToMerge{$CNSToScan};
-						$CNSMergedInCurrentPass++;
-						$superGroupMerged++;
-					}
+				print "Testing CNS $curCNS:". join (",", @curCNScontent) . ". With $CNSToScan:" . join (",", @CNSToScanContent) . "\n";
+				my @CNSintersect = intersect(@curCNScontent, @CNSToScanContent);
+
+
+				if ((scalar @CNSintersect) > 0 ) {  #### If we have a shared CNS between the two
+					if($verbose) { print "We should merge $curCNS with $CNSToScan.\n" ;}
+					if(!defined $CNSToCollate{$CNSToScan}) {
+						$CNSToCollate{$curCNS} = $CNSToScan;
+					} 
+					$CNSMergedInCurrentPass++;
 				}
+#				for my $curSuperCNSMember (keys %{ $CNSToMerge{$CNSToScan} } )  {
+#					if($verbose) { print "Shoule we merge $curCNS with $CNSToScan ? Testing $curSuperCNSMember.\n"; }
+#					if ($curSuperCNSMember eq $curCNS && $CNSToMerge{CNSToScan}{$curSuperCNSMember}> $minOverlappingSpeciesForMerge) {  ### If there is an overlap, merge the CNSs
+#					if ($curSuperCNSMember eq $curCNS) {  ### If there is an overlap, merge the CNSs
+#						if($verbose) { print "PROGRESS: Merging $curCNS and $CNSToScan.\n"; }
+
+#						$CNSToMerge{$curCNS}{$CNSToScan} = 1;
+#						# now copy superCNS members
+#						foreach my $curSuperCNSMemberToCopy (keys %{ $CNSToMerge{$CNSToScan} }) {
+#							if($curCNS ne $curSuperCNSMemberToCopy) {
+#								$CNSToMerge{$curCNS}{$curSuperCNSMemberToCopy} = $CNSToMerge{$curCNS}{$curSuperCNSMemberToCopy} + $CNSToMerge{$CNSToScan}{$curSuperCNSMember} + $minOverlappingSpeciesForMerge;
+#							}
+#						}
+#						#and delete
+#						delete $CNSToMerge{$CNSToScan};
+#						$CNSMergedInCurrentPass++;
+#						$superGroupMerged++;
+#					}
+#				}
 			}
+		}
+	}
+	if($CNSMergedInCurrentPass>0) {  ### Do the merging
+		foreach my $curCNSToCollate (keys %CNSToCollate) {
+			print "Merging $curCNSToCollate with " . $CNSToCollate{$curCNSToCollate} . "...\n";
+			foreach my $curCNSMemberToCopy (keys %{ $CNSToMerge{ $CNSToCollate{$curCNSToCollate} } }) {
+				print "Moving $curCNSMemberToCopy from " . $CNSToCollate{$curCNSToCollate} . " to $curCNSToCollate\n";
+				$CNSToMerge{$curCNSToCollate}{ $curCNSMemberToCopy } = $minOverlappingSpeciesForMerge;
+			}
+			$CNSToMerge{$curCNSToCollate}{ $CNSToCollate{$curCNSToCollate} } = $minOverlappingSpeciesForMerge;
+
+			delete $CNSToMerge{ $CNSToCollate{$curCNSToCollate} };
 		}
 	}
 } while($CNSMergedInCurrentPass >0);
