@@ -19,7 +19,6 @@ use Getopt::Long;
 use experimental 'smartmatch';
 $|=1;
 
-
 ###############################################################################
 ######### Setup
 
@@ -35,28 +34,34 @@ my $referenceGenome;
 my $referenceGenomeSpecies;
 my $referenceGenomeFamily;
 
-#### Filtering and alignment parameters
+#### Sequence Filtering and parameters
 my $homoPolymerFilterLength = 8;
 my $homoPolymerFuzzyFilterLength = 12;
 my $atRichRegionFilterLength = 10;
 my $dimerPolymerFilterLength = 5;
 my $filterCharacter = 'X';
 
+##### Alignment parameters
 my $minIdentityFamily= 70;
 my $minIdentityGlobal= 70;
 my $minQuality = 1000;
+
+### PhyloP parameters and CNS filtering parameters
+my $minPhyloPscore=1.7;
 my $minCNSLength=8;
 my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
-my $minPhyloPscore=1.7;
+#### CNS coverage and splitting parameters
 my $minCNSCoverage=0.2; ### The minimum coverage of the CNS to be acceptable for a deep alignment
+my $minCNSCoverageAfterSplit=0.5; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
 my $minSpeciesToSplitCNS=5;
+my $maxSpeciesToInitiateCNSSplit = 150; ## Do not split CNS if it is supported by atleast this number of species
+									 ## To avoid spliting of very highly conserved CNSs
+
+#### Alignment filtering parameters
 my @minSpeciesPerConservationLevel= (150,100,100,90,5,5); ## Must have atleast these many alignments to support level assignment
 my @minSpeciesAtConservationLevel= (1,1,1,3,5,5); ## Musty have atleast these many species from each level to support level assignment
-
-my $maxSpeciesToInitiateCNSSplit = 100; ## Do not split CNS if it is supported by atleast this number of species
-									 ## To avoid spliting of very highly conserved CNSs
 
 my $minSpeciesPerConservationLevelString="";
 my $minORFLength="auto";
@@ -94,7 +99,6 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-species-per-conservation-level" => \$minSpeciesPerConservationLevelString,
 			"min-orf-length=i" => \$minORFLength,
 			"just-family-alignment" => \$justFamilyAlignment,
-			"force" => \$force,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
 			"bam-dump" =>\$dumpBam,
@@ -141,7 +145,6 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
  
    print "\n\t\tGeneral options\n\n";
-   print "\t--force\t\tRecompute alignments and CNS even if files exist.\n";
    print "\t--verbose\t\tOutput extra messages.\n";
    print "\t--help\t\t\tPrints this message.\n\n";
    
@@ -268,55 +271,65 @@ chdir $tmpDir;
 my $upstreamRefFastaName = "$tmpDir/$referenceGenome.$locus.up.fasta";
 my $downstreamRefFastaName = "$tmpDir/$referenceGenome.$locus.down.fasta";
 
-#### If we don't have the family alignments yet (and not forced to do them)
 #### Perform family alignments
 
-if(!(-e $finalFASTAUpFileName && -e $finalFASTADownFileName) || $force) {
+$fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".upstream.fasta.gz", $locusFullName, $upstreamRefFastaName);
+$fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".downstream.fasta.gz", $locusFullName, $downstreamRefFastaName);
+if($verbose) { print localtime() . ": Done extracting reference sequences.\n";}
 
-	$fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".upstream.fasta.gz", $locusFullName, $upstreamRefFastaName);
-	$fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".downstream.fasta.gz", $locusFullName, $downstreamRefFastaName);
-	if($verbose) { print localtime() . ": Done extracting reference sequences.\n";}
-
-	# set up CRE-orthology hashes
-	##############################################################################
-	# First pass. Determine CNS for family
+# set up CRE-orthology hashes
+##############################################################################
+# First pass. Determine CNS for family
   
-	while(<$genomeDatabase>) {
-		chomp;
-		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/;
+while(<$genomeDatabase>) {
+	chomp;
+	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/;
 
-		if(substr($curgenomeName,0,1) ne "#" && $curgenomeFamily eq $referenceGenomeFamily) { #if this is not a comment and if it within the family 
+	if(substr($curgenomeName,0,1) ne "#" && $curgenomeFamily eq $referenceGenomeFamily) { #if this is not a comment and if it within the family 
  
-			### get ortholog sequences
-			my $orthologFileName = "$genomeDir/$curgenomeFamily/$referenceGenome.$curgenomeName.orthologs.csv";
-			my $orthologFileFound = open (my $orthologFile, "<", $orthologFileName);
+		### get ortholog sequences
+		my $orthologFileName = "$genomeDir/$curgenomeFamily/$referenceGenome.$curgenomeName.orthologs.csv";
+		my $orthologFileFound = open (my $orthologFile, "<", $orthologFileName);
 		
-			if(!$orthologFileFound && !$skipMissingGenomes) { die "ERROR: Can't open ortholog file $orthologFileName. Did you run processGenomes for this reference genome?\n"; }
-			if($orthologFileFound && -e "$genomeDir/$curgenomeFamily/$curgenomeName.upstream.fasta.gz" && -e "$genomeDir/$curgenomeFamily/$curgenomeName.downstream.fasta.gz") {
-				while(my $orth_line = <$orthologFile>) {
-					chomp($orth_line);
-					(my $curPutativeOrtholog, my $curRefLocus, my $score) = split /,/,$orth_line;
-					if($curRefLocus eq $locusFullName && $curPutativeOrtholog ne $curRefLocus) {
-						my $upstreamFastaName ="$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.up.fasta";
-						my $downstreamFastaName = "$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.down.fasta";
-						extractFastaToFile("$genomeDir/$curgenomeFamily/$curgenomeName.upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
-						extractFastaToFile("$genomeDir/$curgenomeFamily/$curgenomeName.downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
+		if(!$orthologFileFound && !$skipMissingGenomes) { die "ERROR: Can't open ortholog file $orthologFileName. Did you run processGenomes for this reference genome?\n"; }
+		if($orthologFileFound && -e "$genomeDir/$curgenomeFamily/$curgenomeName.upstream.fasta.gz" && -e "$genomeDir/$curgenomeFamily/$curgenomeName.downstream.fasta.gz") {
+			while(my $orth_line = <$orthologFile>) {
+				chomp($orth_line);
+				(my $curPutativeOrtholog, my $curRefLocus, my $score) = split /,/,$orth_line;
+				if($curRefLocus eq $locusFullName && $curPutativeOrtholog ne $curRefLocus) {
+					my $upstreamFastaName ="$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.up.fasta";
+					my $downstreamFastaName = "$tmpDir/$locus.$curgenomeName.$curPutativeOrtholog.down.fasta";
+					extractFastaToFile("$genomeDir/$curgenomeFamily/$curgenomeName.upstream.fasta.gz", $curPutativeOrtholog, $upstreamFastaName);
+					extractFastaToFile("$genomeDir/$curgenomeFamily/$curgenomeName.downstream.fasta.gz", $curPutativeOrtholog, $downstreamFastaName);
 
-						my $MAFUpFileName = "$locus.$curPutativeOrtholog.up.maf";
-						system("lastz --format=maf $lastzParametersFamily $upstreamRefFastaName $upstreamFastaName > $MAFUpFileName");
-						my $upQuality = getMAFQuality($MAFUpFileName);
-						my $MAFDownFileName = "$locus.$curPutativeOrtholog.down.maf";
-						system("lastz --format=maf $lastzParametersFamily $downstreamRefFastaName $downstreamFastaName > $MAFDownFileName");
-						my $downQuality = getMAFQuality($MAFDownFileName);
+					my $MAFUpFileName = "$locus.$curPutativeOrtholog.up.maf";
+					system("lastz --format=maf $lastzParametersFamily $upstreamRefFastaName $upstreamFastaName > $MAFUpFileName");
+					my $upQuality = getMAFQuality($MAFUpFileName);
+					my $MAFDownFileName = "$locus.$curPutativeOrtholog.down.maf";
+					system("lastz --format=maf $lastzParametersFamily $downstreamRefFastaName $downstreamFastaName > $MAFDownFileName");
+					my $downQuality = getMAFQuality($MAFDownFileName);
 
-						#############################################################
-						if($upQuality+$downQuality > $minQuality) {
-							
-							if($verbose && $curgenomeName ne $referenceGenome) { print "PROGRESS: Found possible CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n"; }
-							if($verbose && $curgenomeName eq $referenceGenome) { print "PROGRESS: Found possible CRE-paralog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n"; }
+					#############################################################
+					if($upQuality+$downQuality > $minQuality) {				
+						if($verbose && $curgenomeName ne $referenceGenome) { print "PROGRESS: Found possible CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n"; }
+						if($verbose && $curgenomeName eq $referenceGenome) { print "PROGRESS: Found possible CRE-paralog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n"; }
 					
-							if(not defined $orthologs{$curgenomeSpecies}) {
-								$orthologs{$curgenomeSpecies} = [ {
+						if(not defined $orthologs{$curgenomeSpecies}) {
+							$orthologs{$curgenomeSpecies} = [ {
+								'Name' => $curPutativeOrtholog,
+								'Genome' => $curgenomeName,
+								'Family' => $curgenomeFamily,
+								'upstreamLength' => $upstreamLength *1000,
+								'downstreamLength' => $downstreamLength *1000,
+								'upstreamFileName' => $upstreamFastaName,
+								'downstreamFileName' => $downstreamFastaName,
+								'MAFUpFileName' => $MAFUpFileName,
+								'MAFDownFileName' => $MAFDownFileName,
+								'UpQuality' => $upQuality,
+							'DownQuality' => $downQuality} ];		
+						} else {
+							push( @{ $orthologs{$curgenomeSpecies} },
+								{
 									'Name' => $curPutativeOrtholog,
 									'Genome' => $curgenomeName,
 									'Family' => $curgenomeFamily,
@@ -327,141 +340,105 @@ if(!(-e $finalFASTAUpFileName && -e $finalFASTADownFileName) || $force) {
 									'MAFUpFileName' => $MAFUpFileName,
 									'MAFDownFileName' => $MAFDownFileName,
 									'UpQuality' => $upQuality,
-								'DownQuality' => $downQuality} ];		
-							} else {
-								push( @{ $orthologs{$curgenomeSpecies} },
-									{
-										'Name' => $curPutativeOrtholog,
-										'Genome' => $curgenomeName,
-										'Family' => $curgenomeFamily,
-										'upstreamLength' => $upstreamLength *1000,
-										'downstreamLength' => $downstreamLength *1000,
-										'upstreamFileName' => $upstreamFastaName,
-										'downstreamFileName' => $downstreamFastaName,
-										'MAFUpFileName' => $MAFUpFileName,
-										'MAFDownFileName' => $MAFDownFileName,
-										'UpQuality' => $upQuality,
-									'DownQuality' => $downQuality});
-								}
-						} else {
-							if($verbose && $curgenomeName ne $referenceGenome) { print "PROGRESS: Rejected CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: $upQuality.\n"; }
-							if($verbose && $curgenomeName eq $referenceGenome) { print "PROGRESS: Rejected CRE-paralog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: $upQuality.\n"; }
-							unlink($MAFDownFileName);
-							unlink($MAFUpFileName);
-							unlink($upstreamFastaName);
-							unlink($downstreamFastaName);
-						}
+								'DownQuality' => $downQuality});
+							}
+					} else {
+						if($verbose && $curgenomeName ne $referenceGenome) { print "PROGRESS: Rejected CRE-ortholog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: $upQuality.\n"; }
+						if($verbose && $curgenomeName eq $referenceGenome) { print "PROGRESS: Rejected CRE-paralog ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: $upQuality.\n"; }
+						unlink($MAFDownFileName);
+						unlink($MAFUpFileName);
+						unlink($upstreamFastaName);
+						unlink($downstreamFastaName);
 					}
 				}
-				close($orthologFile);
 			}
+			close($orthologFile);
 		}
 	}
-	close ($genomeDatabase);	
-  	
-	if(!$keep_tmp) {
-		unlink($upstreamRefFastaName);
-		unlink($downstreamRefFastaName);
-	}
-
-	#####################################################################################################
-	##### Now we have assembled the list of putative CRE orthologs. Select the best genome for each species
-
-	%orthologs = pickBestPutativeOrthologs(%orthologs);
-
-	####################################################################################################################################
-	##### At this point, we have selected our "CRE orthologs" (%orthologs) and have all the filtered upstream and downstream sequences in fasta files 
-	##### Perform alignments to the reference genome
-	my @species = keys %orthologs;
-	my $numOfSpecies = scalar @species;
-
-	if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
-
-	if ($numOfSpecies >= 0) {
-		#### Now all alignments were performed, assemble MAF files to a single alignment. 
-		### First, move everything to an array. Dump a copy to the CRE-ortholog file
-		if($verbose) { print "PROGRESS: Multiple sequence assembly"; }
-	
-		my $finalCREorthologFileName = "$outputDir/$locus.CREorthologs.txt";
-		open(my $finalCREorthologFile, ">$finalCREorthologFileName");
-	
-		my @orthologsToProcess;
-		foreach my $speciesToAlign (@species) {
-			foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
-				if($curOrtholog->{'UpQuality'} > $EMPTY_FILE || $curOrtholog->{'DownQuality'} > $EMPTY_FILE) {
-					push @orthologsToProcess, $curOrtholog;
-						print $finalCREorthologFile  $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
-					}
-				}
-			}
-
-			if((scalar @orthologsToProcess) > 0) {
-				my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
-		
-				### Load all MAF, collapse species-specific paralogs and convert to FASTA.
-		
-				foreach my $curOrthologToMultipleAlignment (@orthologsToProcessSorted) {
-				
-					MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFUpFileName'}, \%upstreamLengthReference, $curOrthologToMultipleAlignment->{'upstreamLength'}, \%fastaUpstreamAlignment, \%mapAlignmentFamily, "U");
-					MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFDownFileName'}, \%downstreamLengthReference,$curOrthologToMultipleAlignment->{'downstreamLength'}, \%fastaDownstreamAlignment, \%mapAlignmentFamily, "D");
-				
-					if(!$keep_tmp) {
-						unlink($curOrthologToMultipleAlignment->{'MAFUpFileName'});
-						unlink($curOrthologToMultipleAlignment->{'MAFDownFileName'});
-						unlink($curOrthologToMultipleAlignment->{'upstreamFileName'});
-						unlink($curOrthologToMultipleAlignment->{'downstreamFileName'});
-					}
-				}
-				open (my $finalFASTAUpFile, ">$finalFASTAUpFileName");
-				open (my $finalFASTADownFile, ">$finalFASTADownFileName");
-
-				# and Dump fasta alignment
-				print $finalFASTAUpFile ">$referenceGenome\n" . $fastaUpstreamAlignment{$locusFullName}{$referenceGenome} . "\n";
-				print $finalFASTADownFile ">$referenceGenome\n" . $fastaDownstreamAlignment{$locusFullName}{$referenceGenome} . "\n";
-			
-				for my $curspecies (keys %{ $fastaUpstreamAlignment{$locusFullName} } ) {
-					if($curspecies ne $referenceGenome) {
-						print $finalFASTAUpFile ">$curspecies\n" . $fastaUpstreamAlignment{$locusFullName}{$curspecies} . "\n";
-					}
-				}
-				for my $curspecies (keys %{ $fastaDownstreamAlignment{$locusFullName} }) {
-					if($curspecies ne $referenceGenome) {
-						print $finalFASTADownFile ">$curspecies\n" . $fastaDownstreamAlignment{$locusFullName}{$curspecies} . "\n";
-					}
-				}	
-				close($finalFASTAUpFile);
-				close($finalFASTADownFile);
-			}
-			if($verbose) { print "\n"; }
-	} else {
-		if($verbose) { print "PROGRESS: No CRE-orthologs for $locus.\n"; }
-		die;
-	} 
-	if($verbose) { if(-e "$outputDir/$locus.up.fasta") { print "PROGRESS: Done alignment for $locus.\n"; } }
-} else {
-	#################### Load the alignment data from existing files
-	if($verbose) { print "PROGRESS: Located family alignment files for $locusFullName. Using stored alignment. Use --force to perform realignment.\n"; }
-	
-	open (my $upstreamFastaAlignmentFile, $finalFASTAUpFileName );
-	
-	while(my $curName = <$upstreamFastaAlignmentFile>) {
-		my $seq = <$upstreamFastaAlignmentFile>;
-		chomp($curName);
-		chomp($seq);
-		$fastaUpstreamAlignment{$locusFullName}{substr($curName,1)} = $seq;
-	}
-	close($upstreamFastaAlignmentFile);
-	
-	open (my $downstreamFastaAlignmentFile, $finalFASTADownFileName );	
-	while(my $curName = <$downstreamFastaAlignmentFile>) {
-		my $seq = <$downstreamFastaAlignmentFile>;
-		chomp($curName);
-		chomp($seq);
-		$fastaDownstreamAlignment{$locusFullName}{substr($curName,1)} = $seq;
-	}
 }
-if($justFamilyAlignment) {
+close ($genomeDatabase);	
+  	
+if(!$keep_tmp) {
+	unlink($upstreamRefFastaName);
+	unlink($downstreamRefFastaName);
+}
+
+#####################################################################################################
+##### Now we have assembled the list of putative CRE orthologs. Select the best genome for each species
+
+%orthologs = pickBestPutativeOrthologs(%orthologs);
+
+####################################################################################################################################
+##### At this point, we have selected our "CRE orthologs" (%orthologs) and have all the filtered upstream and downstream sequences in fasta files 
+##### Perform alignments to the reference genome
+my @species = keys %orthologs;
+my $numOfSpecies = scalar @species;
+
+if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
+
+if ($numOfSpecies >= 0) {
+	#### Now all alignments were performed, assemble MAF files to a single alignment. 
+	### First, move everything to an array. Dump a copy to the CRE-ortholog file
+	if($verbose) { print "PROGRESS: Multiple sequence assembly"; }
 	
+	my $finalCREorthologFileName = "$outputDir/$locus.CREorthologs.txt";
+	open(my $finalCREorthologFile, ">$finalCREorthologFileName");
+	
+	my @orthologsToProcess;
+	foreach my $speciesToAlign (@species) {
+		foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
+			if($curOrtholog->{'UpQuality'} > $EMPTY_FILE || $curOrtholog->{'DownQuality'} > $EMPTY_FILE) {
+				push @orthologsToProcess, $curOrtholog;
+					print $finalCREorthologFile  $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
+				}
+			}
+		}
+
+		if((scalar @orthologsToProcess) > 0) {
+			my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
+	
+			### Load all MAF, collapse species-specific paralogs and convert to FASTA.
+	
+			foreach my $curOrthologToMultipleAlignment (@orthologsToProcessSorted) {
+			
+				MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFUpFileName'}, \%upstreamLengthReference, $curOrthologToMultipleAlignment->{'upstreamLength'}, \%fastaUpstreamAlignment, \%mapAlignmentFamily, "U");
+				MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFDownFileName'}, \%downstreamLengthReference,$curOrthologToMultipleAlignment->{'downstreamLength'}, \%fastaDownstreamAlignment, \%mapAlignmentFamily, "D");
+				
+				if(!$keep_tmp) {
+					unlink($curOrthologToMultipleAlignment->{'MAFUpFileName'});
+					unlink($curOrthologToMultipleAlignment->{'MAFDownFileName'});
+					unlink($curOrthologToMultipleAlignment->{'upstreamFileName'});
+					unlink($curOrthologToMultipleAlignment->{'downstreamFileName'});
+				}
+			}
+			open (my $finalFASTAUpFile, ">$finalFASTAUpFileName");
+			open (my $finalFASTADownFile, ">$finalFASTADownFileName");
+
+			# and Dump fasta alignment
+			print $finalFASTAUpFile ">$referenceGenome\n" . $fastaUpstreamAlignment{$locusFullName}{$referenceGenome} . "\n";
+			print $finalFASTADownFile ">$referenceGenome\n" . $fastaDownstreamAlignment{$locusFullName}{$referenceGenome} . "\n";
+			
+			for my $curspecies (keys %{ $fastaUpstreamAlignment{$locusFullName} } ) {
+				if($curspecies ne $referenceGenome) {
+					print $finalFASTAUpFile ">$curspecies\n" . $fastaUpstreamAlignment{$locusFullName}{$curspecies} . "\n";
+				}
+			}
+			for my $curspecies (keys %{ $fastaDownstreamAlignment{$locusFullName} }) {
+				if($curspecies ne $referenceGenome) {
+					print $finalFASTADownFile ">$curspecies\n" . $fastaDownstreamAlignment{$locusFullName}{$curspecies} . "\n";
+				}
+			}	
+			close($finalFASTAUpFile);
+			close($finalFASTADownFile);
+		}
+		if($verbose) { print "\n"; }
+} else {
+	if($verbose) { print "PROGRESS: No CRE-orthologs for $locus.\n"; }
+	die;
+} 
+if($verbose) { if(-e "$outputDir/$locus.up.fasta") { print "PROGRESS: Done alignment for $locus.\n"; } }
+
+if($justFamilyAlignment) {
 	die "END: --justFamilyAlignment is selected. Finish performing family alignments\n";
 }
 
@@ -484,7 +461,7 @@ if($refGeneDir eq "+") {
 	$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd+\$2, $refGeneEnd+\$3";		
 } else { 
 	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+ $upstreamLengthReference{$locusFullName}-\$3,$refGeneEnd+ $upstreamLengthReference{$locusFullName}-\$2,\$5);}}'";
-	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLengthReference{$locusFullName}+1-\$3, $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$2";
+	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$3, $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$2";
 	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2,\$5);}}'";
 	$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2";
 }
@@ -529,7 +506,6 @@ if(-s $finalFASTADownFileName > $EMPTY_FILE) {
 			$CNSFound=1;
 			if($verbose) { print "PROGRESS: Found possible family downstream CNS.\n"; }
 			system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2+1, \$3+1, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpCNSFileName");
-			
 		} else {
 			if($verbose) { print "PROGRESS: No family downstream CNS.\n"; }
 		}
@@ -963,7 +939,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 				### If there is an overlap, assign the deep CNS to the new subCNS.
 
 				if(overlap($curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'},
-						   $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} + $cnsReferenceLength{$newSubCNSName})) {
+						   $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} + $cnsReferenceLength{$newSubCNSName})>$minCNSCoverageAfterSplit) {
 
 					if(not defined $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} }) {
 						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } = [];
@@ -1788,9 +1764,10 @@ sub getCNSbreakpoints {
 	my $lastBreakpointPos=0;
 
 	foreach my $pos (0..(scalar @CNSdelta)) {
-		### split CNS if larger than minCNSlength and high variability. But don't split CNS with many species
+		### split CNS if larger than minCNSlength and high variability. But don't split CNS if its too short, has too many species
 		## or if the split point is not well supported
-		if((abs($CNSdelta[$pos]) > $deltaSD *3) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit)) {
+		if((abs($CNSdelta[$pos]) > $deltaSD *3) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && 
+		 ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit && $CNSCoverage[$pos+1]< $maxSpeciesToInitiateCNSSplit)) {
 			if($verbose) { print "PROGRESS: Splitting CNS at $pos (" . abs($CNSdelta[$pos]) . "," . $CNSCoverage[$pos] . ").\n"; }
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
