@@ -1098,10 +1098,10 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 				$curHit->{'Length'} = $newEnd - $newStart;
 				$curHit->{'Start'} = $newStart;
 				$curHit->{'End'} = $newEnd;
-				
-				$curHit->{'TargetSequence'} = substr($curHit->{'TargetSequence'}, $startInAlignment, $curHit->{'Length'});
-
-				print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetRelativePosition'},$startInCNS,$curHit->{'Length'},$curHit->{'TargetSequence'}\n";
+				my $cnsHitSeq = substr($curHit->{'TargetSequence'}, $startInAlignment, $curHit->{'Length'});
+				# Change N back to gaps
+				$cnsHitSeq =~ s/N/-/g;
+				print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetRelativePosition'},$startInCNS,$curHit->{'Length'},$cnsHitSeq\n";
 			}
 		}
 	}
@@ -1481,7 +1481,7 @@ sub MAFtoFASTA {
 			#### Log the alignment, if it is at the right length
 			if($verbose && $alignmentLengthFilter >0 &&  $reflen < $alignmentLengthFilter*$seqLengthRef->{$reflocus}) {
 				print "PROGRESS: Rejected alignment to $reflocus because length is too short ($reflen). CNS length: " . $seqLengthRef->{$reflocus} . "\n";
-			}
+			} 
 			if($alignmentLengthFilter==0 || $reflen >= $alignmentLengthFilter*$seqLengthRef->{$reflocus} ) {
 				my $refRelative, my $targetRelative;
 				$refRelative = $refstart;
