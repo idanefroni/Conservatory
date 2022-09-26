@@ -53,7 +53,7 @@ my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleo
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
 #### CNS coverage and splitting parameters
-my $minCNSCoverage=0.2; ### The minimum coverage of the CNS to be acceptable for a deep alignment
+my $minCNSCoverage=0.15; ### The minimum coverage of the CNS to be acceptable for a deep alignment
 my $minCNSCoverageAfterSplit=0.5; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
 my $minSpeciesToSplitCNS=5;
 my $maxSpeciesToInitiateCNSSplit = 150; ## Do not split CNS if it is supported by atleast this number of species

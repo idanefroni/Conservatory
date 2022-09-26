@@ -13,6 +13,7 @@ my $MAX_ORTH=8;
 my $MIN_EVAL= 10;
 my $MAX_EVAL = 150;
 my $EVAL_CUTOFF_FOR_FAMILY=0.66;
+my $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH=100;
 my $conservatoryDir=abs_path(".");
 my $help=0;
 my $genome="";
@@ -23,6 +24,16 @@ my $family="";
 my $species;
 my $genomefound = 0;
 my $verbose =0;
+my %proteinsLengths;
+my $geneProcessingREGEX="";
+my $referenceGeneProcessingREGEX="";
+my %genesWithFootprint;
+
+my $curlocus = "";
+my $curRefLocus ="";
+my %genome2RefHits;
+my $orthologCounts;
+my %ref2GenomeHits;
 
 my $line;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
@@ -52,8 +63,6 @@ die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n"
 
 ######### Find out what is the reference genome and the processing REGEX
 open(my $genomedb, "<", $genomedb_file);
-my $geneProcessingREGEX="";
-my $referenceGeneProcessingREGEX="";
 
 while(<$genomedb>) {
 	chomp;
@@ -90,32 +99,54 @@ my $genome2refFileName = "$conservatoryDir/genomes/tmpblast/$genome" . "2" . "$r
 my $ref2genomeFileName = "$conservatoryDir/genomes/tmpblast/$referenceGenome" . "2" . "$genome" . ".txt";
 my $outputOrthologFileName = "$conservatoryDir/genomes/$family/$referenceGenome.$genome.orthologs.csv";
 my $footprintGFFFileName = "$conservatoryDir/genomes/$family/$genome.footprint.gff3";
+my $proteinSequenceFileName = "$conservatoryDir/genomes/$family/$genome.proteins.fasta";
 
 open (my $gffFile, "<", $footprintGFFFileName ) or die "ERROR: Cannot open footprint file $footprintGFFFileName.\n";
+open (my $proteinFile, "<", $proteinSequenceFileName ) or die "ERROR: Cannot open protein sequence file $proteinSequenceFileName.\n";
 
 open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
 open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
+
 open (my $output, ">", "$outputOrthologFileName.tmp");
 
+
 ### Set up the filter of acceptable genes (those that have promoter sequences) 
-my @genesWithFootprint;
 while(my $line = <$gffFile>) {
 	chomp($line);
 	my @array = split /\t/, $line;
 	my %genename = split /[;=]/, $array[8];
-	push (@genesWithFootprint, $genename{'Name'});
+	$genesWithFootprint{ $genename{'Name'} } = 1;
 }
 close($gffFile);
 
+### Set up a list of high-sensitivity genes (short genes, usually peptides, which show have a different cut off for orthology)
+
+my $proteinSeq;
+my $geneName;
+while(my $line = <$proteinFile>) {
+	chomp($line);
+	if(substr($line,0,1) eq ">") {
+		if($geneName ne "") {
+			$proteinsLengths{"$geneName"}= length($proteinSeq);
+		}
+		$proteinSeq = "";
+		$geneName = substr($line,1);
+		$geneName =~ s/ .*//;
+		if($geneProcessingREGEX ne "") { eval '$geneName =~ s/$geneProcessingREGEX//g;'; }
+		$geneName = "$species-$genome-$geneName";
+	} else {
+		$proteinSeq .= $line;
+	}	
+}
+$proteinsLengths{"$geneName"}= length($proteinSeq);
+
+close($proteinSequenceFileName);
+
 #load the whole genome to reference blast table into a hash
 
-my $curlocus = "";
-my $curRefLocus ="";
-my %genome2RefHits;
-my $orthologCounts;
-my %ref2GenomeHits;
-my @possibleOrthologPairs;
+print localtime() . ": PROGRESS : Start reading genome to reference blast.\n";
 
+###### Read genome 2 reference hits
 while(my $curline = <$g2ref>) {
 
 	chomp($curline);
@@ -123,46 +154,36 @@ while(my $curline = <$g2ref>) {
 	my $locus = $line_s[0];
 	my $refLocus = $line_s[1];
 	my $eval = $line_s[10];
-	
+	my $logeval = logEval($eval);
+
 	### Translate protein name to  full and unique gene name
 	if($referenceGeneProcessingREGEX ne "") { eval '$refLocus =~ s/$referenceGeneProcessingREGEX//g;'; }
 	if($geneProcessingREGEX ne "") { eval '$locus =~ s/$geneProcessingREGEX//g;'; }
 	$locus = "$species-$genome-$locus";
 	$refLocus = "$referenceGenomeSpecies-$referenceGenome-$refLocus";
 	
-	
-	if($eval < $MIN_EVAL) {
-		if($eval ==0) { 
-			$eval = $MAX_EVAL;
+	if($locus ne $curlocus) { $orthologCounts=0; };
+	$curlocus = $locus;
+
+	if($orthologCounts < $MAX_ORTH && ($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus })) {
+
+		if(defined $genome2RefHits{$locus}{$refLocus}) {
+			if($logeval > $genome2RefHits{$locus}{$refLocus}) {
+				$genome2RefHits{$locus}{$refLocus} = $logeval;
+			}
 		} else {
-			$eval = -log($eval);
-			if($eval > $MAX_EVAL) {
-				$eval = $MAX_EVAL;
-			}
-		}
-		if($locus ne $curlocus) { $orthologCounts=0};
-		$curlocus = $locus;
-
-		if($orthologCounts < $MAX_ORTH) {
-		
-			my $key = "$locus;$refLocus";
-			if($verbose) { print "Found $key.\n"; }
-
-			if(defined $genome2RefHits{$key}) {
-				if($eval > $genome2RefHits{$key}) {
-					$genome2RefHits{$key} = $eval;
-				}
-			} else {
-				$orthologCounts++;
-				$genome2RefHits{$key} = $eval;
-			}
+			$orthologCounts++;
+			$genome2RefHits{$locus}{$refLocus} = $logeval;
 		}
 	}
 }
 print localtime() . ": PROGRESS : Done reading genome to reference blast. Read " . (scalar (keys %genome2RefHits)) . " pairs.\n";
 
+print localtime() . ": PROGRESS : Start reading reference to genome blast.\n";
+$curRefLocus = "";
+$orthologCounts=0;
 
-
+###### Read REFERENCE 2 genome hits
 while(my $curline = <$ref2g>) {
 
 	chomp($curline);
@@ -170,80 +191,91 @@ while(my $curline = <$ref2g>) {
 	my $refLocus = $line_s[0];
 	my $locus = $line_s[1];
 	my $eval = $line_s[10];
+	my $logeval = logEval($eval);
 
 	### Translate protein name to  full and unique gene name
 	if($referenceGeneProcessingREGEX ne "") { eval '$refLocus =~ s/$referenceGeneProcessingREGEX//g;'; }
 	if($geneProcessingREGEX ne "") { eval '$locus =~ s/$geneProcessingREGEX//g;'; }
+
 	$locus = "$species-$genome-$locus";
 	$refLocus = "$referenceGenomeSpecies-$referenceGenome-$refLocus";
 	
-	if($eval < $MIN_EVAL) {
-		if($eval ==0) { 
-			$eval = $MAX_EVAL;
+	if($refLocus ne $curRefLocus) { $orthologCounts=0; };
+	$curlocus = $locus;
+
+	if($orthologCounts < $MAX_ORTH && ($eval < $MIN_EVAL) ) {
+
+		if(defined $ref2GenomeHits{$locus}{$refLocus}) {
+			if($logeval > $ref2GenomeHits{$locus}{$refLocus}) {
+				$ref2GenomeHits{$locus}{$refLocus} = $logeval;
+			}
 		} else {
-			$eval = -log($eval);
-			if($eval > $MAX_EVAL) {
-				$eval = $MAX_EVAL;
-			}
-		}	
-		if($refLocus ne $curRefLocus) {
-
-			if($curRefLocus ne "") {  ### We are done reading. Lets compute best putative orthologs and dump them to file
-				# first, compute cut off
-				my @allevals;
-				
-				foreach(@possibleOrthologPairs) {
-					push(@allevals, ($ref2GenomeHits{$_} + $genome2RefHits{$_}));
-				}
-				# now, determine the cutoff (currently a fixed percentage of max eval. Could be more sophisticated in the future)
-
-				@allevals = reverse sort {$a <=> $b}  @allevals;
-				my $cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;
-
-				foreach(@possibleOrthologPairs) {
-					if( ($ref2GenomeHits{$_} + $genome2RefHits{$_}) > $cutoff) {
-						# get rid of weird embelishments
-						my $outLocus = $_;
-						my $outRefLocus = $_;
-						$outLocus =~ s/;.*//;
-						$outRefLocus =~ s/.*;//;
-							
-						#### Check that we have a foot print for that gene.
-						# This really should not be, but some genomes are only partially annotated.
-
-						if($outLocus ~~ @genesWithFootprint) {
-							print $output ("$outLocus,$outRefLocus," . ($ref2GenomeHits{$_} + $genome2RefHits{$_})  . "\n");
-						}
-					}
-				}
-			}
-			$orthologCounts=0;
-			@possibleOrthologPairs=();
-		}
-		$curRefLocus = $refLocus;
-	
-		if($orthologCounts < $MAX_ORTH) {
-			my $key = "$locus;$refLocus";
-			if(defined $ref2GenomeHits{$key}) {
-				if($eval > $ref2GenomeHits{$key}) {
-					$ref2GenomeHits{$key} = $eval;
-				}
-			} else {
-				$orthologCounts++;
-				$ref2GenomeHits{$key} = $eval;
-			}
-			if(defined $ref2GenomeHits{$key} && defined $genome2RefHits{$key}) {
-				push(@possibleOrthologPairs, $key);
-			}
+			$orthologCounts++;
+			$ref2GenomeHits{$locus}{$refLocus} = $logeval;
 		}
 	}
 }
 
-			
+print localtime() . ": PROGRESS : Done reading genome to reference blast. Read " . (scalar (keys %ref2GenomeHits)) . " pairs.\n";
+
+my %orthologTable;
+### Add the evalues
+foreach my $curLocus (keys %genome2RefHits) {
+	foreach my $curRefLocus (keys %{ $genome2RefHits{$curLocus}}) {
+		$orthologTable{$curLocus}{$curRefLocus} = $genome2RefHits{$curLocus}{$curRefLocus} +  $ref2GenomeHits{$curLocus}{$curRefLocus};
+	}
+}
+
+print localtime() . ": PROGRESS : Start writing orthologs.\n";
+my $orthologPairsCount=0;
+
+### Select cutoff
+
+foreach my $curLocus (keys %orthologTable) {
+	my $cutoff;
+	my @allevals;
+
+	foreach my $curRefLocus (keys %{ $orthologTable{$curLocus}} ) {
+		push(@allevals, $orthologTable{$curLocus}{$curRefLocus});
+	}
+	@allevals = reverse sort {$a <=> $b}  @allevals;
+	$cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;
+	### Unless its a small protein. then, no cutoff
+	if($proteinsLengths{$curLocus} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH) { # Unless we are processing a high sensitivity gene (small peptides, usually)
+											 # where we have a absolute cutoff.
+		$cutoff = 0;
+	}
+	
+	### Output ortholog pairs
+	foreach my $curRefLocus (keys %{ $orthologTable{$curLocus} }) {
+		if($orthologTable{$curLocus}{$curRefLocus} > $cutoff) {
+			print $output ("$curLocus,$curRefLocus," . $orthologTable{$curLocus}{$curRefLocus}  . "\n");
+			$orthologPairsCount++;
+		}
+	}
+
+}
+		
 close($output);
-print localtime() . ": PROGRESS : Done reading reference to genome blast. Read " . (scalar (keys %ref2GenomeHits)) . " pairs.\n";
+
+print localtime() . ": PROGRESS : Wrote $orthologPairsCount putative ortholog pairs.\n";
 
 ## Finally filter for possible duplicates. This shouldn't happen, but sometimes does with odd annotation of spliceforms
 system("awk -F ',' '!seen[\$1\$2]++' $outputOrthologFileName.tmp > $outputOrthologFileName");
 unlink("$outputOrthologFileName.tmp");
 
+
+sub logEval {
+	my ($eval) = @_;
+	my $logeval;
+
+	if($eval ==0) { 
+		$logeval = $MAX_EVAL;
+	} else {
+		$logeval = -log($eval);
+		if($logeval > $MAX_EVAL) {
+			$logeval = $MAX_EVAL;
+		}
+	}
+	return($logeval);
+}
