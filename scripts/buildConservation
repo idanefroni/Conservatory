@@ -1278,7 +1278,7 @@ sub fuzzyFilterATRich {
 
 	## Look for AT rich positions
 	foreach my $curPos (0..$seqLength) {
-		if(sum(@inSeqTrArr[$curPos..($curPos+$ATrichLength)])<=$fuzziness) {
+		if(sum(@inSeqTrArr[$curPos..($curPos+$ATrichLength-1)])<=$fuzziness) {
 			push @ATrichPos, $curPos;	
 		}
 	}
