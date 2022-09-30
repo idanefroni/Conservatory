@@ -53,14 +53,18 @@ my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleo
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
 #### CNS coverage and splitting parameters
-my $minCNSCoverage=0.15; ### The minimum coverage of the CNS to be acceptable for a deep alignment
-my $minCNSCoverageAfterSplit=0.5; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
-my $minSpeciesToSplitCNS=5;
-my $maxSpeciesToInitiateCNSSplit = 150; ## Do not split CNS if it is supported by atleast this number of species
+my $minCNSCoverageInitial=0.15; ### The minimum coverage of the CNS to be acceptable for an initial deep alignment
+my $minCNSCoverageAfterSplit=0.8; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
+my $minCNSConservationAfterSplit = 0.2; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
+
+my $minCNSCoverageFinal=0.7; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
+
+my $minSpeciesToSplitCNS=5;  ### Minimal number of species to consider a split of the CNS
+my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported by atleast this number of species
 									 ## To avoid spliting of very highly conserved CNSs
 
 #### Alignment filtering parameters
-my @minSpeciesPerConservationLevel= (150,100,100,90,5,5); ## Must have atleast these many alignments to support level assignment
+my @minSpeciesPerConservationLevel= (150,100,100,80,5,5); ## Must have atleast these many alignments to support level assignment
 my @minSpeciesAtConservationLevel= (1,1,1,3,5,5); ## Musty have atleast these many species from each level to support level assignment
 
 my $minSpeciesPerConservationLevelString="";
@@ -95,7 +99,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-align-threshold-family=i" => \$minHSPthresholdFamily,
 			"min-align-threshold-global=i" => \$minHSPthresholdGlobal,			
 			"min-phylop-score=f" => \$minPhyloPscore,
-			"min-deep-cns-coverage" => \$minCNSCoverage,
+			"min-deep-cns-coverage" => \$minCNSCoverageInitial,
 			"min-species-per-conservation-level" => \$minSpeciesPerConservationLevelString,
 			"min-orf-length=i" => \$minORFLength,
 			"just-family-alignment" => \$justFamilyAlignment,
@@ -108,7 +112,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 
 if($verbose) { print "Conservatory version 2.0.1\n\n"; }
 
-if($minCNSCoverage <0 || $minCNSCoverage>1) {
+if($minCNSCoverageInitial <0 || $minCNSCoverageInitial>1) {
 	print "\n\nBad parameters: min-deep-cns-coverage must be between 0 and 1.\n\n";
 	$help = 1;
 }
@@ -175,7 +179,10 @@ my %speciesClassification;
 
 my %mapAlignmentFamily;
 my %orthologs;
-  
+
+my @phyloPconservationMapUp;
+my @phyloPconservationMapDown;
+
 my $lastzParametersFamily = "--gap=200,100 --nochain --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentityFamily --ydrop=1000 --hspthreshold=$minHSPthresholdFamily --gappedthresh=$minHSPthresholdFamily";
 my $lastzParametersGlobal = "--gap=200,100 --nochain --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentityGlobal --ydrop=1000 --hspthreshold=$minHSPthresholdGlobal --gappedthresh=$minHSPthresholdGlobal";
 
@@ -455,15 +462,15 @@ my $coordinateTranslateAwkDown;
 my $coordinateTranslateStrDown;
 
 if($refGeneDir eq "+") {
-	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-$upstreamLengthReference{$locusFullName}-1+\$2,$refGeneStart-$upstreamLengthReference{$locusFullName}-1+\$3,\$5);}}'";
-	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneStart- $upstreamLengthReference{$locusFullName}-1+\$2, $refGeneStart- $upstreamLengthReference{$locusFullName}-1+\$3";
-	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+\$2,$refGeneEnd+\$3,\$5);}}'"; 
-	$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd+\$2, $refGeneEnd+\$3";		
+	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-$upstreamLengthReference{$locusFullName} + \$2,$refGeneStart-$upstreamLengthReference{$locusFullName} + \$3,\$5);}}'";
+	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneStart- $upstreamLengthReference{$locusFullName} + \$2, $refGeneStart - $upstreamLengthReference{$locusFullName} + \$3";
+	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd + 3 + \$2,$refGeneEnd + 3 + \$3,\$5);}}'"; 
+	$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd + 3 + \$2, $refGeneEnd + 3 + \$3";		
 } else { 
-	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd+ $upstreamLengthReference{$locusFullName}-\$3,$refGeneEnd+ $upstreamLengthReference{$locusFullName}-\$2,\$5);}}'";
-	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$3, $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$2";
-	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2,\$5);}}'";
-	$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart-\$3,$refGeneStart-\$2";
+	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd + $upstreamLengthReference{$locusFullName}-\$3 + 1 ,$refGeneEnd+ $upstreamLengthReference{$locusFullName}-\$2 + 1,\$5);}}'";
+	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$3 + 1 , $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$2 + 1";
+	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3 - 1 ,$refGeneStart-\$2 - 1,\$5);}}'";
+	$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart-\$3 - 1,$refGeneStart-\$2 - 1";
 }
 	
 #### Run phyloP 
@@ -514,12 +521,27 @@ if(-s $finalFASTADownFileName > $EMPTY_FILE) {
 }
 	
 if( (-e $tmpCNSFileName) && ((-s $tmpCNSFileName) > $EMPTY_FILE )) {
-	### Now convert coordinates and dump a BEDGRAPH file for merging
+	### Now convert coordinates,dump a BEDGRAPH file for merging and load the phyloP scores for further filtering
+	@phyloPconservationMapUp = (0) x ( $upstreamLengthReference{$locusFullName} );
+	@phyloPconservationMapDown = (0) x ( $downstreamLengthReference{$locusFullName} );
+
 	if(-e "$tmpDir/$locus.up.bed") {
 		system("$coordinateTranslateAwkUp $tmpDir/$locus.up.bed > $tmpDir/$locus.phylop.bed");
+		open (my $upstreamPhylopFile, "<$tmpDir/$locus.up.bed");
+		while(<$upstreamPhylopFile>) {
+			my ($locus,$start,$end,$id,$pvalue) = split;
+			$phyloPconservationMapUp[$start] = ($pvalue + 0);
+		}
+		close($upstreamPhylopFile);
 	}
 	if(-e "$tmpDir/$locus.down.bed") {
 		system("$coordinateTranslateAwkDown $tmpDir/$locus.down.bed >> $tmpDir/$locus.phylop.bed");
+		open (my $downstreamPhylopFile, "<$tmpDir/$locus.down.bed");
+		while(<$downstreamPhylopFile>) {
+			my ($locus,$start,$end,$id,$pvalue) = split;
+			$phyloPconservationMapDown[$start] = ($pvalue + 0);
+		}
+		close($downstreamPhylopFile);		
 	}
 	if( (-e "$tmpDir/$locus.phylop.bed") && ( (-s "$tmpDir/$locus.phylop.bed") > $EMPTY_FILE) ) {
 		system("cp $tmpDir/$locus.phylop.bed $outputCNSDir");
@@ -575,7 +597,7 @@ while(my $CNSLine = <$CNSFile>) {
 	
 	if(($cnsRelEnd - $cnsRelStart)>= $minCNSLength) {
 		
-		my $curCNSLength = ($cnsRelEnd - $cnsRelStart);	
+		my $curCNSLength = ($cnsRelEnd - $cnsRelStart);
 		my $shortestAlignment = $curCNSLength;
 		my $CNSName = "$locus.$cnsRelStart";
 		$CNSforLocus{$CNSName} = {
@@ -853,8 +875,8 @@ while(<$genomeDatabase>) {
 								print "PROGRESS: Found deep CNS hit ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n";
 						}
 						### Log alignment to fasta, but only if long enough (covers more than minCNSCoverage of the CNS)
-						MAFtoFASTA($MAFUpFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "U",$minCNSCoverage);
-						MAFtoFASTA($MAFDownFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D",$minCNSCoverage);
+						MAFtoFASTA($MAFUpFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "U",$minCNSCoverageInitial);
+						MAFtoFASTA($MAFDownFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D",$minCNSCoverageInitial);
 					}
 
 				if(!$keep_tmp) {
@@ -957,7 +979,24 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 					$numberOfHitsReassigned++;
 				}
 			}
-			if($verbose) { print "PROGRESS: Sub CNS $newSubCNSName (Length:$cnsReferenceLength{$newSubCNSName}) has $numberOfHitsReassigned alignments.\n"; }
+			if($verbose) { print "PROGRESS: Sub CNS $newSubCNSName (Length:$cnsReferenceLength{$newSubCNSName}) has $numberOfHitsReassigned deep alignments.\n"; }
+			### If the new split CNS has little support, delete it
+			my $numberOfConservedBasesInCNS=0;
+			my $CNSLength = $CNSforLocus{$newSubCNSName}{'End'} - $CNSforLocus{$newSubCNSName}{'Start'};
+			if($CNSforLocus{ $newSubCNSName}{'Start'} < 0) {   ### If it's upstream
+				my $startInPhyloPMap = $CNSforLocus{$newSubCNSName}{'Start'} + $upstreamLengthReference{$locusFullName};
+				foreach my $curBase ( @phyloPconservationMapUp[ ($startInPhyloPMap)..($startInPhyloPMap+ $CNSLength) ] )  { if($curBase>= $minPhyloPscore) { $numberOfConservedBasesInCNS++; } }
+			} else {
+				my $startInPhyloPMap = $CNSforLocus{$newSubCNSName}{'Start'};
+				foreach my $curBase ( @phyloPconservationMapDown[ ($startInPhyloPMap)..($startInPhyloPMap+ $CNSLength) ] )  { if($curBase>= $minPhyloPscore) { $numberOfConservedBasesInCNS++; } }
+			}
+			if($numberOfConservedBasesInCNS / $CNSLength < $minCNSConservationAfterSplit) {
+				if($verbose) { print "PROGRESS: Removing $newSubCNSName because number of conserved bases is $numberOfConservedBasesInCNS out of $CNSLength.\n"; }
+				delete $CNSforLocus{$newSubCNSName};
+				delete $mapAlignmentDeepCNS{$newSubCNSName};
+				delete $cnsReferenceLength{$newSubCNSName};
+			}
+			
 		}
 		### Finally, delete the original CNS
 		delete $mapAlignmentDeepCNS{$curCNS};
@@ -966,9 +1005,32 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	}
 }
 
+
+
 #####################################################################
 ## Filter CNS for unlikely and sporious alignments
 ## Then classify the conservation level of the CNS 
+
+### Filter CNSs hits that have too little coverage
+
+foreach my $curCNS (keys %mapAlignmentDeepCNS) {
+	foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
+		my @filteredAlignmentsForCNS;
+		foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment}}) {
+			if( $curAlignment->{'Length'} / ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'})  > $minCNSCoverageFinal) {
+				push @filteredAlignmentsForCNS, $curAlignment;
+			} else {
+				if($verbose) { print "PROGRESS: Removing hit of $curAlignment->{'TargetLocus'} to $curCNS because overlap is too low.\n"; }
+			}
+		}
+		if(scalar @filteredAlignmentsForCNS > 0) {
+			$mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment} = \@filteredAlignmentsForCNS;
+		} else {
+			delete $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment};
+		}
+	}
+}
+
 
 ### Filter CNSs that switch position (up to downstream)
 
@@ -1085,7 +1147,7 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 			### Check for overlap. translate coordinates from relative to locus to
 			###  relative to CNS and output alignment line
 
-			if (overlap($start, $end, $CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'})) {
+			if (overlap($start, $end, $CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'}) > $minCNSCoverageFinal) {
 				### This is the family alignment - so the alignments are for the whole region, before identification of phyloP conservation
 				### Trim the alignment to the conserved region
 
@@ -1124,8 +1186,15 @@ chdir $curDir;
 if($verbose) { print "DONE: End $referenceGenome:$locus.\n";	}
 
 ###############################################################################################################################
+###############################################################################################################################
+###############################################################################################################################
+#####################################                END                     ##################################################
+###############################################################################################################################
+###############################################################################################################################
+###############################################################################################################################
 
 
+################################################################################
 ###### utility functions #######################################################
 
 ## Returns the mean value of an array of integers
