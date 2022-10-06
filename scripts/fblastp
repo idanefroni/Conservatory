@@ -1,0 +1,149 @@
+#!/usr/bin/perl
+
+use POSIX;
+use strict;
+use Cwd;
+use Cwd 'abs_path';
+use Getopt::Long;
+
+my $genomeA;
+my $genomeB;
+my $outFileName;
+my $blastThreads=4;
+my $blastProcesses=4;
+my $conservatoryDir=abs_path(".");
+my $help=0;
+
+GetOptions ("conservatory-directory=s" => \$conservatoryDir,
+			"genomeA=s" => \$genomeA,
+			"genomeB=s" => \$genomeB,
+            "out=s" => \$outFileName,
+            "blast-processes=s" => \$blastProcesses,
+            "blast-threads=s" => \$blastThreads,
+			"help" => \$help) or die ("Error in command line arguments\n");
+
+if($help || $genomeA eq "" || $genomeB eq "" || $outFileName eq "") {
+   print "\n\tfblastp --genomeA <genomeName> --genomeB <genomeName>\n\t\tA fast, parallel version of blastp\n\n";
+   print "\t--conservatory-directory\tName of the conservatory directory. Default is current directory.\n";
+   print "\t--genomeA\tName of the target genome (REQUIRED).\n";
+   print "\t--genomeB\t\tName of the query genome (REQUIRED).\n";
+   print "\t--out\t\tName of the output file name (REQUIRED).\n";
+   print "\t--blast-threads\tNumber of parallel threads for blast (default is 4).\n";
+   print "\t--blast-processes\tNumber of indepedent blast processes to initiate (default is 4).\n";
+   print "\t--help\t\tPrints this message.\n\n";
+   exit();
+}
+my $tmpDirectory = $conservatoryDir . "/tmp";
+my $genomedbFileName = $conservatoryDir . "/genome_database.csv";
+
+if(! (-e $tmpDirectory) ) { die("ERROR: Cannot find temporary directory $tmpDirectory.\n"); }
+
+my $blastdbFileName;
+my $queryProteinFileName;
+
+################### Load the genome database to find the genomes
+open (my $genomeDatabase, "<", $genomedbFileName);
+while((my $curgenomeline = <$genomeDatabase>)) {
+	if(substr($curgenomeline,0,1) ne "#") { 
+		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;
+        if($curgenomeName eq $genomeB) {
+            $queryProteinFileName = $conservatoryDir . "/genomes/$curgenomeFamily/$curgenomeName.proteins.fasta";
+        }
+        if($curgenomeName eq $genomeA) {
+            $blastdbFileName  = $conservatoryDir . "/genomes/blastdb/$genomeA";
+        }
+
+    }
+}
+close($genomeDatabase);
+
+if($blastdbFileName eq "") { die ("ERROR: Cannot file $genomeA in genome database.\n"); }
+if($queryProteinFileName eq "") { die ("ERROR: Cannot file $genomeB in genome database.\n"); }
+
+if(! (-e "$blastdbFileName.phr")) { die("ERROR: Cannot find blast database for $genomeA.\n"); }
+if(! (-e $queryProteinFileName)) { die("ERROR: Cannot file protein fasta file for $genomeB.\n"); }
+
+####################################################################
+#### Read the fasta file and split it for the different threads
+
+my %proteins;
+open (my $proteinFile, "<$queryProteinFileName") || die ("ERROR: Cannot open query file $queryProteinFileName.\n");
+
+my $curProtein="";
+while(my $curLine=<$proteinFile>) {
+    chomp($curLine);
+    if(substr($curLine,0,1) eq ">") {
+        $curProtein = $curLine;
+    } else {
+        $proteins{$curProtein} .= $curLine;
+    }
+}
+close($proteinFile);
+my @proteinNames = keys %proteins;
+
+print "PROGRESS: Read " . (@proteinNames) . " proteins sequences. Splitting into $blastProcesses.\n";
+
+### split files
+### First, generate the files
+my %querySplitFiles;
+my @blastOutputFiles;
+
+foreach my $curSplitFileNum (1..$blastProcesses) {
+    my $tmpFileName = $tmpDirectory . "/$genomeB.$genomeA.$curSplitFileNum.tmp.fasta";
+
+    open( $querySplitFiles{$tmpFileName} , ">$tmpFileName") || die("ERROR: Cannot create temporary file $tmpFileName.\n");
+}
+my $curTmpFileNum=0;
+my @querySplitFileNames = keys %querySplitFiles;
+
+foreach my $curProtein (@proteinNames) {
+    my $curTmpFile = $querySplitFiles{$querySplitFileNames[$curTmpFileNum++]};
+
+    print $curTmpFile "$curProtein\n" . $proteins{$curProtein} . "\n";
+    if($curTmpFileNum == scalar @querySplitFileNames) {
+        $curTmpFileNum=0;
+    }
+}
+foreach my $curFileName (keys %querySplitFiles) {
+    close($querySplitFiles{$curFileName});
+}
+
+### Now fork and run blast for each split file
+
+#### set up parallel processing
+my @threadPids = (0) x $blastProcesses;
+
+foreach my $curThread (1..$blastProcesses) {
+    my $curTmpFile = $querySplitFileNames[$curThread-1];
+    my $tmpOutFile = $querySplitFileNames[$curThread-1] . ".out";
+    my $forkChildPid = fork();
+	if(!$forkChildPid) {	#### In the child process
+    	print localtime() . ": Thread $curThread: START processing $curTmpFile.\n";
+        my $blastCommand= "blastp -query $curTmpFile -db $blastdbFileName -out $tmpOutFile -evalue 10 -outfmt 6 -num_threads $blastThreads";
+		system($blastCommand);
+        print localtime() . ": Thread $curThread: END processing $curTmpFile.\n";
+		exit;
+	} else {
+		$threadPids[$curThread] = $forkChildPid;
+	}
+}
+
+## wait for all child processes to finish
+for my $curPid (@threadPids) {
+	if($curPid != 0) { waitpid($curPid, 0); }
+}
+#### Collate all split files
+open (my $outFile, ">$outFileName");
+foreach my $curSplitFile (@querySplitFileNames) {
+    open (my $curFile, "<$curSplitFile.out") || die ("ERROR: Cannot open temporary output file $curSplitFile.out.\n");
+    while(my $curLine = <$curFile>) { print $outFile $curLine; }
+    close($curFile);
+}
+close($outFile);
+
+### Cleanup
+
+foreach my $curFileName (keys %querySplitFiles) {
+    unlink($curFileName);
+    unlink("$curFileName.out");
+}

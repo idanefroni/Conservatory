@@ -22,7 +22,8 @@ my $genomeWasProcessed=0;
 my $genomeDatabaseWasProcessed=0;
 my $forceRun=0;
 my $referenceGenomeName;
-my $threads=16;
+my $blastThreads=4;
+my $blastProcesses=4;
 my $upstreamLength;
 my $downstreamLength;
 my $ignoreMissingFiles=0;
@@ -34,7 +35,8 @@ GetOptions ("conservatory-dir=s" => \$conservatoryDir,
 			"genome=s" => \$genome,
 			"family=s" => \$family,
 			"reference=s" => \$referenceGenomeName,
-			"threads=i" => \$threads,
+			"blast-threads=i" => \$blastThreads,
+			"blast-processes=i" => \$blastProcesses,
 			"force" => \$force,
 			"force-orthology" => \$forceOrthology,
 			"force-run" => \$forceRun,
@@ -59,7 +61,8 @@ if($help) {
 	print "\t--genome\t\tLimit genome processing to a specific genome (DEFAULT process all genomes). Incompatible with --family \n";
 	print "\t--family\t\tLimit genome processing to a specific family (DEFAULT process all genomes). Incompatible with --genome \n";	
 	print "\t--reference\t\tReference genome name.\n";
-	print "\t--threads\t\tNumber of threads to use (DEAFULT: 16). \n";
+	print "\t--blast-threads\t\tNumber of threads to use (DEAFULT: 4). \n";
+	print "\t--blast-processes\t\tNumber of blast processes to use (DEAFULT: 4). \n";
 	print "\t--force\t\t\tForce rebuilding of all databases file (except orthology).\n";
 	print "\t--force-orthology\tForce rebuilding orthology database.\n";
 	print "\t--force-run\t\tDo not verify the status of the last run.\n\t\t\t\t[WARNING: This can cause data corruption if two processGenomes processes are starting in parallel.\n\t\t\t\tOnly use if you know what you are doing]\n";  
@@ -359,13 +362,15 @@ while(my $curgenomeline= <$genomedb>) {
 			if(! (-e $orthologFilename) || $forceOrthology) {
 				if(! -e $blastG2REF || ! -e $blastREF2G) {
 					print localtime() . ": $curgenomeName : START reciprocal blast.\n";
-					my $blastthreads = $threads;
 					my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReferenceFamily/$curgenomeReference.proteins.fasta";
 					if(! -e $blastG2REF) {
-						system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
+					#	system("blastp -query $genomeProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeReference -out $blastG2REF -evalue 10 -outfmt 6 -num_threads $blastthreads");
+						system("perl scripts/fblastp --genomeA $curgenomeReference --genomeB $curgenomeName --out $blastG2REF --blast-threads $blastThreads --blast-processes $blastProcesses")
 					}
 					if(! -e $blastREF2G) {
-						system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
+#						system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
+						system("perl scripts/fblastp --genomeB $curgenomeReference --genomeA $curgenomeName --out $blastREF2G --blast-threads $blastThreads --blast-processes $blastProcesses")
+
 					}
 					print localtime() . ": $curgenomeName : END reciprocal blast.\n";
 				} else { print localtime() . ": SKIP blast temporary files already exists. Manually delete the files $blastG2REF and $blastREF2G to rebuild.\n" }

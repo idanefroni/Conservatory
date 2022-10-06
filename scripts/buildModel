@@ -47,12 +47,12 @@ if($help || $referenceGenome eq "" || $treeFileName eq "") {
    exit();
 }
 
-my $genomedbFile = $conservatoryDir . "/genome_database.csv";
+my $genomedbFileName = $conservatoryDir . "/genome_database.csv";
 my $alignmentDir ="$conservatoryDir/alignments/$referenceGenome";
 my $tmpFastaFileName = "$alignmentDir/tmp/$referenceGenome.formodel.fasta";
 
 
-die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+die "ERROR: Cannot find file genome database file ($genomedbFileName)\n" unless -e $genomedbFileName;
 die "ERROR: Cannot find file tree filename ($treeFileName)\n" unless -e $treeFileName;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e $alignmentDir && -e "$conservatoryDir/scripts");
 
@@ -64,7 +64,7 @@ my %proteinNameTranslator;
 my %geneNameTranslator;
 my %FourVarPosSequence;
 
-open (my $genomeDatabase, "<", $genomedbFile);
+open (my $genomeDatabase, "<", $genomedbFileName);
 while((my $curgenomeline = <$genomeDatabase>)) {
 	if(substr($curgenomeline,0,1) ne "#") { 
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;

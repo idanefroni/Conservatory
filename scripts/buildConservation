@@ -64,8 +64,8 @@ my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported b
 									 ## To avoid spliting of very highly conserved CNSs
 
 #### Alignment filtering parameters
-my @minSpeciesPerConservationLevel= (150,100,100,80,5,5); ## Must have atleast these many alignments to support level assignment
-my @minSpeciesAtConservationLevel= (1,1,1,3,5,5); ## Musty have atleast these many species from each level to support level assignment
+my @minSpeciesPerConservationLevel= (150,100,100,80,15,5); ## Must have atleast these many alignments to support level assignment
+my @minSpeciesAtConservationLevel= (1,1,1,3,5,5); ## Must have atleast these many species from each level to support level assignment
 
 my $minSpeciesPerConservationLevelString="";
 my $minORFLength="auto";
