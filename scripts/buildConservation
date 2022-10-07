@@ -422,8 +422,8 @@ if ($numOfSpecies >= 0) {
 			open (my $finalFASTADownFile, ">$finalFASTADownFileName");
 
 			# and Dump fasta alignment
-			print $finalFASTAUpFile ">$referenceGenome\n" . $fastaUpstreamAlignment{$locusFullName}{$referenceGenome} . "\n";
-			print $finalFASTADownFile ">$referenceGenome\n" . $fastaDownstreamAlignment{$locusFullName}{$referenceGenome} . "\n";
+			print $finalFASTAUpFile ">$referenceGenomeSpecies\n" . $fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies} . "\n";
+			print $finalFASTADownFile ">$referenceGenomeSpecies\n" . $fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies} . "\n";
 			
 			for my $curspecies (keys %{ $fastaUpstreamAlignment{$locusFullName} } ) {
 				if($curspecies ne $referenceGenome) {
