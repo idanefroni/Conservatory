@@ -82,6 +82,8 @@ my $skipKaKs=0;
 my $skipMissingGenomes=0;
 my $justFamilyAlignment = 0;
 
+my $DEBUGSkipDeepConservation=0;
+
 my $help = 0;
 
 ########### Reg Seq lengths
@@ -234,8 +236,12 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 }
 seek ($genomeDatabase,0,SEEK_SET);
 die "ERROR: Cannot find reference genome ($referenceGenome) in the genome database file.\n" unless $referenceGenomeFamily ne "";
-die "ERROR: Cannot find tree file $treeFileName for reference genome $referenceGenome.\n" unless (-e $treeFileName);
-die "ERROR: Cannot find model file $modelFileName for reference genome $referenceGenome.\n" unless (-e $modelFileName);
+
+if(!$justFamilyAlignment) { ## Check to see if we have a tree, if we need
+	die "ERROR: Cannot find tree file $treeFileName for reference genome $referenceGenome.\n" unless (-e $treeFileName);
+	die "ERROR: Cannot find model file $modelFileName for reference genome $referenceGenome.\n" unless (-e $modelFileName);
+}
+
 
 ### Read tree to memory
 my $treeReader = new Bio::TreeIO(-file   => $treeFileName,
@@ -421,17 +427,22 @@ if ($numOfSpecies >= 0) {
 			open (my $finalFASTAUpFile, ">$finalFASTAUpFileName");
 			open (my $finalFASTADownFile, ">$finalFASTADownFileName");
 
-			# and Dump fasta alignment
-			print $finalFASTAUpFile ">$referenceGenomeSpecies\n" . $fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies} . "\n";
-			print $finalFASTADownFile ">$referenceGenomeSpecies\n" . $fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies} . "\n";
+			# replace 'X' with 'N' for phyloP and Dump fasta alignment
+			my $upOutSeq = $fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
+			my $downOutSeq = $fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
+			$upOutSeq =~ s/X/N/g;
+			$downOutSeq =~ s/X/N/g;
+
+			print $finalFASTAUpFile ">$referenceGenomeSpecies\n$upOutSeq\n";
+			print $finalFASTADownFile ">$referenceGenomeSpecies\n$downOutSeq\n";
 			
 			for my $curspecies (keys %{ $fastaUpstreamAlignment{$locusFullName} } ) {
-				if($curspecies ne $referenceGenome) {
+				if($curspecies ne $referenceGenomeSpecies) {
 					print $finalFASTAUpFile ">$curspecies\n" . $fastaUpstreamAlignment{$locusFullName}{$curspecies} . "\n";
 				}
 			}
 			for my $curspecies (keys %{ $fastaDownstreamAlignment{$locusFullName} }) {
-				if($curspecies ne $referenceGenome) {
+				if($curspecies ne $referenceGenomeSpecies) {
 					print $finalFASTADownFile ">$curspecies\n" . $fastaDownstreamAlignment{$locusFullName}{$curspecies} . "\n";
 				}
 			}	
@@ -482,12 +493,12 @@ if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
 	system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
 
 	if((-s "$tmpDir/$locus.up.bed") <= $EMPTY_FILE) {
-		if($verbose) { print "PROGRESS: phyloP outputfile is empty...\n"; }
+		if($verbose) { print "PROGRESS: Upstream phyloP outputfile is empty...\n"; }
 		### There is a bug in phyloP (t=nan) for some reason. If failed, try with a different method
 		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName > /dev/null");
 		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
 		if($testPhylopbug!=0) {
-			if($verbose) { print("PROGRESS: phyloP failed (internal bug?). Retrying with alternative parameters...\n"); }
+			print("WARNING: phyloP failed for upstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
 			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
 		}
 	}
@@ -507,6 +518,17 @@ if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
 
 if(-s $finalFASTADownFileName > $EMPTY_FILE) {
 	system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
+	
+	if((-s "$tmpDir/$locus.down.bed") <= $EMPTY_FILE) {
+		if($verbose) { print "PROGRESS: Downstream phyloP outputfile is empty...\n"; }
+		### There is a bug in phyloP (t=nan) for some reason. If failed, try with a different method
+		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName > /dev/null");
+		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
+		if($testPhylopbug!=0) {
+			print("WARNING: phyloP failed for downstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
+			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
+		}
+	}
 	if(-s "$tmpDir/$locus.down.bed"> $EMPTY_FILE) { 
 		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 		if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
@@ -1055,7 +1077,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	}
 }
 
-##### Filter CNS that are too distant without sufficient support
+##### Filter CNS that are too distant evolutionary without sufficient support
 
 foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
@@ -1160,9 +1182,16 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 				$curHit->{'Length'} = $newEnd - $newStart;
 				$curHit->{'Start'} = $newStart;
 				$curHit->{'End'} = $newEnd;
-				my $cnsHitSeq = substr($curHit->{'TargetSequence'}, $startInAlignment, $curHit->{'Length'});
+				my $alignShift=0;
+				if($startInAlignment <0) {
+					$alignShift= - $startInAlignment -1;
+					$startInAlignment=0;
+				}
+
+				my $cnsHitSeq = substr($curHit->{'TargetSequence'}, $startInAlignment, $curHit->{'Length'} - $alignShift);
 				# Change N back to gaps
 				$cnsHitSeq =~ s/N/-/g;
+
 				print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetRelativePosition'},$startInCNS,$curHit->{'Length'},$cnsHitSeq\n";
 			}
 		}
@@ -1524,7 +1553,6 @@ sub MAFtoFASTA {
 		   if(not defined $inFASTARef->{$reflocus}{$species}) {
 		       $inFASTARef->{$reflocus}{$species} = "N" x $seqLengthRef->{$reflocus};
 		   }
-
 
 		   if($species eq $refseqname) {
 	   		 # Identify all insertions from the sequence to keep the seq in reference coordinates		 
