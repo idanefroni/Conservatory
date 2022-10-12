@@ -387,7 +387,7 @@ my $numOfSpecies = scalar @species;
 
 if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
 
-if ($numOfSpecies >= 0) {
+if ($numOfSpecies > 0) {
 	#### Now all alignments were performed, assemble MAF files to a single alignment. 
 	### First, move everything to an array. Dump a copy to the CRE-ortholog file
 	if($verbose) { print "PROGRESS: Multiple sequence assembly"; }
