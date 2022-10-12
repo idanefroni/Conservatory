@@ -82,8 +82,6 @@ my $skipKaKs=0;
 my $skipMissingGenomes=0;
 my $justFamilyAlignment = 0;
 
-my $DEBUGSkipDeepConservation=0;
-
 my $help = 0;
 
 ########### Reg Seq lengths
@@ -607,6 +605,8 @@ my $CNSNum=0;
 my $totalCNSLength=0;
 my %CNSforLocus;
 my %cnsReferenceLength;
+my %deepCNSFasta;
+my %mapAlignmentDeepCNS;
 
 my $ancesteralLocusCNSFileName = "$tmpDir/$locus.ancesteral.cns.fasta";
 open (my $ancesteralLocusCNSFasta, ">$ancesteralLocusCNSFileName");	
@@ -853,12 +853,57 @@ if(!$keep_tmp) { unlink("$tmpCNSFileName"); }
 
 if($verbose) { print "PROGRESS: End ancesteral sequence reconstruction for $locus. $CNSNum CNSs. Total Length $totalCNSLength.\n"; }
 
+#############################################################################################################
+####  Assign the family alignments hits to the CNSs
+my %familySpeciesHittingCNS;
+
+foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
+	foreach my $curHit ( @{ $mapAlignmentFamily{$locusFullName}{$curSpecies} } ) {
+		## Find the CNS that overlaps this alignment
+		my ($start,$end);
+		if($curHit->{'ReferenceUpDown'} eq "U") {
+			$start = $curHit->{'ReferenceRelativePosition'} - $upstreamLengthReference{$locusFullName};
+		} else {
+			$start = $curHit->{'ReferenceRelativePosition'};
+		}
+		$end = $start + $curHit->{'Length'};
+		
+		foreach my $curCNS (keys %CNSforLocus) {
+			my $CNSLength = $CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'};
+
+			if (overlap($CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'},$start, $end) > $minCNSCoverageInitial) {
+
+				my $startInCNS = max(0, $start - $CNSforLocus{$curCNS}{'Start'});
+				my $endInCNS = min($CNSLength , $end - $CNSforLocus{$curCNS}{'Start'});
+
+				my $startCNSInAlignment = max(0, $CNSforLocus{$curCNS}{'Start'} - $start);
+
+				my $cnsHitSeq = substr($curHit->{'TargetSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS);
+				# Change N back to gaps
+				$cnsHitSeq =~ s/N/-/g;
+
+				push @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} }, {
+						"ReferenceLocus" => $curCNS,
+						"ReferenceRelativePosition" => $startInCNS,
+						"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
+						"Length" => $endInCNS - $startInCNS,
+						"TargetSpecies" => $curHit->{'TargetSpecies'},
+						"TargetLocus" => $curHit->{'TargetLocus'},
+						"TargetSequence" => $cnsHitSeq,
+						"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $startCNSInAlignment }; 
+				if(! (defined $familySpeciesHittingCNS{$curCNS}{$curSpecies}) ) {
+					$CNSforLocus{$curCNS}{'NumberOfSpecies'}++;
+					$familySpeciesHittingCNS{$curCNS}{$curSpecies} = 1;
+				}
+			}
+		}
+	}
+}
+
+
 #################################################################
 ##### Now search for deep CNS (outside the family)
 #####
-
-my %deepCNSFasta;
-my %mapAlignmentDeepCNS;
 
 open (my $genomeDatabase, "<", $genomedbFile);
 
@@ -920,7 +965,7 @@ if(!$keep_tmp) {
 }
   
 ############################################################################################################
-# Family CNS are not all deeply conserved. See if we can identify deeply conserved regions within the CNS
+# Family CNS are not all deeply conserved. See if we can identify conserved regions within the CNS
 #  then split the CNS accordingly
 
 # First, determine what are the breakpoints
@@ -982,8 +1027,9 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 			foreach my $curHit (@polishedAlignments) {
 				### If there is an overlap, assign the deep CNS to the new subCNS.
 
-				if(overlap($curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'},
-						   $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} + $cnsReferenceLength{$newSubCNSName})>$minCNSCoverageAfterSplit) {
+				if($cnsReferenceLength{$newSubCNSName} ==0) { print "ERROR: $newSubCNSName has length 0.\n"; }
+				if(overlap($CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} + $cnsReferenceLength{$newSubCNSName},
+						   $curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'})>$minCNSCoverageAfterSplit) {
 
 					if(not defined $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} }) {
 						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } = [];
@@ -1140,8 +1186,8 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 }
   
 if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writing output files...\n";	}
-  
-  
+ 
+
 ###########################################################
 #### Now we are done. Export CNS table and position maps  
   
@@ -1153,51 +1199,7 @@ foreach my $curCNS (keys %CNSforLocus) {
 } 
 close($finalCNSFile);
 
-## First output the family alignments
-foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
-	foreach my $curHit ( @{ $mapAlignmentFamily{$locusFullName}{$curSpecies} } ) {
-		## Find the CNS that overlaps this alignment
-		my ($start,$end);
-		if($curHit->{'ReferenceUpDown'} eq "U") {
-			$start = $curHit->{'ReferenceRelativePosition'} - $upstreamLengthReference{$locusFullName};
-		} else {
-			$start = $curHit->{'ReferenceRelativePosition'};
-		}
-		$end = $start + $curHit->{'Length'};
-		
-		foreach my $curCNS (keys %CNSforLocus) {
-			### Check for overlap. translate coordinates from relative to locus to
-			###  relative to CNS and output alignment line
-
-			if (overlap($start, $end, $CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'}) > $minCNSCoverageFinal) {
-				### This is the family alignment - so the alignments are for the whole region, before identification of phyloP conservation
-				### Trim the alignment to the conserved region
-
-				my $startInAlignment = $CNSforLocus{$curCNS}{'Start'} - $start;
-				my $endInAlignment =  min($CNSforLocus{$curCNS}{'End'},$end) - $start;
-				my $newStart = max( $start, $CNSforLocus{$curCNS}{'Start'} );
-				my $newEnd = min($CNSforLocus{$curCNS}{'End'},$end);
-				my $startInCNS = max(0, $start - $CNSforLocus{$curCNS}{'Start'});
-
-				$curHit->{'Length'} = $newEnd - $newStart;
-				$curHit->{'Start'} = $newStart;
-				$curHit->{'End'} = $newEnd;
-				my $alignShift=0;
-				if($startInAlignment <0) {
-					$alignShift= - $startInAlignment -1;
-					$startInAlignment=0;
-				}
-
-				my $cnsHitSeq = substr($curHit->{'TargetSequence'}, $startInAlignment, $curHit->{'Length'} - $alignShift);
-				# Change N back to gaps
-				$cnsHitSeq =~ s/N/-/g;
-
-				print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetRelativePosition'},$startInCNS,$curHit->{'Length'},$cnsHitSeq\n";
-			}
-		}
-	}
-}
-  
+ 
 ### Then the deep CNS alignments
 foreach my $curCNS (keys %CNSforLocus) {
 	foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {	  	   	  	  
@@ -1477,12 +1479,12 @@ sub lengthWithoutGaps {
 ### Compute overlap between two fragments. 
 ### Parameters:
 ### overlap(startOne, endOne, StartTwo, endTwo, mode)
-### mode can be "ABS", in which case returns the absolute overlap in bp
-### else, returns relative overlap (0-1).
+### returns relative overlap (0-1) (of the first fragment).
 ###
 
 sub overlap {
 	my ($startOne, $endOne, $startTwo, $endTwo, $mode) =@_;
+
 	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
 		 ($startOne > $endTwo)) {
 		return 0;
@@ -1490,31 +1492,15 @@ sub overlap {
 		#### return the percent overlap
 		if($endOne < $endTwo) {
 			if($startOne >= $startTwo) {
-				if($mode eq "ABS") {
-					return ($endOne-$startOne);
-				} else {
-					return 1;
-				}
+				return 1;
 			} else {
-				if($mode eq "ABS") {
-					return ($endOne -$startTwo);
-				} else {
-					return ($endOne -$startTwo) /($endOne - $startOne);
-				}
+				return ($endOne -$startTwo) /($endOne - $startOne);
 			} 
 		} else {
 			if($startOne <= $startTwo) {
-				if($mode eq "ABS") {
-					return ($endOne-$startOne);					
-				} else {
-					return 1;
-				}
+				return 1;
 			} else {
-				if($mode eq "ABS") {
-					return ($endTwo -$startOne);
-				} else {
-					return ($endTwo -$startOne) /($endOne - $startOne);
-				}
+				return ($endTwo -$startOne) /($endOne - $startOne);
 			} 			
 		}
 	}
@@ -1863,7 +1849,7 @@ sub getCNSbreakpoints {
 	foreach my $pos (0..(scalar @CNSdelta)) {
 		### split CNS if larger than minCNSlength and high variability. But don't split CNS if its too short, has too many species
 		## or if the split point is not well supported
-		if((abs($CNSdelta[$pos]) > $deltaSD *3) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && 
+		if((abs($CNSdelta[$pos]) > $deltaSD *3) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNSLength) &&
 		 ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit && $CNSCoverage[$pos+1]< $maxSpeciesToInitiateCNSSplit)) {
 			if($verbose) { print "PROGRESS: Splitting CNS at $pos (" . abs($CNSdelta[$pos]) . "," . $CNSCoverage[$pos] . ").\n"; }
 			push @breakpoints, $pos;
