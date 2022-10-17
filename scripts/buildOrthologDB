@@ -20,6 +20,8 @@ my $genome="";
 my $referenceGenome="";
 my $referenceGenomeFamily="";
 my $referenceGenomeSpecies="";
+my $ref2gZipped=0;
+my $g2refZipped =0;
 my $family="";
 my $species;
 my $genomefound = 0;
@@ -97,6 +99,17 @@ die "ERROR: Cannot file reference genome $genome in database.\n" unless $referen
 
 my $genome2refFileName = "$conservatoryDir/genomes/tmpblast/$genome" . "2" . "$referenceGenome" . ".txt";
 my $ref2genomeFileName = "$conservatoryDir/genomes/tmpblast/$referenceGenome" . "2" . "$genome" . ".txt";
+
+### If the files are compressed
+if (!( -e $genome2refFileName)) {
+	$g2refZipped=1;
+	$genome2refFileName .= ".gz";
+}
+if (!( -e $ref2genomeFileName)) {
+	$ref2gZipped =1;
+	$ref2genomeFileName .= ".gz";
+}
+
 my $outputOrthologFileName = "$conservatoryDir/genomes/$family/$referenceGenome.$genome.orthologs.csv";
 my $footprintGFFFileName = "$conservatoryDir/genomes/$family/$genome.footprint.gff3";
 my $proteinSequenceFileName = "$conservatoryDir/genomes/$family/$genome.proteins.fasta";
@@ -104,11 +117,22 @@ my $proteinSequenceFileName = "$conservatoryDir/genomes/$family/$genome.proteins
 open (my $gffFile, "<", $footprintGFFFileName ) or die "ERROR: Cannot open footprint file $footprintGFFFileName.\n";
 open (my $proteinFile, "<", $proteinSequenceFileName ) or die "ERROR: Cannot open protein sequence file $proteinSequenceFileName.\n";
 
-open (my $g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
-open (my $ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
+my $g2ref;
+my $ref2g;
+
+if($g2refZipped) {
+	open ($g2ref, "zcat $genome2refFileName |" ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
+} else {
+	open ($g2ref, "<", $genome2refFileName ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
+}
+
+if($ref2gZipped) {
+	open ($ref2g,"zcat $genome2refFileName |" ) or die "ERROR: Cannot open blast results file $genome2refFileName.\n";
+} else {
+	open ($ref2g, "<", $ref2genomeFileName) or die "ERROR: Cannot open blast results file $ref2genomeFileName.\n";
+}
 
 open (my $output, ">", "$outputOrthologFileName.tmp");
-
 
 ### Set up the filter of acceptable genes (those that have promoter sequences) 
 while(my $line = <$gffFile>) {
@@ -165,14 +189,13 @@ while(my $curline = <$g2ref>) {
 	if($locus ne $curlocus) { $orthologCounts=0; };
 	$curlocus = $locus;
 
-	if($orthologCounts < $MAX_ORTH && ($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus })) {
+	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus })) {
 
 		if(defined $genome2RefHits{$locus}{$refLocus}) {
 			if($logeval > $genome2RefHits{$locus}{$refLocus}) {
 				$genome2RefHits{$locus}{$refLocus} = $logeval;
 			}
-		} else {
-			$orthologCounts++;
+		} elsif(scalar (keys %{ $genome2RefHits{$locus} }) <= $MAX_ORTH ) {
 			$genome2RefHits{$locus}{$refLocus} = $logeval;
 		}
 	}
@@ -203,15 +226,14 @@ while(my $curline = <$ref2g>) {
 	if($refLocus ne $curRefLocus) { $orthologCounts=0; };
 	$curlocus = $locus;
 
-	if($orthologCounts < $MAX_ORTH && ($eval < $MIN_EVAL) ) {
+	if(($eval < $MIN_EVAL) ) {
 
 		if(defined $ref2GenomeHits{$locus}{$refLocus}) {
 			if($logeval > $ref2GenomeHits{$locus}{$refLocus}) {
-				$ref2GenomeHits{$locus}{$refLocus} = $logeval;
+				$ref2GenomeHits{$refLocus}{$locus} = $logeval;
 			}
-		} else {
-			$orthologCounts++;
-			$ref2GenomeHits{$locus}{$refLocus} = $logeval;
+		} elsif(scalar (keys %{ $genome2RefHits{$refLocus} }) <= $MAX_ORTH ) {
+			$ref2GenomeHits{$refLocus}{$locus} = $logeval;
 		}
 	}
 }
@@ -222,7 +244,7 @@ my %orthologTable;
 ### Add the evalues
 foreach my $curLocus (keys %genome2RefHits) {
 	foreach my $curRefLocus (keys %{ $genome2RefHits{$curLocus}}) {
-		$orthologTable{$curLocus}{$curRefLocus} = $genome2RefHits{$curLocus}{$curRefLocus} +  $ref2GenomeHits{$curLocus}{$curRefLocus};
+		$orthologTable{$curRefLocus}{$curLocus} = $genome2RefHits{$curLocus}{$curRefLocus} +  $ref2GenomeHits{$curRefLocus}{$curLocus};
 	}
 }
 
@@ -231,25 +253,31 @@ my $orthologPairsCount=0;
 
 ### Select cutoff
 
-foreach my $curLocus (keys %orthologTable) {
+foreach my $curRefLocus (keys %orthologTable) {
 	my $cutoff;
 	my @allevals;
 
-	foreach my $curRefLocus (keys %{ $orthologTable{$curLocus}} ) {
-		push(@allevals, $orthologTable{$curLocus}{$curRefLocus});
+	foreach my $curLocus (keys %{ $orthologTable{$curRefLocus}} ) {
+		push(@allevals, $orthologTable{$curRefLocus}{$curLocus});
 	}
 	@allevals = reverse sort {$a <=> $b}  @allevals;
 	$cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;
 	### Unless its a small protein. then, no cutoff
-	if($proteinsLengths{$curLocus} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH) { # Unless we are processing a high sensitivity gene (small peptides, usually)
+	if($proteinsLengths{$curRefLocus} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH) { # Unless we are processing a high sensitivity gene (small peptides, usually)
 											 # where we have a absolute cutoff.
-		$cutoff = 0;
+		### but Make sure we are not putting out more orthologs than MAX_ORTH
+		if(scalar @allevals > $MAX_ORTH) {
+			$cutoff = $allevals[ $MAX_ORTH];
+		} else {
+			$cutoff = 0;
+		}
+
 	}
 	
 	### Output ortholog pairs
-	foreach my $curRefLocus (keys %{ $orthologTable{$curLocus} }) {
-		if($orthologTable{$curLocus}{$curRefLocus} > $cutoff) {
-			print $output ("$curLocus,$curRefLocus," . $orthologTable{$curLocus}{$curRefLocus}  . "\n");
+	foreach my $curLocus (keys %{ $orthologTable{$curRefLocus} }) {
+		if($orthologTable{$curRefLocus}{$curLocus} > $cutoff) {
+			print $output ("$curLocus,$curRefLocus," . $orthologTable{$curRefLocus}{$curLocus}  . "\n");
 			$orthologPairsCount++;
 		}
 	}

@@ -64,7 +64,7 @@ my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported b
 									 ## To avoid spliting of very highly conserved CNSs
 
 #### Alignment filtering parameters
-my @minSpeciesPerConservationLevel= (150,100,100,80,15,5); ## Must have atleast these many alignments to support level assignment
+my @minSpeciesPerConservationLevel= (150,100,100,80,30,10); ## Must have atleast these many alignments to support level assignment
 my @minSpeciesAtConservationLevel= (1,1,1,3,5,5); ## Must have atleast these many species from each level to support level assignment
 
 my $minSpeciesPerConservationLevelString="";
@@ -76,7 +76,7 @@ my $orthologSelectionStrategy = "bestmean";
 ###### Other parameters
 my $keep_tmp = 0;
 my $verbose = 0;
-my $force=1;   #### There is an option to use the family alignment if already exists. This does not currently work!
+my $force=0;  
 my $dumpBam = 0;
 my $skipKaKs=0;
 my $skipMissingGenomes=0;
@@ -106,6 +106,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"keep-tmp" => \$keep_tmp,
 			"verbose" => \$verbose,
 			"bam-dump" =>\$dumpBam,
+			"force" => \$force,
 			"skip-kaks" => \$skipKaKs,
 			"skip-missing-genomes" => \$skipMissingGenomes,
 			"help" => \$help) or die ("Error in command line arguments\n");
@@ -134,6 +135,7 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    print "\t--reference\tReference genome name (REQUIRED). Genomes must be processed with processGenome --global for the reference genome before running buildConservation.\n";
    print "\t--locus\t\t\tLocus in the reference genome for the family (REQUIRED).\n";
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
+   print "\t--force\t\tOverwrite existing CNS file.\n";
    print "\n\t\tAlignment options\n\n";
    print "\t--min-identity-family\t\tMinimum identity for alignments within the family. Default is 70.\n";
    print "\t--min-identity-globa\t\tMinimum identity for alignments of CNS for genomes outside the family. Default is 60.\n";
@@ -206,9 +208,15 @@ my $t_muscle = `sh -c 'command -v muscle'`;
 die "ERROR: Cannot find muscle in path. Please make sure muscle v3.8.1551 is installed.\n" unless ($t_muscle ne "");  
 
 die "ERROR: Cannot find fastMLexecutable at $conservatoryDir/scripts/fastml.\n" unless (-x "$conservatoryDir/scripts/fastml");
+###############################################
+### Make sure we are not over-writing existing CNS file (unless we are forced to)
+if ( (-e $finalCNSFileName) && !$force  ) { die "END: Output CNS file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
+
 
 ###############################################
 if($verbose) { print "START: Begin conservatory analysis for $locus.\n"; }
+
+if( (-e $finalCNSFileName) && $force && $verbose) { print "PROGRESS: Overwriting existing file $finalCNSFileName.\n"; }
 
 ###############################################
 ##### Now set things up
@@ -233,7 +241,7 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 	}
 }
 seek ($genomeDatabase,0,SEEK_SET);
-die "ERROR: Cannot find reference genome ($referenceGenome) in the genome database file.\n" unless $referenceGenomeFamily ne "";
+die "ERROR: Cannot find reference genome $referenceGenome in the genome database file.\n" unless $referenceGenomeFamily ne "";
 
 if(!$justFamilyAlignment) { ## Check to see if we have a tree, if we need
 	die "ERROR: Cannot find tree file $treeFileName for reference genome $referenceGenome.\n" unless (-e $treeFileName);
@@ -632,6 +640,7 @@ while(my $CNSLine = <$CNSFile>) {
 				'absEnd' => $absEnd,
 				'Strand' => $refGeneDir,
 				'NumberOfSpecies' => 0,
+				'NumberOfFamilySpecies' => 0,				
 				'ConservationLevel' => 'Family'};
 				
 		my %cnsSeqs;
@@ -893,6 +902,8 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 						"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $startCNSInAlignment }; 
 				if(! (defined $familySpeciesHittingCNS{$curCNS}{$curSpecies}) ) {
 					$CNSforLocus{$curCNS}{'NumberOfSpecies'}++;
+					$CNSforLocus{$curCNS}{'NumberOfFamilySpecies'}++;
+
 					$familySpeciesHittingCNS{$curCNS}{$curSpecies} = 1;
 				}
 			}
@@ -1013,6 +1024,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 				'absEnd' => $newAbsEnd,
 				'Strand' => $CNSforLocus{$curCNS}{'Strand'},
 				'NumberOfSpecies' => 0,
+				'NumberOfFamilySpecies' => 0,
 				'ConservationLevel' => $CNSforLocus{$curCNS}{'ConservationLevel'},
 				'ORF' => $CNSforLocus{$curCNS}{'ORF'},
 				'ORFDir' => $CNSforLocus{$curCNS}{'ORFDir'},
@@ -1127,7 +1139,9 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 
 foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
-  my $numberOfSpecies = keys %{ $mapAlignmentDeepCNS{$curCNS} };
+  my $numberOfDeepSpecies = scalar (keys %{ $mapAlignmentDeepCNS{$curCNS} });
+  my $numberOfSpecies = $numberOfDeepSpecies + $CNSforLocus{$curCNS}{'NumberOfFamilySpecies'};
+  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = $numberOfSpecies;
 
   #### Now calculate conservation levels
   my @referenceClassification = split /-/ , $speciesClassification{$referenceGenomeSpecies};
@@ -1139,17 +1153,17 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
     	 	}
     	}
   }
-  if($verbose) { print "PROGRESS: Testing CNS $curCNS. $numberOfSpecies species have the CNS. Conservation levels are (" . join(",",@CNSConservationLevel) .").\n"; }
+  if($verbose) { print "PROGRESS: Testing CNS $curCNS. $numberOfDeepSpecies species have the CNS. Conservation levels are (" . join(",",@CNSConservationLevel) .").\n"; }
   	  
   # check for possible misalignments by making sure we are not skipping levels.
   	  
   foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-1)) {
    	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1)
-	  	  || $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]
+	  	  || $numberOfDeepSpecies < $minSpeciesPerConservationLevel[$levelToCheck]
 		  || $CNSConservationLevel[$levelToCheck] < $minSpeciesAtConservationLevel[$levelToCheck]) {
    	  	  if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for $curCNS at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
 
-  	  	  if($verbose && ($numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) {
+  	  	  if($verbose && ($numberOfDeepSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) {
 			print "PROGRESS: Number of species too low to support alignments at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n";
 		}
   	  	  ### Remove the misalignment
@@ -1158,7 +1172,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 		  	  if($classification[$levelToCheck] ne $referenceClassification[$levelToCheck]) {
   	  	  	  	if($verbose) { print "PROGRESS: Removing alignment of $curSpecies for $curCNS.\n"; }
 				delete ($mapAlignmentDeepCNS{$curCNS}{$curSpecies});
-				$numberOfSpecies--;
+				$numberOfDeepSpecies--;
 			  }
 		  }
   	  }
@@ -1182,7 +1196,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}="Level" . ($CLASSIFICATION_CLASSES_NUM-$curLevel);
   	  }
   }
-  $CNSforLocus{$curCNS}{'NumberOfSpecies'}=$numberOfSpecies;
+  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = $numberOfDeepSpecies + $CNSforLocus{$curCNS}{'NumberOfFamilySpecies'} ;
 }
   
 if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writing output files...\n";	}
@@ -1194,6 +1208,7 @@ if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writin
 open(my $finalCNSFile, ">$finalCNSFileName");
 open (my $finalMapFile, ">$finalMapFileName");
 foreach my $curCNS (keys %CNSforLocus) {
+
 	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Chromosome'},$CNSforLocus{$curCNS}{'Strand'},$CNSforLocus{$curCNS}{'absStart'},$CNSforLocus{$curCNS}{'absEnd'},$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'End'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ORF'},$CNSforLocus{$curCNS}{'ORFDir'},$CNSforLocus{$curCNS}{'omega'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
   	print $finalMapFile "$curCNS,$referenceGenomeSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},0," . ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'}) . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
 } 

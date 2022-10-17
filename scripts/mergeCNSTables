@@ -23,6 +23,7 @@ my $verbose=0;
 my $help=0;
 my $minOverlappingSpeciesForMerge=4; ### How many overlapping hits to merge a CNS
 my $minCNSOverlap = 0.25;
+my $minSyntenyBiasToAssignCNS= 1.2; ### Number between 1 and 2 (how many more species need to support a contestant CNS to assign to just one of the genes)
 my $removeOriginalCNS=0;
 
 my %conservationLevelDic = ( "Family" => 0,
@@ -134,10 +135,10 @@ while(<$CNSInputFile>) {
 				if($verbose) { print "Found overlapping CNS: $lastCNS and $CNSID.\n"; }
 
 				## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
-				if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'}) {
+				if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
 					$CNSToDelete = $CNSID;
 					$CNSDeleted++;
-				} elsif($CNSTable{$CNSID}{'SupportingSpecies'} > $CNSTable{$lastCNS}{'SupportingSpecies'}) {
+				} elsif($CNSTable{$CNSID}{'SupportingSpecies'} > $CNSTable{$lastCNS}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
 					$CNSToDelete = $lastCNS;
 					$CNSDeleted++;
 				} else {   ### If not CNSs have the same number of supporting species, we have to decide:

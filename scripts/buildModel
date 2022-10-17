@@ -28,6 +28,7 @@ my $treeFileName;
 my $maxSeq =1000;
 my $numOfGenesUsed=0;
 my $help=0;
+my $force=1;
 
 
 
@@ -88,7 +89,7 @@ die "ERROR: Cannot find family for the reference genome ($referenceGenome) in th
 print "INFO: START automatic phylogenetic model computation for $referenceGenome. Family: $referenceGenomeFamily.\n";
 #### Now read the CDS and proteins files
 
-if(!(-e $tmpFastaFileName)) {
+if(!(-e $tmpFastaFileName) || $force) {
 	my @speciesInReferenceFamily = keys %{ $speciesInFamily{$referenceGenomeFamily} };
 	my $numOfSpeciesInFamily = (scalar @speciesInReferenceFamily);
 	my @genomesInReferenceFamily = keys %{ $genomesInFamily{$referenceGenomeFamily} };
