@@ -223,6 +223,7 @@ if( (-e $finalCNSFileName) && $force && $verbose) { print "PROGRESS: Overwriting
 ##### Find out what is our reference genome family and length parameters
 open (my $genomeDatabase, "<", $genomedbFile);
 while((my $curgenomeline = <$genomeDatabase>)) {
+	chomp($curgenomeline);
 	if(substr($curgenomeline,0,1) ne "#")  {
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;
 		$speciesDatabase{$curgenomeFamily}{$curgenomeSpecies}=0;

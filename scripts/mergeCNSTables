@@ -25,16 +25,12 @@ my $minOverlappingSpeciesForMerge=4; ### How many overlapping hits to merge a CN
 my $minCNSOverlap = 0.25;
 my $minSyntenyBiasToAssignCNS= 1.2; ### Number between 1 and 2 (how many more species need to support a contestant CNS to assign to just one of the genes)
 my $removeOriginalCNS=0;
+my $CLASSIFICATION_CLASSES_NUM=6;
 
-my %conservationLevelDic = ( "Family" => 0,
-						     "Level1" => 1,
-						     "Level2" => 2,
-						     "Level3" => 3,
-						     "Level4" => 4,						     
-						     "Level5" => 5,
-   					  	     "Level6" => 6);						     
 my %CNSTable;
 my %positionTable;
+my %speciesDictionary;
+my %speciesClassification;
 my $CNSMerged=0;
 my $CNSMergedExtended=0;
 my $CNSDeleted=0;
@@ -60,6 +56,22 @@ if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq ""
 	exit();
 }
 
+if ($verbose) { print "START: Loading genome database.\n"; }
+my $genomedbFile = $conservatoryDir . "/genome_database.csv";
+die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+
+open (my $genomeDatabase, "<", $genomedbFile);
+while((my $curgenomeline = <$genomeDatabase>)) {
+	chomp($curgenomeline);
+	if(substr($curgenomeline,0,1) ne "#")  {
+		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;
+		$speciesDictionary{$curgenomeName}=  $curgenomeSpecies;
+		$speciesClassification{$curgenomeSpecies} = $classification;
+	}
+}
+
+if ($verbose) { print "END: Loading genome database.\n"; }
+
 if ($verbose) { print "START: Merging CNSs.\n"; }
 
 if($verbose) { print "PROGRESS: Loading mappings...\n" };
@@ -68,7 +80,7 @@ if($verbose) { print "PROGRESS: Loading mappings...\n" };
 open (my $CNSPositionFile, $mapFileName) ||  die "ERROR: Cannot find position file $mapFileName.\n";
 while(<$CNSPositionFile>) {
 	chomp;
-	my ($CNSID, $targetGenome, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length, $targetSequence) = split /,/;
+	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length, $targetSequence) = split /,/;
 	## Only if non-filtered CNS
 	if(!defined $positionTable{$CNSID}) {
 		$positionTable{$CNSID} = {
@@ -77,7 +89,7 @@ while(<$CNSPositionFile>) {
 	}
 
 	push( @{ $positionTable{$CNSID}{'Positions'} } , {
-				'TargetGenome' => $targetGenome,
+				'TargetSpecies' => $targetSpecies,
 				'TargetLocus' => $targetLocus,
 				'TargetPosition' => $targetRelativePosition,
 				'ReferenceRelativePos' => $referenceRelativePosition,
@@ -192,23 +204,13 @@ while(<$CNSInputFile>) {
 							$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
 							my %newmapping = %$mapping;
 							push( @{ $positionTable{$lastCNS}{'Positions'} } , \%newmapping);
-							if($verbose) { print "Updating $CNSID to $lastCNS: " . $newmapping{'TargetGenome'} . "," . $newmapping{'TargetLocus'} . "\n"; }
-						}
-						### Merge level
-						if($CNSTable{$CNSID}{'Level'} ne $CNSTable{$lastCNS}{'Level'}) {
-							my $bestLevel = max($conservationLevelDic{ $CNSTable{$CNSID}{'Level'} }, $conservationLevelDic{ $CNSTable{$lastCNS}{'Level'} });
-							my @levels = keys %conservationLevelDic;
-
-							if($verbose) { print "Merging levels: (" . $conservationLevelDic{ $CNSTable{$CNSID}{'Level'} } . "," . $conservationLevelDic{ $CNSTable{$lastCNS}{'Level'} } . "): $bestLevel (" . $levels[$bestLevel-1] . ").\n"; }
-							$CNSTable{$lastCNS}{'Level'} = $levels[$bestLevel-1];
+							if($verbose) { print "Updating $CNSID to $lastCNS: " . $newmapping{'TargetSpecies'} . "," . $newmapping{'TargetLocus'} . "\n"; }
 						}
 
 						### Merge CNS rel position
 						$CNSTable{$lastCNS}{'RegulatorySeqPart'}="Merged";
 						$CNSTable{$lastCNS}{'AncesteralSeq'} = $longestSeq;
 
-						### Merge Hits
-						$CNSTable{$lastCNS}{'SupportingSpecies'} = max($CNSTable{$lastCNS}{'SupportingSpecies'}, $supportingSpecies);
 						# and remove the old CNS
 						$CNSToDelete = $CNSID;
 						$CNSMerged++;
@@ -243,7 +245,7 @@ foreach my $curCNS (keys %positionTable) {
 					'Positions' => () };
 		 }
 		 push( @{ $positionLocusMap{ $curHit->{'TargetLocus'} }{'Positions'} } , {
-				'TargetGenome' => $curHit->{'TargetGenome'},
+				'TargetSpecies' => $curHit->{'TargetSpecies'},
 				'TargetLocus' => $curHit->{'TargetLocus'},
 				'CNSID' => $curCNS,
 				'TargetPosition' => $curHit->{'TargetPosition'} ,
@@ -253,7 +255,7 @@ foreach my $curCNS (keys %positionTable) {
 		}	
 }
 
-
+if($verbose) { print "PROGRESS: Built CNS map.\n" };
 ### Now Identify CNS to merge
 my %CNSToMerge;
 my %CNSToMergeHitMap;
@@ -261,12 +263,12 @@ my %CNSToMergeHitMap;
 ### Scan all the hits to the locus. See if an alignment is hitting Two CNSs. If so, merge them.
 
 foreach my $curLocus (keys %positionLocusMap) {
-
+	if($verbose) { print "PROGRESS: Testing deep CNS for $curLocus.\n"; }
 	my $curPos=0;
 	
 	foreach my $firstHit ( @{ $positionLocusMap{$curLocus}{'Positions'} } ) {
 		foreach my $secondHit ( @{ $positionLocusMap{$curLocus}{'Positions'} } ) {
-			# && ($firstHit->{'TargetGenome'} eq $secondHit->{'TargetGenome'})
+			# && ($firstHit->{'TargetSpecies'} eq $secondHit->{'TargetSpecies'})
 			if(($firstHit->{'CNSID'} ne $secondHit->{'CNSID'}) && ($CNSTable{ $firstHit->{'CNSID'} } {'ReferenceGenome'} ne $CNSTable{ $secondHit->{'CNSID'} }{'ReferenceGenome'}) && ($CNSTable{ $firstHit->{'CNSID'} } {'RegulatorySeqPart'} eq $CNSTable{ $secondHit->{'CNSID'} }{'RegulatorySeqPart'}) ) {
 				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'}) > $minCNSOverlap ) {
 					### We should merge the CNS
@@ -289,7 +291,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 						$CNSToMerge{ $first }{ $second }++;
 				
 						if($CNSToMerge{ $first }{ $second } == $minOverlappingSpeciesForMerge) {
-							if($verbose) { print "PROGRESS: Merge deep CNS $first and $second because of $curLocus of (" . $firstHit->{'TargetGenome'} . ").\n"; }
+							if($verbose) { print "PROGRESS: Merge deep CNS $first and $second because of $curLocus of (" . $firstHit->{'TargetSpecies'} . ").\n"; }
 							$CNSMerged++;
 							$deepCNSMerged++;
 						}
@@ -396,7 +398,7 @@ foreach my $curCNS (keys %CNSToMerge) {
 
 				if($needToRemap) {
 					push ( @{ $positionTable{$CNSGroupName}{'Positions'} } , 	{
-						'TargetGenome' => $mapping->{'TargetGenome'},
+						'TargetSpecies' => $mapping->{'TargetSpecies'},
 						'TargetLocus' => $mapping->{'TargetLocus'},
 						'TargetPosition' => $mapping->{'TargetPosition'},
 						'ReferenceRelativePos' => $mapping->{'ReferenceRelativePos'},
@@ -419,6 +421,36 @@ if($removeOriginalCNS) {
 		if(!($curCNS =~ /^$superCNSPrefix/)) { delete $CNSTable{$curCNS}; }
 	}
 						
+}
+
+if($verbose) { print "PROGRESS: Remapping CNSs.\n";}
+
+foreach my $curCNS (keys %CNSTable) {
+	## Count supporting species
+	my %speciesForCNS;
+	foreach my $mapping (@{ $positionTable{$curCNS}{'Positions'} }) {
+		$speciesForCNS{ $mapping->{'TargetSpecies'} } =1;
+	}
+	$CNSTable{$curCNS}{'SupportingSpecies'} = scalar keys %speciesForCNS;
+
+	my @CNSConservationLevels;
+
+	foreach my $curSpecies (keys %speciesForCNS) {
+  	  my @classification = split /-/ , $speciesClassification{$curSpecies};
+    	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
+			$CNSConservationLevels[$curClassificationLevel]{$classification[$curClassificationLevel]}=1;
+    	}
+   }
+  my $maxConservationLevel= $CLASSIFICATION_CLASSES_NUM;
+  foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
+	if((scalar keys %{ $CNSConservationLevels[$curClassificationLevel] })>1 && $maxConservationLevel > $curClassificationLevel) { $maxConservationLevel=$curClassificationLevel; }
+  }
+  
+  my $conservationLevelName = "Family";
+  if($maxConservationLevel < $CLASSIFICATION_CLASSES_NUM) {
+	$conservationLevelName = "Level" . ($CLASSIFICATION_CLASSES_NUM - $maxConservationLevel);
+  }
+  $CNSTable{$curCNS}{'Level'} = $conservationLevelName;
 }
 
 if($verbose) { print "PROGRESS: Done. Output files.\n"; }
@@ -449,7 +481,7 @@ foreach my $curCNS (sort keys %CNSTable) {
 	foreach my $mapping (@{ $positionTable{$curCNS}{'Positions'} }) {
 		print $outputMapFile join(",",
 				$curCNS,
-				$mapping->{'TargetGenome'},
+				$mapping->{'TargetSpecies'},
 				$mapping->{'TargetLocus'},
 				$mapping->{'TargetPosition'},
 				$mapping->{'ReferenceRelativePos'},

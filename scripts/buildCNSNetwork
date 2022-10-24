@@ -16,12 +16,14 @@ my $networkName="myNetwork";
 my $conservatoryDir=abs_path(".");
 my $genomeDatabaseFileName = "genome_database.csv";
 my $help=0;
+my $verbose=0;
 my $force=0;
 
 GetOptions ("conservatory-directory=s" => \$conservatoryDir,
 		    "genome-database=s" => \$genomeDatabaseFileName,
 			"loci-list=s" => \$lociListFileName,
 			"name=s" => \$networkName,
+			"verbose" => \$verbose,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
@@ -76,7 +78,9 @@ if(!((-e $allCNSMergedFileName) & (-e $allPositionsMergedFileName))) {
 
 	###### merge CNS
 	print localtime(). ": Merge deep CNS...\n";
-	system("perl $conservatoryDir/scripts/mergeCNSTables --remove-original-CNS --in-cns $allCNSFileName --in-map $allPositionsFileName --out-cns $allCNSMergedFileName --out-map $allPositionsMergedFileName --out-merged $allMergedDeepCNSFileName");
+	my $verboseString;
+	if($verbose) { $verboseString = "--verbose";}
+	system("perl $conservatoryDir/scripts/mergeCNSTables --remove-original-CNS --in-cns $allCNSFileName --in-map $allPositionsFileName --out-cns $allCNSMergedFileName --out-map $allPositionsMergedFileName --out-merged $allMergedDeepCNSFileName $verboseString");
 #	unlink($allCNSFileName);
 #	unlink($allPositionsFileName);
 }

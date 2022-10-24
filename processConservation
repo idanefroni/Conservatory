@@ -159,7 +159,7 @@ while(my $curgenomeline= <$genomedb>) {
 		}
 		
 		if($justFamilyAlignment) {
-		die "END: --justFamilyAlignment selected. All alignments completed.\n"; 
+			die "END: --justFamilyAlignment selected. All alignments completed.\n"; 
 		}
 		## Merge all BAM, sort and index
 		print localtime() . ": START data merge and sort.\n";
@@ -201,7 +201,9 @@ while(my $curgenomeline= <$genomedb>) {
 		print localtime() . ": END data merge and sort.\n";		
 		## Merge CNSs
 		print localtime() . ": START build CNS tables.\n";
-		system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv");
+		my $verboseOption;
+		if($verbose) { $verboseOption = "--verbose"; }
+		system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv  $verboseOption");
 		unlink("$conservationDir/$family.sorted.csv");
 		unlink("$conservationDir/$family.map.sorted.csv");
 

@@ -24,6 +24,7 @@ my @fourLetterCodons = ("CT","GT","GC","AC","TC","CC","CG","GG");
 my $conservatoryDir=abs_path(".");
 my $referenceGenome="";
 my $referenceGenomeFamily;
+my $referenceGenomeSpecies;
 my $treeFileName;
 my $maxSeq =1000;
 my $numOfGenesUsed=0;
@@ -80,6 +81,7 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 
 		if($curgenomeName eq $referenceGenome) {
 			$referenceGenomeFamily = $curgenomeFamily;
+			$referenceGenomeSpecies = $curgenomeSpecies;
 		}
 	}
 }
@@ -144,7 +146,7 @@ if(!(-e $tmpFastaFileName) || $force) {
 	#### Now look for all single orthologs
 	print "PROGRESS: Searching for one-to-one orthologs...";
 
-	my @singlehitOrthologs;
+	my %oneToOneOrthologs;
 	opendir my $alignmentDirReader, $alignmentDir; 
 	my @CREorthologFiles = grep (/\.CREorthologs.txt/, readdir($alignmentDirReader) );
 
@@ -152,149 +154,116 @@ if(!(-e $tmpFastaFileName) || $force) {
 
 	foreach my $curCREOrth (@CREorthologFiles) {
 		my %speciesInOrth;
+		my %orthForSpecies;
+		my %orthScoreForSpecies;
 	
 		open( my $curCREOrthFile, "$alignmentDir/$curCREOrth") || die ("INTERNAL ERROR.\n");
+
+		my $referenceGene = $curCREOrth;
+		$referenceGene =~ s/.*\///;   # remove trailing directory structure
+		$referenceGene =~ s/\..*$//;  # remove the suffix
+		my $fullReferenceGeneName = $referenceGenomeSpecies . "-" . $referenceGenome . "-" . $referenceGene;
+		$oneToOneOrthologs{$curCREOrth}{$referenceGenomeSpecies} = $fullReferenceGeneName;
+
 		while(my $curLine = <$curCREOrthFile>) {
-			my ($genome, $geneName) = split /\t/, $curLine;
+			my ($genome, $geneName, $upscore, $downscore) = split /\t/, $curLine;
+#			my $orthScore = $upscore + $downscore;
+			my $orthScore = $upscore;
 			my $species = $geneName;
 			$species =~ s/-.*$//;
-			if( ($species ne $genomeToSpecies{$referenceGenome}) && ($species ~~ @speciesInReferenceFamily))  { 
+			if($species ne $referenceGenomeSpecies) {
 				$speciesInOrth{$species}++;
+				if($orthScore > $orthScoreForSpecies{$species}) {
+					$orthScoreForSpecies{$species} = $orthScore;
+					$oneToOneOrthologs{$curCREOrth}{$species} = $geneName;
+				}
 			}
 		}
 		close( $curCREOrthFile);
 
-
-		if( (keys %speciesInOrth) +1 == $numOfSpeciesInFamily) {
-			push @singlehitOrthologs, $curCREOrth;
-		} else {
-			#		print "$curCREOrth: " . ((keys %speciesInOrth) + 0) . "($numOfSpeciesInFamily)\n";  ### DEBUG OUTPUT
-			## find out the missing genomes...
+		## Only keep the genes that have orthologs in all species of the family
+		if( ((keys %speciesInOrth) +1 != $numOfSpeciesInFamily)) {
+			delete $oneToOneOrthologs{$curCREOrth};
 		}
 	}
 
-	print " Found " . (scalar @singlehitOrthologs) . "\n";
-
-	if( (scalar @singlehitOrthologs) > $maxSeq) {
-		@singlehitOrthologs = @singlehitOrthologs [ 1..$maxSeq ];
-	}
-
-	foreach my $CREOrthologsFileName (@singlehitOrthologs) {
+	print " Found " . (scalar (keys %oneToOneOrthologs)) . "\n";
 	
-		my @orthologProteins;
-		my %orthologCDSs;
-		my %orthologSpecies;
-		my $error=0;
-	
-		### Now add the reference to the database
-		my $referenceGene = $CREOrthologsFileName;
-		$referenceGene =~ s/.*\///;   # remove trailing directory structure
-		$referenceGene =~ s/\..*$//;  # remove the suffix
-		my $fullReferenceGeneName = $genomeToSpecies{$referenceGenome} . "-" . $referenceGenome . "-" . $referenceGene;
-	
-		my $refproteinSeq = $proteinSeqDB{$fullReferenceGeneName};
-		### remove protein illegal embelishment
-		$refproteinSeq =~ s/\.//g;
-		$refproteinSeq =~ s/\*//g;				
-				
-		my $refProtein = Bio::LocatableSeq->new(-seq => $refproteinSeq,
-        	                	                            -id => $genomeToSpecies{$referenceGenome} ,
-                                                        -start => 1,
-                                                       	-end => length($refproteinSeq));
-        
-        my $refCDS = Bio::LocatableSeq->new(-seq => $cdsSeqDB{$fullReferenceGeneName},
-      	                	            -id => $genomeToSpecies{$referenceGenome} ,
-        	                            -start => 1,
-                	                    -end => length($cdsSeqDB{$fullReferenceGeneName}));
-                
-        push @orthologProteins, $refProtein;
-        $orthologCDSs{ $genomeToSpecies{$referenceGenome} } =  $refCDS;
-        $orthologSpecies{ $genomeToSpecies{$referenceGenome} } =1;  ### This marks the reference genome as already processed so paralogs will not be included
-
-        open ( my $CREOrthologFile, "$alignmentDir/$CREOrthologsFileName") || die "Can't open $alignmentDir\$CREOrthologsFileName";
-	
-        while(my $curCREOrthologs = <$CREOrthologFile>) {
+	my @orthologProteins;
+	my %orthologCDSs;
+	foreach my $curCREOrtholog (keys %oneToOneOrthologs) {
 		
-        	my ($CRESpecies, $CREgenename) = split /\t/, $curCREOrthologs;
-        	if(! (defined $orthologSpecies{$CRESpecies})) {
-        		$orthologSpecies{$CRESpecies}=1;  #### Only one gene per species. Pick the best one
-        		### Make sure we have the sequences in the database
-        		if((defined $proteinSeqDB{$CREgenename}) && (defined $cdsSeqDB{$CREgenename})) {
-				
-        			my $proteinSeq = $proteinSeqDB{$CREgenename};
-        			### remove protein illegal embelishment
-        			$proteinSeq =~ s/\.//g;
-        			$proteinSeq =~ s/\*//g;				
-				
-        			my $curProtein = Bio::LocatableSeq->new(-seq => $proteinSeq,
-                        	                            -id => $CRESpecies,
-                                                        -start => 1,
-                                                       	-end => length($proteinSeq));
-      
-                    my $curCDS = Bio::LocatableSeq->new(-seq => $cdsSeqDB{$CREgenename},
-      	                	                        -id => $CRESpecies,
-        	                                        -start => 1,
-                	                                -end => length($cdsSeqDB{$CREgenename}));
-                
-                	push @orthologProteins, $curProtein;
-                	$orthologCDSs{$CRESpecies} =  $curCDS;
-			    
-                } else {
-                	print "ERROR: Cannot find gene $CREgenename.\n";
-                	$error =1;
-                }
-            }
-        }
-        close($CREOrthologFile);
-	
-        if(! $error) {
-        	print "PROGRESS: $CREOrthologsFileName...\n";
-        	my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
-        	my $proteinAlignment = $aligner->align(\@orthologProteins);
-	
-        	print ".Aligned...";
-        	my $cdsAlignment = Bio::Align::Utilities::aa_to_dna_aln($proteinAlignment, \%orthologCDSs);	
-        	print ".Translated...";
-        	$cdsAlignment = $cdsAlignment->remove_gaps();
-        	print $cdsAlignment->length() . "bp long...";
-        	if($cdsAlignment->length() >0) {
+		@orthologProteins =  ();
+		%orthologCDSs = {};
 
-        		my %fourPositionNucleotide;
-        		my @conservation = $cdsAlignment->consensus_conservation();
-        		my $consensus_sequence = $cdsAlignment->consensus_string(); 
-        		my $curPos=0;
-        		my @columnsToRemove;
-        		while($curPos < $cdsAlignment->length() ) {
+		### Build OrthologSeq DB
+		for my $curSpecies (keys %{ $oneToOneOrthologs{$curCREOrtholog} }) {
+			my $proteinSeq = $proteinSeqDB{ $oneToOneOrthologs{$curCREOrtholog}{$curSpecies} };
+			### remove protein illegal embelishment
+			$proteinSeq =~ s/\.//g;
+			$proteinSeq =~ s/\*//g;				
 
-        			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100 && $conservation[$curPos+2] < 100 && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
-        				### If perfect conservation for position 1 and 2 of the codon;
-        				push @columnsToRemove, [($curPos), ($curPos)+1];
-        				#					print "Found good codon:" . substr($consensus_sequence,$curPos, 3) . ": Identity: " . $conservation[$curPos+2] . ".\n";
-        			} else {
-        				push @columnsToRemove, [($curPos),($curPos + 2) ]
-        			}
-        			$curPos+=3;
-        		}
-        		my $just4posVar = $cdsAlignment->remove_columns(@columnsToRemove);	
-        		print "..identified " . $just4posVar->length() . " 4 var positions\n";
-        		if($just4posVar->length() >0) {
-        			foreach my $seq ($just4posVar->each_seq) {
-        				$FourVarPosSequence{ $genomeToSpecies{$seq->id()} } .= $seq->seq();
-        			}
-        		}
-        		
-        	}
-        }
-    }
+			push (@orthologProteins, Bio::LocatableSeq->new(-seq => $proteinSeq,
+        	                	                -id => $curSpecies,
+                                                -start => 1,
+                                                -end => length($proteinSeq)));
+        
+	        $orthologCDSs{ $curSpecies } = Bio::LocatableSeq->new(-seq => $cdsSeqDB{$oneToOneOrthologs{$curCREOrtholog}{$curSpecies}},
+      	                	            -id => $curSpecies,
+        	                            -start => 1,
+                	                    -end => length($cdsSeqDB{$oneToOneOrthologs{$curCREOrtholog}{$curSpecies}}));
+#			print "PROGRESS: Ortholog for $curSpecies is " . $oneToOneOrthologs{$curCREOrtholog}{$curSpecies} . "\n";
+		}
 
-    ####### Now dump fasta
-    open my $tmpFasta, ">$tmpFastaFileName";
-    foreach my $fastaSeq ( keys %FourVarPosSequence ) {
-    	print $tmpFasta ">$fastaSeq\n" . $FourVarPosSequence{$fastaSeq} . "\n";
-    }
-    close $tmpFasta;
-    print "INFO: Done prepping FASTA file.\n";
+        print "PROGRESS: $curCREOrtholog: " . $oneToOneOrthologs{$curCREOrtholog}{$referenceGenomeSpecies} . "...\n";
+        my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
+        my $proteinAlignment = $aligner->align(\@orthologProteins);
+		print "Protein alignment for $curCREOrtholog:(" . $proteinAlignment->num_sequences . "," . $proteinAlignment->length . "," . $proteinAlignment->is_flush . ")\n";
+#		foreach my $curAln ($proteinAlignment->each_seq) {
+#			print ">" . $curAln->id . "\n" . $curAln->seq . "\n";
+#		}
+       	my $cdsAlignment = Bio::Align::Utilities::aa_to_dna_aln($proteinAlignment, \%orthologCDSs);	
+		print "DNA alignment for $curCREOrtholog:(" . $cdsAlignment->num_sequences . "," . $cdsAlignment->length . "," . $cdsAlignment->is_flush . ")\n";
+#		foreach my $curAln ($cdsAlignment->each_seq) {
+#			print ">" . $curAln->id . "\n" . $curAln->seq . "\n";
+#		}
+#        	$cdsAlignment = $cdsAlignment->remove_gaps();
+       	if($cdsAlignment->length() >0) {
+       		my %fourPositionNucleotide;
+       		my @conservation = $cdsAlignment->consensus_conservation();
+       		my $consensus_sequence = $cdsAlignment->consensus_string(); 
+       		my $curPos=0;
+       		my @columnsToRemove;
+       		while($curPos < $cdsAlignment->length() ) {
+#       			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100 && $conservation[$curPos+2] < 100 && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
+      			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100  && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
+       				### If perfect conservation for position 1 and 2 of the codon;
+       				push @columnsToRemove, [($curPos), ($curPos)+1];
+#       				print "Found good codon at pos $curPos:" . substr($consensus_sequence,$curPos, 3) . ": Identity at #3: " . $conservation[$curPos+2] . ".\n";
+       			} else {
+       				push @columnsToRemove, [($curPos),($curPos + 2) ]
+       			}
+       			$curPos+=3;
+       		}
+       		my $just4posVar = $cdsAlignment->remove_columns(@columnsToRemove);	
+       		print "Identified " . $just4posVar->length() . " 4 var positions\n";
+       		if($just4posVar->length() >0) {
+       			foreach my $seq ($just4posVar->each_seq) {
+       				$FourVarPosSequence{ $seq->id() } .= $seq->seq();
+       			}
+       		}      		
+    	}
+   }
 }
+
+####### Now dump fasta
+open my $tmpFasta, ">$tmpFastaFileName";
+foreach my $fastaSeq ( keys %FourVarPosSequence ) {
+   	print $tmpFasta ">$fastaSeq\n" . $FourVarPosSequence{$fastaSeq} . "\n";
+}
+close $tmpFasta;
+print "INFO: Done prepping FASTA file.\n";
+
 
 ####### make Model
 print "INFO: START computing model.\n";
