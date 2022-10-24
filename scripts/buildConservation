@@ -53,6 +53,7 @@ my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleo
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
 
 #### CNS coverage and splitting parameters
+my $minAlignmentLengthToTestOverlap = 30; ### Alignments of less than this length will be checked to see that they significally overlap with the CNS
 my $minCNSCoverageInitial=0.15; ### The minimum coverage of the CNS to be acceptable for an initial deep alignment
 my $minCNSCoverageAfterSplit=0.8; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
 my $minCNSConservationAfterSplit = 0.2; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
@@ -1578,7 +1579,7 @@ sub MAFtoFASTA {
 
 			
 			#### Log the alignment, if it is at the right length
-			if($verbose && $alignmentLengthFilter >0 &&  $reflen < $alignmentLengthFilter*$seqLengthRef->{$reflocus}) {
+			if($verbose && $alignmentLengthFilter >0 &&  $reflen < $alignmentLengthFilter*$seqLengthRef->{$reflocus} && $reflen < $minAlignmentLengthToTestOverlap) {
 				print "PROGRESS: Rejected alignment to $reflocus because length is too short ($reflen). CNS length: " . $seqLengthRef->{$reflocus} . "\n";
 			} 
 			if($alignmentLengthFilter==0 || $reflen >= $alignmentLengthFilter*$seqLengthRef->{$reflocus} ) {
