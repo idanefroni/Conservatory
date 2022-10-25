@@ -149,7 +149,7 @@ while(my $line = <$proteinFile>) {
 		$proteinSeq = "";
 		$geneName = substr($line,1);
 		$geneName =~ s/ .*//;
-		if($geneProcessingREGEX ne "") { eval '$geneName =~ s/$referenceGeneProcessingREGEX//g;'; }
+		if($referenceGeneProcessingREGEX ne "") { eval '$geneName =~ s/$referenceGeneProcessingREGEX//g;'; }
 		$geneName = "$referenceGenomeSpecies-$referenceGenome-$geneName";
 	} else {
 		$proteinSeq .= $line;
@@ -263,7 +263,7 @@ foreach my $curRefLocus (keys %orthologTable) {
 	$cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;
 
 	### Unless its a small protein. then, no cutoff
-	if($proteinsLengths{$curRefLocus} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH) { # Unless we are processing a high sensitivity gene (small peptides, usually)
+	if($proteinsLengths{"$curRefLocus"} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH) { # Unless we are processing a high sensitivity gene (small peptides, usually)
 											 # where we have a absolute cutoff.
 		### but Make sure we are not putting out more orthologs than MAX_ORTH
 		if(scalar @allevals > $MAX_ORTH) {
