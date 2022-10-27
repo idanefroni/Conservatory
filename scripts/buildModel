@@ -22,9 +22,10 @@ $|=1;
 my @fourLetterCodons = ("CT","GT","GC","AC","TC","CC","CG","GG");
 
 my $conservatoryDir=abs_path(".");
-my $referenceGenome="";
+my $referenceGenomeList;
+
 my $referenceGenomeFamily;
-my $referenceGenomeSpecies;
+my %referenceGenomeSpecies;
 my $treeFileName;
 my $maxSeq =1000;
 my $numOfGenesUsed=0;
@@ -34,15 +35,15 @@ my $force=1;
 
 
 GetOptions ("conservatory-directory=s" => \$conservatoryDir,
-			"reference=s" => \$referenceGenome,
+			"reference=s" => \$referenceGenomeList,
 			"tree=s" => \$treeFileName,
 			"help" => \$help) or die ("Error in command line arguments\n");
 
-if($help || $referenceGenome eq "" || $treeFileName eq "") {
-   print "\n\tbuildModel --reference <ReferenceGenome> \n\t\tbuildModel accepts a family (for which alignments have already been done) and a tree file\n\t\tand produces a model file for phyloP based on non-coding sequence data.\n\n";
+if($help || $referenceGenomeList eq "" || $treeFileName eq "") {
+   print "\n\tbuildModel --reference <ReferenceGenome>,<referenceGenome> \n\t\tbuildModel accepts a list of comma-separated reference genomes from the same family (for which alignments have been done) and a tree file for the family\n\t\tand produces a model file for phyloP based on non-coding sequence data.\n\n";
    print "\t--conservatory-directory\tName of the conservatory directory. Default is current directory.\n";
-   print "\t--reference\tName of the reference genome (REQUIRED).\n";
-   print "\t--tree\t\tTree file for phyloFit (REQUIRED).\n";
+   print "\t--reference\tComma delimited list of reference genomes (At least one is REQUIRED).\n";
+   print "\t--tree\t\tFamily tree file for phyloFit (REQUIRED).\n";
    
    print "\t--help\t\tPrints this message.\n\n";
    
@@ -50,21 +51,22 @@ if($help || $referenceGenome eq "" || $treeFileName eq "") {
 }
 
 my $genomedbFileName = $conservatoryDir . "/genome_database.csv";
-my $alignmentDir ="$conservatoryDir/alignments/$referenceGenome";
-my $tmpFastaFileName = "$alignmentDir/tmp/$referenceGenome.formodel.fasta";
-
 
 die "ERROR: Cannot find file genome database file ($genomedbFileName)\n" unless -e $genomedbFileName;
 die "ERROR: Cannot find file tree filename ($treeFileName)\n" unless -e $treeFileName;
-die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e $alignmentDir && -e "$conservatoryDir/scripts");
+die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/scripts");
 
 ########## read genome database to get species list
+my @referenceGenomes = split ',', $referenceGenomeList;
+
 my %genomesInFamily;
 my %speciesInFamily;
 my %genomeToSpecies;
 my %proteinNameTranslator;
 my %geneNameTranslator;
 my %FourVarPosSequence;
+my %alignmentDirs;
+
 
 open (my $genomeDatabase, "<", $genomedbFileName);
 while((my $curgenomeline = <$genomeDatabase>)) {
@@ -79,91 +81,105 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 		$proteinNameTranslator{$curgenomeName}= $proteinProcessingRegEx;
 		$geneNameTranslator{$curgenomeName}= $geneProcessingRegEx;
 
-		if($curgenomeName eq $referenceGenome) {
-			$referenceGenomeFamily = $curgenomeFamily;
-			$referenceGenomeSpecies = $curgenomeSpecies;
+		if($curgenomeName ~~ @referenceGenomes) {
+			if($referenceGenomeFamily eq "") { 
+				$referenceGenomeFamily = $curgenomeFamily;
+			}
+			if($referenceGenomeFamily ne $curgenomeFamily) {
+				die "ERROR: Reference genomes $referenceGenomeList are from different families ($referenceGenomeFamily,$curgenomeFamily). They must be from the same family.\n";
+			}
+			$referenceGenomeSpecies{$curgenomeName} = $curgenomeSpecies;
+			$alignmentDirs{$curgenomeName} = "$conservatoryDir/alignments/$curgenomeName";
+			die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt. Cannot find alignment directory " . $alignmentDirs{$curgenomeName} . "\n" unless (-e $alignmentDirs{$curgenomeName});
 		}
 	}
 }
 close($genomeDatabase);
-die "ERROR: Cannot find family for the reference genome ($referenceGenome) in the genome database file.\n" unless ($referenceGenomeFamily ne "");
 
-print "INFO: START automatic phylogenetic model computation for $referenceGenome. Family: $referenceGenomeFamily.\n";
+my $tmpFastaFileName = "$conservatoryDir/genomes/$referenceGenomeFamily.formodel.fasta";
+
+die "ERROR: Cannot find family for the reference genomes ($referenceGenomeList) in the genome database file.\n" unless ($referenceGenomeFamily ne "");
+
+if(scalar @referenceGenomes != scalar keys %referenceGenomeSpecies) {
+	die "ERROR: Found only " . join(",", keys %referenceGenomeSpecies) . " reference genomes out of the list $referenceGenomeList.\n";
+}
+print "INFO: START automatic phylogenetic model computation for family: $referenceGenomeFamily using reference genomes:" . join(",", keys %referenceGenomeSpecies) . "\n";
+
 #### Now read the CDS and proteins files
 
-if(!(-e $tmpFastaFileName) || $force) {
-	my @speciesInReferenceFamily = keys %{ $speciesInFamily{$referenceGenomeFamily} };
-	my $numOfSpeciesInFamily = (scalar @speciesInReferenceFamily);
-	my @genomesInReferenceFamily = keys %{ $genomesInFamily{$referenceGenomeFamily} };
+my @speciesInReferenceFamily = keys %{ $speciesInFamily{$referenceGenomeFamily} };
+my $numOfSpeciesInFamily = (scalar @speciesInReferenceFamily);
+my @genomesInReferenceFamily = keys %{ $genomesInFamily{$referenceGenomeFamily} };
 
-	my $genomesDir = "$conservatoryDir/genomes/$referenceGenomeFamily";
+my $genomesDir = "$conservatoryDir/genomes/$referenceGenomeFamily";
 
-	print "START: Reading proteins and CDS sequences.\n";
-	my %proteinSeqDB;
-	my %cdsSeqDB;
+print "START: Reading proteins and CDS sequences for $referenceGenomeFamily.\n";
+my %proteinSeqDB;
+my %cdsSeqDB;
 
-
-	foreach my $curGenome (@genomesInReferenceFamily) {
-		print "PROGRESS: Reading $curGenome...";
-		my $proteinTranslatorForGenome = $proteinNameTranslator{$curGenome};
-		my $geneNameTranslatorForGenome = $geneNameTranslator{$curGenome};
+foreach my $curGenome (@genomesInReferenceFamily) {
+	print "PROGRESS: Reading $curGenome...";
+	my $proteinTranslatorForGenome = $proteinNameTranslator{$curGenome};
+	my $geneNameTranslatorForGenome = $geneNameTranslator{$curGenome};
 	
-		my $proteinSeqReader = Bio::SeqIO->new( -format => "fasta",
+	my $proteinSeqReader = Bio::SeqIO->new( -format => "fasta",
 										   -file => "$genomesDir/$curGenome.proteins.fasta");
-		my $totalProteins=0;
-		my $totalCDS=0;
-		while ( my $seq = $proteinSeqReader->next_seq() ) {
-			### Convert seq name from protein to fullgenename
-			my $locus = $seq->id();
-			if($proteinTranslatorForGenome ne "") { eval '$locus =~ s/$proteinTranslatorForGenome//g;'; }
-			$locus =~ s/ .*$//;
-			my $fullGeneName = $genomeToSpecies{$curGenome} . "-$curGenome-$locus";
-			$proteinSeqDB{$fullGeneName} = $seq->seq();
-			$totalProteins++;
-		}
-		print "$totalProteins protein sequences found...";
-
-		my $cdsSeqReader = Bio::SeqIO->new( -format => "fasta",
-							-file => "$genomesDir/$curGenome.cds.fasta");
-		while ( my $seq = $cdsSeqReader->next_seq() ) {
-			my $locus = $seq->id();
-			if($geneNameTranslatorForGenome ne "") { eval '$locus =~ s/$geneNameTranslatorForGenome//g;'; }
-			$locus =~ s/ .*$//;
-			my $fullGeneName = $genomeToSpecies{$curGenome} . "-$curGenome-$locus";
-		
-			if(defined $proteinSeqDB{$fullGeneName} && !defined $cdsSeqDB{$fullGeneName} ) {  ## Only add the CDS if we have the protein, and only one of it.
-				$cdsSeqDB{$fullGeneName} = $seq->seq();
-				$totalCDS++;
-   			
-			} else {
-				#print "ERROR: Found cds $fullGeneName with no protein for genome $curGenome.\n";
-			}
-			
-		}
-		print "$totalCDS CDS sequences found.\n";
+	my $totalProteins=0;
+	my $totalCDS=0;
+	while ( my $seq = $proteinSeqReader->next_seq() ) {
+		### Convert seq name from protein to fullgenename
+		my $locus = $seq->id();
+		if($proteinTranslatorForGenome ne "") { eval '$locus =~ s/$proteinTranslatorForGenome//g;'; }
+		$locus =~ s/ .*$//;
+		my $fullGeneName = $genomeToSpecies{$curGenome} . "-$curGenome-$locus";
+		$proteinSeqDB{$fullGeneName} = $seq->seq();
+		$totalProteins++;
 	}
+	print "$totalProteins protein sequences found...";
 
-	#### Now look for all single orthologs
-	print "PROGRESS: Searching for one-to-one orthologs...";
+	my $cdsSeqReader = Bio::SeqIO->new( -format => "fasta",
+						-file => "$genomesDir/$curGenome.cds.fasta");
+	while ( my $seq = $cdsSeqReader->next_seq() ) {
+		my $locus = $seq->id();
+		if($geneNameTranslatorForGenome ne "") { eval '$locus =~ s/$geneNameTranslatorForGenome//g;'; }
+		$locus =~ s/ .*$//;
+		my $fullGeneName = $genomeToSpecies{$curGenome} . "-$curGenome-$locus";
+		
+		if(defined $proteinSeqDB{$fullGeneName} && !defined $cdsSeqDB{$fullGeneName} ) {  ## Only add the CDS if we have the protein, and only one of it.
+			$cdsSeqDB{$fullGeneName} = $seq->seq();
+			$totalCDS++;
+  			
+		} else {
+			#print "ERROR: Found cds $fullGeneName with no protein for genome $curGenome.\n";
+		}
+			
+	}
+	print "$totalCDS CDS sequences found.\n";
+}
 
-	my %oneToOneOrthologs;
-	opendir my $alignmentDirReader, $alignmentDir; 
+#### Now look for all single orthologs
+print "PROGRESS: Searching for one-to-one orthologs...\n";
+
+my %oneToOneOrthologs;
+
+foreach my $curReferenceGenome (keys %referenceGenomeSpecies) {
+	opendir my $alignmentDirReader, $alignmentDirs{$curReferenceGenome}; 
 	my @CREorthologFiles = grep (/\.CREorthologs.txt/, readdir($alignmentDirReader) );
 
-	print " found " . scalar @CREorthologFiles . " candidates...";
+	print "PROGRESS: Reference genome $curReferenceGenome. " . scalar @CREorthologFiles . " candidates.";
 
 	foreach my $curCREOrth (@CREorthologFiles) {
 		my %speciesInOrth;
 		my %orthForSpecies;
 		my %orthScoreForSpecies;
-	
-		open( my $curCREOrthFile, "$alignmentDir/$curCREOrth") || die ("INTERNAL ERROR.\n");
+
+		open( my $curCREOrthFile, $alignmentDirs{$curReferenceGenome} . "/$curCREOrth") || die ("INTERNAL ERROR.\n");
 
 		my $referenceGene = $curCREOrth;
 		$referenceGene =~ s/.*\///;   # remove trailing directory structure
 		$referenceGene =~ s/\..*$//;  # remove the suffix
-		my $fullReferenceGeneName = $referenceGenomeSpecies . "-" . $referenceGenome . "-" . $referenceGene;
-		$oneToOneOrthologs{$curCREOrth}{$referenceGenomeSpecies} = $fullReferenceGeneName;
+		my $fullReferenceGeneName = $referenceGenomeSpecies{$curReferenceGenome} . "-" . $curReferenceGenome . "-" . $referenceGene;
+		$oneToOneOrthologs{$curReferenceGenome}{$curCREOrth}{$referenceGenomeSpecies{$curReferenceGenome} } = $fullReferenceGeneName;
 
 		while(my $curLine = <$curCREOrthFile>) {
 			my ($genome, $geneName, $upscore, $downscore) = split /\t/, $curLine;
@@ -171,11 +187,11 @@ if(!(-e $tmpFastaFileName) || $force) {
 			my $orthScore = $upscore;
 			my $species = $geneName;
 			$species =~ s/-.*$//;
-			if($species ne $referenceGenomeSpecies) {
+			if($species ne $referenceGenomeSpecies{$curReferenceGenome} ) {
 				$speciesInOrth{$species}++;
 				if($orthScore > $orthScoreForSpecies{$species}) {
 					$orthScoreForSpecies{$species} = $orthScore;
-					$oneToOneOrthologs{$curCREOrth}{$species} = $geneName;
+					$oneToOneOrthologs{$curReferenceGenome}{$curCREOrth}{$species} = $geneName;
 				}
 			}
 		}
@@ -183,78 +199,132 @@ if(!(-e $tmpFastaFileName) || $force) {
 
 		## Only keep the genes that have orthologs in all species of the family
 		if( ((keys %speciesInOrth) +1 != $numOfSpeciesInFamily)) {
-			delete $oneToOneOrthologs{$curCREOrth};
+			delete $oneToOneOrthologs{$curReferenceGenome}{$curCREOrth};
 		}
 	}
+	print "..." . (scalar (keys %{ $oneToOneOrthologs{$curReferenceGenome} } ) ) . " possible orthogroups.\n";
+}
 
-	print " Found " . (scalar (keys %oneToOneOrthologs)) . "\n";
+## Now combine the reference genome orthologs
+my @orthogroupsToKeep;
+
+if(scalar @referenceGenomes > 1) {
+	print "PROGRESS: Combining orthogroup lists for " . join(",", @referenceGenomes) . "\n";
+	foreach my $curOrthogroupToCheck (keys %{ $oneToOneOrthologs{ $referenceGenomes[0] }  }) {
+		foreach my $curReferenceGenome ( @referenceGenomes) {
+			if($curReferenceGenome ne $referenceGenomes[0]) {
+				## Find the matching orthogroup
+				my @matchingOrthogroupsPerGenome;
+				foreach my $curParallelOrthogroupToCheck (keys %{ $oneToOneOrthologs{ $curReferenceGenome} } ) {
+#					print "DEBUG: Checking $curOrthogroupToCheck ($referenceGenomes[0]):";
+#					print  " In $curReferenceGenome:" .  $oneToOneOrthologs{$curReferenceGenome}{$curParallelOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } . ". In $referenceGenomes[0] : " . $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } . "\n";
+					if($oneToOneOrthologs{$curReferenceGenome}{$curParallelOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } eq
+					   $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } ) {
+						print "Matching orthogroups: $curOrthogroupToCheck and $curParallelOrthogroupToCheck.";
+						## Check to see if all orthologs match
+						my (@orthogroupOne, @orthogroupTwo);
+						foreach my $curSp ( keys %{ $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck} } ) {
+							push @orthogroupOne, $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{$curSp};
+						}
+						foreach my $curSp ( keys %{ $oneToOneOrthologs{$curReferenceGenome}{$curParallelOrthogroupToCheck} } ) {
+							push @orthogroupTwo, $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{$curSp};
+						}
+						@orthogroupOne = sort @orthogroupOne;
+						@orthogroupTwo = sort @orthogroupTwo;
+						if( @orthogroupOne == @orthogroupTwo) {
+							my $match = 1;
+							foreach  my $curSpNum (0..(@orthogroupOne)) {
+								if($orthogroupOne[$curSpNum] ne $orthogroupTwo[$curSpNum]) {
+									$match = 0;
+#									print "DEBUG: Mismatch due to $orthogroupOne[$curSpNum] != $orthogroupTwo[$curSpNum].\n";
+								}
+							}
+							if($match) {
+								print "..orthogroups accepted.\n";
+								push @orthogroupsToKeep, $curOrthogroupToCheck;
+							} else {
+								print "..orthogroup rejected due to mismatch.\n";
+							}
+						}
+					}
+				} 
+			}
+		}
+	}
+} else {
+	@orthogroupsToKeep = keys %{ $oneToOneOrthologs{$referenceGenomes[0]}};
+}
+
+my @orthologProteins;
+my %orthologCDSs;
+foreach my $curCREOrtholog (@orthogroupsToKeep) {
+	my $skipGene=0;
 	
-	my @orthologProteins;
-	my %orthologCDSs;
-	foreach my $curCREOrtholog (keys %oneToOneOrthologs) {
-		
-		@orthologProteins =  ();
-		%orthologCDSs = {};
+	@orthologProteins =  ();
+	%orthologCDSs = {};
 
-		### Build OrthologSeq DB
-		for my $curSpecies (keys %{ $oneToOneOrthologs{$curCREOrtholog} }) {
-			my $proteinSeq = $proteinSeqDB{ $oneToOneOrthologs{$curCREOrtholog}{$curSpecies} };
-			### remove protein illegal embelishment
-			$proteinSeq =~ s/\.//g;
-			$proteinSeq =~ s/\*//g;				
+	### Build OrthologSeq DB
+	for my $curSpecies (keys %{ $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog} }) {
+		my $proteinSeq = $proteinSeqDB{ $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies} };
+		my $cdsSeq = $cdsSeqDB{$oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies}};
+		### remove protein illegal embelishment
+		$proteinSeq =~ s/\.$//;
+		$proteinSeq =~ s/\*$//;
+		## remove the stop from the CDS, if found
+		## Trim the CDS to triplets
+		$cdsSeq = substr($cdsSeq,0, length($cdsSeq) - (length($cdsSeq) % 3));
+		$cdsSeq =~ s/(TGA|TAA|TAG)$//;
 
-			push (@orthologProteins, Bio::LocatableSeq->new(-seq => $proteinSeq,
+		push (@orthologProteins, Bio::LocatableSeq->new(-seq => $proteinSeq,
         	                	                -id => $curSpecies,
                                                 -start => 1,
                                                 -end => length($proteinSeq)));
         
-	        $orthologCDSs{ $curSpecies } = Bio::LocatableSeq->new(-seq => $cdsSeqDB{$oneToOneOrthologs{$curCREOrtholog}{$curSpecies}},
+        $orthologCDSs{ $curSpecies } = Bio::LocatableSeq->new(-seq => $cdsSeq,
       	                	            -id => $curSpecies,
         	                            -start => 1,
-                	                    -end => length($cdsSeqDB{$oneToOneOrthologs{$curCREOrtholog}{$curSpecies}}));
-#			print "PROGRESS: Ortholog for $curSpecies is " . $oneToOneOrthologs{$curCREOrtholog}{$curSpecies} . "\n";
-		}
+                	                    -end => length($cdsSeq) );
 
-        print "PROGRESS: $curCREOrtholog: " . $oneToOneOrthologs{$curCREOrtholog}{$referenceGenomeSpecies} . "...\n";
-        my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
-        my $proteinAlignment = $aligner->align(\@orthologProteins);
-		print "Protein alignment for $curCREOrtholog:(" . $proteinAlignment->num_sequences . "," . $proteinAlignment->length . "," . $proteinAlignment->is_flush . ")\n";
-#		foreach my $curAln ($proteinAlignment->each_seq) {
-#			print ">" . $curAln->id . "\n" . $curAln->seq . "\n";
-#		}
-       	my $cdsAlignment = Bio::Align::Utilities::aa_to_dna_aln($proteinAlignment, \%orthologCDSs);	
-		print "DNA alignment for $curCREOrtholog:(" . $cdsAlignment->num_sequences . "," . $cdsAlignment->length . "," . $cdsAlignment->is_flush . ")\n";
-#		foreach my $curAln ($cdsAlignment->each_seq) {
-#			print ">" . $curAln->id . "\n" . $curAln->seq . "\n";
-#		}
-#        	$cdsAlignment = $cdsAlignment->remove_gaps();
-       	if($cdsAlignment->length() >0) {
-       		my %fourPositionNucleotide;
-       		my @conservation = $cdsAlignment->consensus_conservation();
-       		my $consensus_sequence = $cdsAlignment->consensus_string(); 
-       		my $curPos=0;
+		if(length($cdsSeq) != length($proteinSeq)*3) {
+			print "WARNING: BAD CDS data for " . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$referenceGenomeSpecies{$referenceGenomes[0]} } . ":" . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies} . ". (" . length($proteinSeq)*3 . ":" . length($cdsSeq). "). Skipping gene. \n";
+			$skipGene = 1;
+		}
+	}
+
+	if(!$skipGene) {
+       	print "PROGRESS: $curCREOrtholog: " . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$referenceGenomeSpecies{$referenceGenomes[0]} } . "...\n";
+       	my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
+       	my $proteinAlignment = $aligner->align(\@orthologProteins);
+		print "Alignment for $curCREOrtholog: Protein (" . $proteinAlignment->num_sequences . "," . $proteinAlignment->length . "," . $proteinAlignment->is_flush . ")";
+   		my $cdsAlignment = Bio::Align::Utilities::aa_to_dna_aln($proteinAlignment, \%orthologCDSs);	
+		print ";DNA (" . $cdsAlignment->num_sequences . "," . $cdsAlignment->length . "," . $cdsAlignment->is_flush . ").\n";
+
+		if($cdsAlignment->length() >0) {
+	    	my %fourPositionNucleotide;
+      		my @conservation = $cdsAlignment->consensus_conservation();
+      		my $consensus_sequence = $cdsAlignment->consensus_string(); 
+      		my $curPos=0;
        		my @columnsToRemove;
-       		while($curPos < $cdsAlignment->length() ) {
-#       			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100 && $conservation[$curPos+2] < 100 && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
+      		while($curPos < $cdsAlignment->length() ) {
       			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100  && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
-       				### If perfect conservation for position 1 and 2 of the codon;
-       				push @columnsToRemove, [($curPos), ($curPos)+1];
-#       				print "Found good codon at pos $curPos:" . substr($consensus_sequence,$curPos, 3) . ": Identity at #3: " . $conservation[$curPos+2] . ".\n";
-       			} else {
+   					### If perfect conservation for position 1 and 2 of the codon;
+   					push @columnsToRemove, [($curPos), ($curPos)+1];
+   				} else {
        				push @columnsToRemove, [($curPos),($curPos + 2) ]
-       			}
-       			$curPos+=3;
-       		}
-       		my $just4posVar = $cdsAlignment->remove_columns(@columnsToRemove);	
-       		print "Identified " . $just4posVar->length() . " 4 var positions\n";
-       		if($just4posVar->length() >0) {
-       			foreach my $seq ($just4posVar->each_seq) {
-       				$FourVarPosSequence{ $seq->id() } .= $seq->seq();
-       			}
-       		}      		
-    	}
-   }
+   				}
+   				$curPos+=3;
+   			}
+   			my $just4posVar = $cdsAlignment->remove_columns(@columnsToRemove);	
+   			print "Identified " . $just4posVar->length() . " 4 var positions\n";
+   			if($just4posVar->length() >0) {
+    			foreach my $seq ($just4posVar->each_seq) {
+   					$FourVarPosSequence{ $seq->id() } .= $seq->seq();
+   				}
+   			} 
+ 		}
+	}
 }
+
 
 ####### Now dump fasta
 open my $tmpFasta, ">$tmpFastaFileName";
@@ -264,10 +334,9 @@ foreach my $fastaSeq ( keys %FourVarPosSequence ) {
 close $tmpFasta;
 print "INFO: Done prepping FASTA file.\n";
 
-
 ####### make Model
 print "INFO: START computing model.\n";
-system("phyloFit --tree $treeFileName --subst-mod HKY85+GAP --nrates=4 --EM --precision MED --out-root $referenceGenome $tmpFastaFileName");
+system("phyloFit --tree $treeFileName --subst-mod HKY85+GAP --nrates=4 --EM --precision MED --out-root $referenceGenomeFamily $tmpFastaFileName");
 #system("phyloFit --tree $treeFileName --nrates 4 --subst-mod HKY85+GAP --out-root $referenceGenome $tmpFastaFileName");
 #system("phyloFit --tree $treeFileName --nrates 4 --out-root $referenceGenome $tmpFastaFileName");
 print "INFO: END computing model.\n";
