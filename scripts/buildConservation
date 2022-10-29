@@ -47,7 +47,7 @@ my $minIdentityGlobal= 70;
 my $minQuality = 1000;
 
 ### PhyloP parameters and CNS filtering parameters
-my $minPhyloPscore=1.7;
+my $minPhyloPscore=2;
 my $minCNSLength=8;
 my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 						  # To make sense, must greater than the filter (to bridge filtered gaps)
@@ -55,8 +55,9 @@ my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleo
 #### CNS coverage and splitting parameters
 my $minAlignmentLengthToTestOverlap = 30; ### Alignments of less than this length will be checked to see that they significally overlap with the CNS
 my $minCNSCoverageInitial=0.15; ### The minimum coverage of the CNS to be acceptable for an initial deep alignment
-my $minCNSCoverageAfterSplit=0.8; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
+my $minCNSCoverageAfterSplit=0.7; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
 my $minCNSConservationAfterSplit = 0.2; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
+my $standardDeviationsToSplit = 2; ## The number of standard deviation in number of aligned species to trigger a CNS split;
 
 my $minCNSCoverageFinal=0.7; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
 
@@ -164,8 +165,7 @@ my $genomedbFile = $conservatoryDir . "/genome_database.csv";
 my $outputDir = "$conservatoryDir/alignments/$referenceGenome/";
 my $outputCNSDir = "$conservatoryDir/CNS/$referenceGenome/";
 my $tmpDir = "$conservatoryDir/alignments/$referenceGenome/tmp";
-my $treeFileName = "$conservatoryDir/genomes/$referenceGenome.tree";
-my $modelFileName = "$conservatoryDir/genomes/$referenceGenome.mod";
+
 my $genomeDir ="$conservatoryDir/genomes";
 my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
 my $finalFASTADownFileName = "$outputDir/$locus.down.fasta";
@@ -245,12 +245,14 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 seek ($genomeDatabase,0,SEEK_SET);
 die "ERROR: Cannot find reference genome $referenceGenome in the genome database file.\n" unless $referenceGenomeFamily ne "";
 
+### Setup model and tree
+my $treeFileName = "$conservatoryDir/genomes/$referenceGenomeFamily.tree";
+my $modelFileName = "$conservatoryDir/genomes/$referenceGenomeFamily.mod";
+
 if(!$justFamilyAlignment) { ## Check to see if we have a tree, if we need
 	die "ERROR: Cannot find tree file $treeFileName for reference genome $referenceGenome.\n" unless (-e $treeFileName);
 	die "ERROR: Cannot find model file $modelFileName for reference genome $referenceGenome.\n" unless (-e $modelFileName);
 }
-
-
 ### Read tree to memory
 my $treeReader = new Bio::TreeIO(-file   => $treeFileName,
                             -format => "newick");
@@ -684,7 +686,7 @@ while(my $CNSLine = <$CNSFile>) {
 				
 		#### Now invoke FASTML to reconstruct ancestral sequence
 		my $ancesteralCNSFileName = "$tmpDir/$locus.$cnsRelStart.ancesteral.fasta";
-		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -qf -b -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
+		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -g -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
 		if(!$keep_tmp) { unlink("$tmpCNSFastaFileName"); }
 		unlink("log.txt");
 		if($verbose) {
@@ -1866,8 +1868,9 @@ sub getCNSbreakpoints {
 	foreach my $pos (0..(scalar @CNSdelta)) {
 		### split CNS if larger than minCNSlength and high variability. But don't split CNS if its too short, has too many species
 		## or if the split point is not well supported
-		if((abs($CNSdelta[$pos]) > $deltaSD *3) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNSLength) &&
-		 ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit && $CNSCoverage[$pos+1]< $maxSpeciesToInitiateCNSSplit)) {
+		if((abs($CNSdelta[$pos]) > $deltaSD * $standardDeviationsToSplit) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNSLength) &&
+#		 ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit && $CNSCoverage[$pos+1]< $maxSpeciesToInitiateCNSSplit)) {
+		 ($pos - $lastBreakpointPos > $minCNSLength ) ) {
 			if($verbose) { print "PROGRESS: Splitting CNS at $pos (" . abs($CNSdelta[$pos]) . "," . $CNSCoverage[$pos] . ").\n"; }
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
