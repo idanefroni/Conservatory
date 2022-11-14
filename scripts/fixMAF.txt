@@ -1,0 +1,73 @@
+#!/usr/bin/perl
+
+use POSIX;
+use strict;
+
+
+########### This script order the MAF file so the reference sequence is always the first in each block
+#### It also does it best to filter out sporious alignments
+
+my $reference = $ARGV[0];
+my $inblock=0;
+my $blockLineCounter=0;
+my $blockReferenceSp= -1;
+my @blockLines;
+my $refBlockLength=0;
+my $minAlignmentBlock=1;
+my $minAlignmentRelative=0.2;
+my $minAlignmentLength=5;
+my $endoffile = 0;
+my $blockScore=0;
+
+while(!$endoffile) {
+	my $line = <STDIN>;
+	chomp($line);
+	if( eof(STDIN)) { $endoffile=1; print "\n"; };
+	if(substr($line,0,1) eq "a" || $endoffile) {
+		if($inblock) {  ## DUMP BLOCK AND START a new one
+			
+			### First, see if we have enough alignments in the block
+			my $alignmentSpCounter=0;
+			for(my $i =0; $i< $blockLineCounter; $i++) {
+				my @mafLine = split ' ',$blockLines[$i];
+				my $alignmentLength = $mafLine[3];
+				if($refBlockLength >0 ) {
+					if(($alignmentLength > $minAlignmentBlock) && (($alignmentLength / $refBlockLength) > $minAlignmentRelative)) {
+						$alignmentSpCounter++;
+					}
+				}
+			}
+			
+			if($alignmentSpCounter >= $minAlignmentBlock && $blockReferenceSp > -1) { 
+				print $blockLines[0] . "\n";
+				if($blockReferenceSp != 0) { print $blockLines[$blockReferenceSp] . "\n"; }
+				for(my $i =1; $i < $blockLineCounter; $i++) {
+					if($i!=$blockReferenceSp) {
+						my @mafLine = split ' ',$blockLines[$i];
+						my $alignmentLength = $mafLine[3];
+						if(($alignmentLength > $minAlignmentLength) && (($alignmentLength / $refBlockLength) > $minAlignmentRelative)) {
+							print $blockLines[$i] ."\n";
+						}
+					}
+				}
+			}
+			$blockLineCounter=0;
+			$blockReferenceSp= -1;
+			$inblock=1;
+			$blockLines[$blockLineCounter++] = $line;
+
+		} else {
+			$inblock=1;
+			$blockLines[$blockLineCounter++] = $line;
+		}
+	} elsif(substr($line,0,1) eq "s") {
+		if($line =~ /$reference/) {
+			my @mafLine = split ' ',$line;
+			$refBlockLength = $mafLine[3];
+			$blockReferenceSp = $blockLineCounter;
+		}
+		$blockLines[$blockLineCounter++] = $line;
+	} else {
+		print $line ."\n";
+	}
+}
