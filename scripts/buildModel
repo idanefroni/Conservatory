@@ -27,13 +27,11 @@ my $referenceGenomeList;
 my $referenceGenomeFamily;
 my %referenceGenomeSpecies;
 my $treeFileName;
-my $maxOrthogroups =1000;
+my $minInformativeBases =10000;
 my $numOfGenesUsed=0;
 my $help=0;
 
 my $keepTmp=0;
-
-
 
 GetOptions ("conservatory-directory=s" => \$conservatoryDir,
 			"reference=s" => \$referenceGenomeList,
@@ -135,8 +133,13 @@ foreach my $curGenome (@genomesInReferenceFamily) {
 		if($proteinTranslatorForGenome ne "") { eval '$locus =~ s/$proteinTranslatorForGenome//g;'; }
 		$locus =~ s/ .*$//;
 		my $fullGeneName = $genomeToSpecies{$curGenome} . "-$curGenome-$locus";
-		if(length($seq->seq()) > length($proteinSeqDB{$fullGeneName}) ) {  ##If more than one sequence (spliceform?) take longest one
-			$proteinSeqDB{$fullGeneName} = $seq->seq();
+		### remove protein illegal embelishment
+		my $proteinSeq = uc($seq->seq());
+		$proteinSeq =~ s/\.$//;
+		$proteinSeq =~ s/\*$//;
+
+		if(length($proteinSeq) > length($proteinSeqDB{$fullGeneName}) ) {  ##If more than one sequence (spliceform?) take longest one
+			$proteinSeqDB{$fullGeneName} = $proteinSeq;
 		}
 		$totalProteins++;
 	}
@@ -149,16 +152,18 @@ foreach my $curGenome (@genomesInReferenceFamily) {
 		if($geneNameTranslatorForGenome ne "") { eval '$locus =~ s/$geneNameTranslatorForGenome//g;'; }
 		$locus =~ s/ .*$//;
 		my $fullGeneName = $genomeToSpecies{$curGenome} . "-$curGenome-$locus";
-		
-		if(defined $proteinSeqDB{$fullGeneName}) {  ## Only add the CDS if we have the protein, and only the longest one (unless we find a perfect match).
-			if(length($seq->seq()) > length($cdsSeqDB{$fullGeneName}) && length($cdsSeqDB{$fullGeneName}) != length($proteinSeqDB{$fullGeneName})*3) {
-				$cdsSeqDB{$fullGeneName} = $seq->seq();
+		## remove the stop from the CDS, if found
+		## Trim the CDS to triplets
+		my $cdsSeq = uc($seq->seq());
+		$cdsSeq = substr($cdsSeq,0, length($cdsSeq) - (length($cdsSeq) % 3));
+		$cdsSeq =~ s/(TGA|TAA|TAG)$//;
+
+#		if(defined $proteinSeqDB{$fullGeneName} || ) {  ## Only add the CDS if we have the protein, and only the longest one (unless we find a perfect match).
+#			if(length($seq->seq()) > length($cdsSeqDB{$fullGeneName}) && length($cdsSeqDB{$fullGeneName}) != length($proteinSeqDB{$fullGeneName})*3) {
+		if(length($cdsSeq) == length($proteinSeqDB{$fullGeneName})*3) {
+				$cdsSeqDB{$fullGeneName} = $cdsSeq;
 				$totalCDS++;
-			}
-		} else {
-			#print "ERROR: Found cds $fullGeneName with no protein for genome $curGenome.\n";
-		}
-			
+		}		
 	}
 	print "$totalCDS CDS sequences found.\n";
 }
@@ -175,9 +180,9 @@ foreach my $curReferenceGenome (keys %referenceGenomeSpecies) {
 	print "PROGRESS: Reference genome $curReferenceGenome. " . scalar @CREorthologFiles . " candidates.";
 
 	foreach my $curCREOrth (@CREorthologFiles) {
-		my %speciesInOrth;
-		my %orthForSpecies;
-		my %orthScoreForSpecies;
+		my %speciesInOrth = {};
+		my %orthForSpecies ={};
+		my %orthScoreForSpecies={};
 
 		open( my $curCREOrthFile, $alignmentDirs{$curReferenceGenome} . "/$curCREOrth") || die ("INTERNAL ERROR.\n");
 
@@ -185,8 +190,8 @@ foreach my $curReferenceGenome (keys %referenceGenomeSpecies) {
 		$referenceGene =~ s/.*\///;   # remove trailing directory structure
 		$referenceGene =~ s/\..*$//;  # remove the suffix
 		my $fullReferenceGeneName = $referenceGenomeSpecies{$curReferenceGenome} . "-" . $curReferenceGenome . "-" . $referenceGene;
+
 		$oneToOneOrthologs{$curReferenceGenome}{$curCREOrth}{$referenceGenomeSpecies{$curReferenceGenome} } = $fullReferenceGeneName;
-		$speciesInOrth{ $referenceGenomeSpecies{$curReferenceGenome} }=1;
 
 		while(my $curLine = <$curCREOrthFile>) {
 			my ($genome, $geneName, $upscore, $downscore) = split /\t/, $curLine;
@@ -194,8 +199,7 @@ foreach my $curReferenceGenome (keys %referenceGenomeSpecies) {
 			my $orthScore = $upscore;
 			my $species = $geneName;
 			$species =~ s/-.*$//;
-			if($species ne $referenceGenomeSpecies{$curReferenceGenome} ) {
-				$speciesInOrth{$species}++;
+			if($species ne $referenceGenomeSpecies{$curReferenceGenome} && defined $cdsSeqDB{$geneName} && defined $proteinSeqDB{$geneName}) {
 				if($orthScore > $orthScoreForSpecies{$species}) {
 					$orthScoreForSpecies{$species} = $orthScore;
 					$oneToOneOrthologs{$curReferenceGenome}{$curCREOrth}{$species} = $geneName;
@@ -203,10 +207,9 @@ foreach my $curReferenceGenome (keys %referenceGenomeSpecies) {
 			}
 		}
 		close( $curCREOrthFile);
-#		print "Found $curCREOrthFile: " . scalar (keys %speciesInOrth) . " species: " . join(",", sort keys %speciesInOrth) . "\n";
-		## Only keep the genes that have orthologs in all species of the family
-		if( ( (scalar (keys %speciesInOrth)) != $numOfSpeciesInFamily)) {
 
+		## Only keep the genes that have orthologs in all species of the family
+		if( ( (scalar (keys %{ $oneToOneOrthologs{$curReferenceGenome}{$curCREOrth} })) != $numOfSpeciesInFamily)) {
 			delete $oneToOneOrthologs{$curReferenceGenome}{$curCREOrth};
 		}
 	}
@@ -228,7 +231,7 @@ if(scalar @referenceGenomes > 1) {
 #					print  " In $curReferenceGenome:" .  $oneToOneOrthologs{$curReferenceGenome}{$curParallelOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } . ". In $referenceGenomes[0] : " . $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } . "\n";
 					if($oneToOneOrthologs{$curReferenceGenome}{$curParallelOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } eq
 					   $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } ) {
-						print "Matching orthogroups: $curOrthogroupToCheck and $curParallelOrthogroupToCheck.";
+#						print "Matching orthogroups: $curOrthogroupToCheck and $curParallelOrthogroupToCheck.";
 						## Check to see if all orthologs match
 						my (@orthogroupOne, @orthogroupTwo);
 						foreach my $curSp ( keys %{ $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck} } ) {
@@ -248,13 +251,13 @@ if(scalar @referenceGenomes > 1) {
 								}
 							}
 							if($match) {
-								print "..orthogroups accepted.\n";
+#								print "..orthogroups accepted.\n";
 								push @orthogroupsToKeep, $curOrthogroupToCheck;
 							} else {
-								print "..orthogroup rejected due to mismatch in ortholog identity.\n";
+#								print "..orthogroup rejected due to mismatch in ortholog identity.\n";
 							}
 						} else {
-							print "..orthogroup rejected due to mismatch in ortholog numbber.\n";
+#							print "..orthogroup rejected due to mismatch in ortholog numbber.\n";
 						}
 					}
 				} 
@@ -265,12 +268,11 @@ if(scalar @referenceGenomes > 1) {
 	@orthogroupsToKeep = keys %{ $oneToOneOrthologs{$referenceGenomes[0]}};
 }
 
-if(scalar @orthogroupsToKeep > $maxOrthogroups) {
-	@orthogroupsToKeep = @orthogroupsToKeep[0..$maxOrthogroups];
-}
-
 my @orthologProteins;
 my %orthologCDSs;
+my $orthologCount=1;
+my $informativeBaseCount;
+
 foreach my $curCREOrtholog (@orthogroupsToKeep) {
 	my $skipGene=0;
 	
@@ -280,15 +282,7 @@ foreach my $curCREOrtholog (@orthogroupsToKeep) {
 	### Build OrthologSeq DB
 	for my $curSpecies (keys %{ $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog} }) {
 		my $proteinSeq = $proteinSeqDB{ $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies} };
-		my $cdsSeq = uc($cdsSeqDB{$oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies}});
-
-		### remove protein illegal embelishment
-		$proteinSeq =~ s/\.$//;
-		$proteinSeq =~ s/\*$//;
-		## remove the stop from the CDS, if found
-		## Trim the CDS to triplets
-		$cdsSeq = substr($cdsSeq,0, length($cdsSeq) - (length($cdsSeq) % 3));
-		$cdsSeq =~ s/(TGA|TAA|TAG)$//;
+		my $cdsSeq = $cdsSeqDB{$oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies}};
 
 		push (@orthologProteins, Bio::LocatableSeq->new(-seq => $proteinSeq,
         	                	                -id => $curSpecies,
@@ -301,18 +295,18 @@ foreach my $curCREOrtholog (@orthogroupsToKeep) {
                 	                    -end => length($cdsSeq) );
 
 		if(length($cdsSeq) != length($proteinSeq)*3) {
-			print "WARNING: BAD CDS data for " . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$referenceGenomeSpecies{$referenceGenomes[0]} } . ":" . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies} . ". (" . length($proteinSeq)*3 . ":" . length($cdsSeq). "). Skipping gene. \n";
+			print "WARNING: Bad CDS data for " . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$referenceGenomeSpecies{$referenceGenomes[0]} } . ":" . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$curSpecies} . ". (" . length($proteinSeq)*3 . ":" . length($cdsSeq). "). Skipping gene. \n";
 			$skipGene = 1;
 		}
 	}
 
 	if(!$skipGene) {
-       	print "PROGRESS: $curCREOrtholog: " . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$referenceGenomeSpecies{$referenceGenomes[0]} } . ". ";
+       	print "PROGRESS (" . $orthologCount++ . "): $curCREOrtholog: " . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$referenceGenomeSpecies{$referenceGenomes[0]} } . ". ";
        	my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
        	my $proteinAlignment = $aligner->align(\@orthologProteins);
-		print "Alignment: Protein (" . $proteinAlignment->num_sequences . "," . $proteinAlignment->length . "," . $proteinAlignment->is_flush . ")";
+		print "Alignment: Protein (" . $proteinAlignment->length . "," . $proteinAlignment->num_sequences . ")";
    		my $cdsAlignment = Bio::Align::Utilities::aa_to_dna_aln($proteinAlignment, \%orthologCDSs);	
-		print ";DNA (" . $cdsAlignment->num_sequences . "," . $cdsAlignment->length . "," . $cdsAlignment->is_flush . "). ";
+		print ";DNA (" .  $cdsAlignment->length . "," . $cdsAlignment->num_sequences . "). ";
 
 		if($cdsAlignment->length() >0) {
 	    	my %fourPositionNucleotide;
@@ -320,9 +314,13 @@ foreach my $curCREOrtholog (@orthogroupsToKeep) {
       		my $consensus_sequence = $cdsAlignment->consensus_string(); 
       		my $curPos=0;
        		my @columnsToRemove;
+			my $informativeBaseCountInOrthogroup;
+
       		while($curPos < $cdsAlignment->length() ) {
       			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100  && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
+#      			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100  && $conservation[$curPos+2] <100 && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
    					### If perfect conservation for position 1 and 2 of the codon;
+					if($conservation[$curPos+2] < 100) { $informativeBaseCount++; $informativeBaseCountInOrthogroup++; }
    					push @columnsToRemove, [($curPos), ($curPos +1) ];
    				} else {
        				push @columnsToRemove, [($curPos),($curPos + 2) ]
@@ -330,13 +328,17 @@ foreach my $curCREOrtholog (@orthogroupsToKeep) {
    				$curPos+=3;
    			}
    			my $just4posVar = $cdsAlignment->remove_columns(@columnsToRemove);	
-   			print "Got " . $just4posVar->length() . " 3rd position bases.\n";
-   			if($just4posVar->length() >0 && $just4posVar->num_sequences == $numOfSpeciesInFamily) {
+   			print "Filter (" . $just4posVar->length() . "," . $just4posVar->num_sequences . "). ";
+   			if($just4posVar->length() >0 ) {
+				print "4-Fold variants (" . $just4posVar->length() . ",$informativeBaseCountInOrthogroup).\n";
     			foreach my $seq ($just4posVar->each_seq) {
    					$FourVarPosSequence{ $seq->id() } .= $seq->seq();
    				}
-   			} 
+   			} else { print "\n"; }
  		}
+	}
+	if($informativeBaseCount > $minInformativeBases) {
+		last;
 	}
 }
 
@@ -351,9 +353,8 @@ print "INFO: Done prepping FASTA file.\n";
 
 ####### make Model
 print "INFO: START computing model.\n";
-system("phyloFit --tree $treeFileName --subst-mod HKY85+GAP --nrates=4 --EM --precision MED --out-root $referenceGenomeFamily $tmpFastaFileName");
+system("phyloFit --tree $treeFileName --subst-mod REV --out-root $referenceGenomeFamily $tmpFastaFileName");
 #system("phyloFit --tree $treeFileName --nrates 4 --subst-mod HKY85+GAP --out-root $referenceGenome $tmpFastaFileName");
-#system("phyloFit --tree $treeFileName --nrates 4 --out-root $referenceGenome $tmpFastaFileName");
 print "INFO: END computing model.\n";
 if(!$keepTmp) { unlink($tmpFastaFileName); }
 

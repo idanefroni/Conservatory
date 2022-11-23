@@ -475,7 +475,7 @@ if($justFamilyAlignment) {
 
 if (! -e $outputCNSDir) { mkdir($outputCNSDir); }
 
-if($verbose) { print "PROGRESS: Begin family conservation analysis for $locus. Minimum phyloP score: $minPhyloPscore. \n"; }
+if($verbose) { print "PROGRESS: Begin family conservation analysis for $locus. Model file: $modelFileName. Minimum phyloP score: $minPhyloPscore. \n"; }
 
 my $coordinateTranslateAwkUp;
 my $coordinateTranslateStrUp;
@@ -686,7 +686,8 @@ while(my $CNSLine = <$CNSFile>) {
 				
 		#### Now invoke FASTML to reconstruct ancestral sequence
 		my $ancesteralCNSFileName = "$tmpDir/$locus.$cnsRelStart.ancesteral.fasta";
-		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -g -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
+#		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -g -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
+		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
 		if(!$keep_tmp) { unlink("$tmpCNSFastaFileName"); }
 		unlink("log.txt");
 		if($verbose) {
