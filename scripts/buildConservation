@@ -41,6 +41,9 @@ my $atRichRegionFilterLength = 10;
 my $dimerPolymerFilterLength = 5;
 my $filterCharacter = 'X';
 
+my $alignmentSeqOverlapToMerge = 0.8; # In case we have multiple alignments from a single promoter to the same region in the reference genome, we will filter them
+									# This parameter defines the minimal overlap to consider two alignments.
+									
 ##### Alignment parameters
 my $minIdentityFamily= 70;
 my $minIdentityGlobal= 70;
@@ -49,15 +52,17 @@ my $minQuality = 1000;
 ### PhyloP parameters and CNS filtering parameters
 my $minPhyloPscore=2;
 my $minCNSLength=8;
-my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
-						  # To make sense, must greater than the filter (to bridge filtered gaps)
+#my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
+#my $CNSMergeLength=10;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
+my $CNSMergeLength=5;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
+
 
 #### CNS coverage and splitting parameters
 my $minAlignmentLengthToTestOverlap = 30; ### Alignments of less than this length will be checked to see that they significally overlap with the CNS
-my $minCNSCoverageInitial=0.15; ### The minimum coverage of the CNS to be acceptable for an initial deep alignment
+my $minCNSCoverageInitial=0.2; ### The minimum coverage of the CNS to be acceptable for an initial deep alignment
 my $minCNSCoverageAfterSplit=0.7; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
 my $minCNSConservationAfterSplit = 0.2; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
-my $standardDeviationsToSplit = 2; ## The number of standard deviation in number of aligned species to trigger a CNS split;
+my $standardDeviationsToSplit = 2; ## The number of standard deviation in number of aligned species to trigger a CNS split
 
 my $minCNSCoverageFinal=0.7; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
 
@@ -1052,6 +1057,10 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } = [];
 					}
 
+#					if($verbose) {
+#						print "DEBUG: Reassign " . $curHit->{'TargetSpecies'} . " (" . $curHit->{'ReferenceRelativePosition'} . "," . $curHit->{'Length'} . ") to $newSubCNSName (" . $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} . "," .  $cnsReferenceLength{$newSubCNSName} . ":";
+#						print $curHit->{'TargetSequence'} . " to " . substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'} ),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName})) . "\n";
+#					}
 					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } }, {
 							"ReferenceLocus" => $newSubCNSName,
 							"ReferenceRelativePosition" => max( 0, $curHit->{'ReferenceRelativePosition'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
@@ -1059,7 +1068,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 							"Length" => min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName}),
 							"TargetSpecies" => $curHit->{'TargetSpecies'},
 							"TargetLocus" => $curHit->{'TargetLocus'},
-							"TargetSequence" => $curHit->{'TargetSequence'},
+							"TargetSequence" => substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'}),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName})),
 							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} }; 
 					$numberOfHitsReassigned++;
 				}
@@ -1080,8 +1089,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 				delete $CNSforLocus{$newSubCNSName};
 				delete $mapAlignmentDeepCNS{$newSubCNSName};
 				delete $cnsReferenceLength{$newSubCNSName};
-			}
-			
+			}			
 		}
 		### Finally, delete the original CNS
 		delete $mapAlignmentDeepCNS{$curCNS};
@@ -1201,12 +1209,14 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}="Level" . ($CLASSIFICATION_CLASSES_NUM-$curLevel);
   	  }
   }
-  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = $numberOfDeepSpecies + $CNSforLocus{$curCNS}{'NumberOfFamilySpecies'} ;
+
+  ### And recount the number of species
+  my @newSpeciesCount = keys %{ $mapAlignmentDeepCNS{$curCNS} };
+  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = scalar @newSpeciesCount;
 }
   
 if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writing output files...\n";	}
  
-
 ###########################################################
 #### Now we are done. Export CNS table and position maps  
   
@@ -1218,7 +1228,6 @@ foreach my $curCNS (keys %CNSforLocus) {
   	print $finalMapFile "$curCNS,$referenceGenomeSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},0," . ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'}) . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
 } 
 close($finalCNSFile);
-
  
 ### Then the deep CNS alignments
 foreach my $curCNS (keys %CNSforLocus) {
@@ -1539,11 +1548,46 @@ sub MAFtoFASTA {
 	my $refstart = -1;
 	my $reflen;
 	my @insertions;
+	my @cleanAlignments;
 
 	my $maffile = Bio::AlignIO->new(-file => $mafFileName,
 					-format => "maf") || die ("");
 
-	while(my $aln = $maffile->next_aln) {
+
+	# First clean up the MAF file. If we have multiple alignments to the same place, pick just the best one
+	my $overlappingSource;
+	my $debug;
+	while(my $curAln = $maffile->next_aln) {
+		#check to see if we overlap something
+		my $source = $curAln->get_seq_by_pos(1);
+		my $target = $curAln->get_seq_by_pos(2);
+
+		if($target->id() eq "Stuberosum-Stuberosum-PGSC0003DMT400014572") { $debug=1; } else { $debug=0; }
+	
+		$overlappingSource=0;
+		for my $curAlignmentNum (0..(@cleanAlignments-1)) {
+			my $scannedAln = $cleanAlignments[$curAlignmentNum];
+			my $scanSource = $scannedAln->get_seq_by_pos(1);
+			my $scanTarget = $scannedAln->get_seq_by_pos(2);
+#			if($debug) { print "DEBUG: Testing overlap for " . $source->id . " and " . $target->id . " at positions (" . $source->start . ";" . $source->end . "," . $scanSource->start . ";" . $scanSource->end . ") and overlap of " . overlap($scanSource->start, $scanSource->end, $source->start, $source->end) . "\n"; }
+			if(($target->id() eq $scanTarget->id()) && 
+			( overlap($scanSource->start, $scanSource->end, $source->start, $source->end) > $alignmentSeqOverlapToMerge || overlap($source->start, $source->end, $scanSource->start, $scanSource->end) > $alignmentSeqOverlapToMerge ) ) {
+				## If the hits are not coming from the same region, pick the best one
+#				if($debug) { print "Found overlap!\n"; }
+				$overlappingSource=1;
+				if($curAln->score > $scannedAln->score) {
+#					if($debug) { print "--DEBUG: Replacing " . $scannedAln->score . " with " . $curAln->score . " at positions (" . $source->start . "," . $scanSource->start . ")\n"; }
+					$cleanAlignments[$curAlignmentNum] = $curAln;
+				}
+			}
+		}
+		if(!$overlappingSource) {
+			if($debug) { print "DEBUG: Adding " . $source->id . " and " . $target->id . " at positions (" . $source->start . "-" . $source->end . ";" . $target->start . "," . $target->end . ")\n"; }
+			push @cleanAlignments, $curAln;
+		}
+	}
+
+	for my $aln (@cleanAlignments) {
 	   $reflocus="";
 	   $refseqname="";
 	   foreach my $alignseq ($aln->each_seq() ) {
@@ -1607,7 +1651,7 @@ sub MAFtoFASTA {
 					"TargetSpecies" => $species,
 					"TargetLocus" => $locus,
 					"TargetRelativePosition" => $targetRelative,
-					"TargetSequence" => $newspseq }; 
+					"TargetSequence" => $newspseq}; 
   		   		}
 
 		   		# Check if we are overriding sequences
