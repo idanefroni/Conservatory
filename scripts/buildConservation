@@ -1556,33 +1556,25 @@ sub MAFtoFASTA {
 
 	# First clean up the MAF file. If we have multiple alignments to the same place, pick just the best one
 	my $overlappingSource;
-	my $debug;
 	while(my $curAln = $maffile->next_aln) {
 		#check to see if we overlap something
 		my $source = $curAln->get_seq_by_pos(1);
 		my $target = $curAln->get_seq_by_pos(2);
-
-		if($target->id() eq "Stuberosum-Stuberosum-PGSC0003DMT400014572") { $debug=1; } else { $debug=0; }
-	
 		$overlappingSource=0;
 		for my $curAlignmentNum (0..(@cleanAlignments-1)) {
 			my $scannedAln = $cleanAlignments[$curAlignmentNum];
 			my $scanSource = $scannedAln->get_seq_by_pos(1);
 			my $scanTarget = $scannedAln->get_seq_by_pos(2);
-#			if($debug) { print "DEBUG: Testing overlap for " . $source->id . " and " . $target->id . " at positions (" . $source->start . ";" . $source->end . "," . $scanSource->start . ";" . $scanSource->end . ") and overlap of " . overlap($scanSource->start, $scanSource->end, $source->start, $source->end) . "\n"; }
 			if(($target->id() eq $scanTarget->id()) && 
 			( overlap($scanSource->start, $scanSource->end, $source->start, $source->end) > $alignmentSeqOverlapToMerge || overlap($source->start, $source->end, $scanSource->start, $scanSource->end) > $alignmentSeqOverlapToMerge ) ) {
 				## If the hits are not coming from the same region, pick the best one
-#				if($debug) { print "Found overlap!\n"; }
 				$overlappingSource=1;
 				if($curAln->score > $scannedAln->score) {
-#					if($debug) { print "--DEBUG: Replacing " . $scannedAln->score . " with " . $curAln->score . " at positions (" . $source->start . "," . $scanSource->start . ")\n"; }
 					$cleanAlignments[$curAlignmentNum] = $curAln;
 				}
 			}
 		}
 		if(!$overlappingSource) {
-			if($debug) { print "DEBUG: Adding " . $source->id . " and " . $target->id . " at positions (" . $source->start . "-" . $source->end . ";" . $target->start . "," . $target->end . ")\n"; }
 			push @cleanAlignments, $curAln;
 		}
 	}
