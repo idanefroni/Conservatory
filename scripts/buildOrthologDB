@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use POSIX;
-
 use strict;
+use List::Util qw(max);
 no warnings 'experimental'; 
 
 use Cwd 'abs_path';
@@ -183,7 +183,8 @@ while(my $curline = <$g2ref>) {
 		$curReadLocus= $locus;
 		$blastHitForLocusCount=0;
 	}
-	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus }) && $blastHitForLocusCount++ < $MAX_ORTH) {
+#	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus }) && $blastHitForLocusCount++ < $MAX_ORTH) {
+	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus })) {
 
 		if(defined $genome2RefHits{$refLocus}{$locus}) {
 			if($logeval > $genome2RefHits{$refLocus}{$locus}) {
@@ -222,7 +223,8 @@ while(my $curline = <$ref2g>) {
 		$blastHitForLocusCount=0;
 	}
 
-	if(($eval < $MIN_EVAL) && $blastHitForLocusCount++ < $MAX_ORTH ) {
+#	if(($eval < $MIN_EVAL) && $blastHitForLocusCount++ < $MAX_ORTH ) {
+	if(($eval < $MIN_EVAL)) {
 
 		if(defined $ref2GenomeHits{$refLocus}{$locus}) {
 			if($logeval > $ref2GenomeHits{$refLocus}{$locus}) {
@@ -261,9 +263,12 @@ foreach my $curRefLocus (keys %orthologTable) {
 	}
 	@allevals = reverse sort {$a <=> $b}  @allevals;
 	$cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;
+	if(scalar @allevals > $MAX_ORTH) {
+		$cutoff = max($cutoff, $allevals[ $MAX_ORTH])
+	}
 
 	### Unless its a small protein. then, no cutoff
-	if($proteinsLengths{"$curRefLocus"} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH) { # Unless we are processing a high sensitivity gene (small peptides, usually)
+	if(($proteinsLengths{"$curRefLocus"} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH)) { # Unless we are processing a high sensitivity gene (small peptides, usually)
 											 # where we have a absolute cutoff.
 		### but Make sure we are not putting out more orthologs than MAX_ORTH
 		if(scalar @allevals > $MAX_ORTH) {
