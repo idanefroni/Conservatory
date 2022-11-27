@@ -41,21 +41,20 @@ my $atRichRegionFilterLength = 10;
 my $dimerPolymerFilterLength = 5;
 my $filterCharacter = 'X';
 
-my $alignmentSeqOverlapToMerge = 0.8; # In case we have multiple alignments from a single promoter to the same region in the reference genome, we will filter them
-									# This parameter defines the minimal overlap to consider two alignments.
 									
 ##### Alignment parameters
 my $minIdentityFamily= 70;
 my $minIdentityGlobal= 70;
 my $minQuality = 1000;
+my $alignmentSeqOverlapToMerge = 0.8; # In case we have multiple alignments from a single promoter to the same region in the reference genome, we will filter them
+									# This parameter defines the minimal overlap to consider two alignments.
 
 ### PhyloP parameters and CNS filtering parameters
+my $minOrthologsForConservationAnalysis =5; # The smallest number of orthologs to consider conservation analysis
 my $minPhyloPscore=2;
 my $minCNSLength=8;
-#my $CNSMergeLength=15;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
-#my $CNSMergeLength=10;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 my $CNSMergeLength=5;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
-
+my $minFamilySpeciesForCNS=0.333; # The minimum number of species in the family (out of the total species in the family) that have a CNS to be considered as one
 
 #### CNS coverage and splitting parameters
 my $minAlignmentLengthToTestOverlap = 30; ### Alignments of less than this length will be checked to see that they significally overlap with the CNS
@@ -217,7 +216,7 @@ die "ERROR: Cannot find fastMLexecutable at $conservatoryDir/scripts/fastml.\n" 
 ###############################################
 ### Make sure we are not over-writing existing CNS file (unless we are forced to)
 if ( (-e $finalCNSFileName) && !$force  ) { die "END: Output CNS file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
-
+if( (-e $finalFASTAUpFileName) && (!$force) && $justFamilyAlignment) { die "END: Output family alignment file for $locus ($finalFASTAUpFileName) already exists. Use --force to overwrite.\n"; }
 
 ###############################################
 if($verbose) { print "START: Begin conservatory analysis for $locus.\n"; }
@@ -404,7 +403,7 @@ my $numOfSpecies = scalar @species;
 
 if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
 
-if ($numOfSpecies > 0) {
+if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 	#### Now all alignments were performed, assemble MAF files to a single alignment. 
 	### First, move everything to an array. Dump a copy to the CRE-ortholog file
 	if($verbose) { print "PROGRESS: Multiple sequence assembly"; }
@@ -466,8 +465,8 @@ if ($numOfSpecies > 0) {
 		}
 		if($verbose) { print "\n"; }
 } else {
-	if($verbose) { print "PROGRESS: No CRE-orthologs for $locus.\n"; }
-	die;
+	if($verbose) { print "PROGRESS: Not enough CRE-orthologs for $locus.\n"; }
+	exit;
 } 
 if($verbose) { if(-e "$outputDir/$locus.up.fasta") { print "PROGRESS: Done alignment for $locus.\n"; } }
 
@@ -984,7 +983,21 @@ close ($genomeDatabase);
 if(!$keep_tmp) {
 	unlink($ancesteralLocusCNSFileName);
 }
-  
+
+###########################################################################################################
+#### Filter Family CNSs that have too few hits
+if($verbose) { print "PROGRESS: Filtering family CNS.\n"; }
+my @speciesInReferenceFamily = keys %{$speciesDatabase{$referenceGenomeFamily}};
+for my $curCNS (keys %mapAlignmentDeepCNS) {
+	my @curCNSFamSpecies = keys %{ $familySpeciesHittingCNS{$curCNS}};
+	if((scalar @curCNSFamSpecies) <  $minFamilySpeciesForCNS * (scalar @speciesInReferenceFamily)) {
+		if($verbose) { print "PROGRESS: Removing CNS $curCNS because number of species in family is too low (" . scalar @curCNSFamSpecies . " out of " . (scalar @speciesInReferenceFamily) .")\n"; }
+		delete $mapAlignmentDeepCNS{$curCNS};
+		delete $cnsReferenceLength{$curCNS};
+		delete $CNSforLocus{$curCNS};
+	}
+}
+
 ############################################################################################################
 # Family CNS are not all deeply conserved. See if we can identify conserved regions within the CNS
 #  then split the CNS accordingly
@@ -1057,10 +1070,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } = [];
 					}
 
-#					if($verbose) {
-#						print "DEBUG: Reassign " . $curHit->{'TargetSpecies'} . " (" . $curHit->{'ReferenceRelativePosition'} . "," . $curHit->{'Length'} . ") to $newSubCNSName (" . $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} . "," .  $cnsReferenceLength{$newSubCNSName} . ":";
-#						print $curHit->{'TargetSequence'} . " to " . substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'} ),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName})) . "\n";
-#					}
 					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } }, {
 							"ReferenceLocus" => $newSubCNSName,
 							"ReferenceRelativePosition" => max( 0, $curHit->{'ReferenceRelativePosition'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
@@ -1097,7 +1106,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 		delete $CNSforLocus{$curCNS};
 	}
 }
-
 
 
 #####################################################################
@@ -1229,7 +1237,7 @@ foreach my $curCNS (keys %CNSforLocus) {
 } 
 close($finalCNSFile);
  
-### Then the deep CNS alignments
+### Then the CNS alignments
 foreach my $curCNS (keys %CNSforLocus) {
 	foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {	  	   	  	  
 		foreach my $curHit ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} } ) {
