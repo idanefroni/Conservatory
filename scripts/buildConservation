@@ -677,7 +677,8 @@ while(my $CNSLine = <$CNSFile>) {
 		} else {	
 			for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {
 				if(defined $fastaDownstreamAlignment{$locusFullName}{$curSpecies}) {
-					$cnsSeq = substr($fastaDownstreamAlignment{$locusFullName}{$curSpecies}, $cnsRelStart, $cnsRelEnd-$cnsRelStart);
+					### Get the sequence for the CNS (with extra padding, to avoid problems with edge alignments)
+					$cnsSeq = substr(($fastaDownstreamAlignment{$locusFullName}{$curSpecies} . "--------") , $cnsRelStart, $cnsRelEnd-$cnsRelStart);
 					$cnsSeqs{$curSpecies}=$cnsSeq;
 					$numOfSpeciesWithCNS++;
 				} else {					

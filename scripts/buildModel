@@ -29,6 +29,7 @@ my %referenceGenomeSpecies;
 my $treeFileName;
 my $minInformativeBases =10000;
 my $numOfGenesUsed=0;
+my $mode="CODON";  ## neurtal model mode. Either CDS or INTRON
 my $help=0;
 
 my $keepTmp=0;
@@ -36,6 +37,7 @@ my $keepTmp=0;
 GetOptions ("conservatory-directory=s" => \$conservatoryDir,
 			"reference=s" => \$referenceGenomeList,
 			"tree=s" => \$treeFileName,
+			"mode=s" => \$mode,
 			"keep-tmp" => \$keepTmp,
 			"help" => \$help) or die ("Error in command line arguments\n");
 
@@ -44,6 +46,7 @@ if($help || $referenceGenomeList eq "" || $treeFileName eq "") {
    print "\t--conservatory-directory\tName of the conservatory directory. Default is current directory.\n";
    print "\t--reference\tComma delimited list of reference genomes (At least one is REQUIRED).\n";
    print "\t--tree\t\tFamily tree file for phyloFit (REQUIRED).\n";
+   print "\t--mode\t\tSource for neutral model estimation. Either CODON or INTRON (used 4-variant codon position, or alignments of first intron) DEFAULT: CODON.\n";
    print "\t--keep-tmp\t\tDo not delete the temporary fasta file of the 3rd condon positions.\n";
    print "\t--help\t\tPrints this message.\n\n";
    
@@ -227,11 +230,8 @@ if(scalar @referenceGenomes > 1) {
 				## Find the matching orthogroup
 				my @matchingOrthogroupsPerGenome;
 				foreach my $curParallelOrthogroupToCheck (keys %{ $oneToOneOrthologs{ $curReferenceGenome} } ) {
-#					print "DEBUG: Checking $curOrthogroupToCheck ($referenceGenomes[0]):";
-#					print  " In $curReferenceGenome:" .  $oneToOneOrthologs{$curReferenceGenome}{$curParallelOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } . ". In $referenceGenomes[0] : " . $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } . "\n";
 					if($oneToOneOrthologs{$curReferenceGenome}{$curParallelOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } eq
 					   $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck}{ $referenceGenomeSpecies{ $referenceGenomes[0] } } ) {
-#						print "Matching orthogroups: $curOrthogroupToCheck and $curParallelOrthogroupToCheck.";
 						## Check to see if all orthologs match
 						my (@orthogroupOne, @orthogroupTwo);
 						foreach my $curSp ( keys %{ $oneToOneOrthologs{$referenceGenomes[0]}{$curOrthogroupToCheck} } ) {
@@ -302,9 +302,10 @@ foreach my $curCREOrtholog (@orthogroupsToKeep) {
 
 	if(!$skipGene) {
        	print "PROGRESS (" . $orthologCount++ . "): $curCREOrtholog: " . $oneToOneOrthologs{$referenceGenomes[0]}{$curCREOrtholog}{$referenceGenomeSpecies{$referenceGenomes[0]} } . ". ";
-       	my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
+		my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
        	my $proteinAlignment = $aligner->align(\@orthologProteins);
 		print "Alignment: Protein (" . $proteinAlignment->length . "," . $proteinAlignment->num_sequences . ")";
+
    		my $cdsAlignment = Bio::Align::Utilities::aa_to_dna_aln($proteinAlignment, \%orthologCDSs);	
 		print ";DNA (" .  $cdsAlignment->length . "," . $cdsAlignment->num_sequences . "). ";
 
