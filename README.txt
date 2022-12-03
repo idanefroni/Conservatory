@@ -1,100 +1,112 @@
 *************************************************************************************************************************
-Conservatory v1.0
+Conservatory v2.0.1
 
-Last update: 3/10/2021
+Last update: 3/12/2022
 *************************************************************************************************************************
 
-  Conservatory is structural variants and polyploidization-aware program for identification of conserved non-coding
-	sequences. Conservatory is based on identification of cis-elements and protein sequence microsynteny to assembled
-	multiple alignments of upstream and downstream regulatory sequences. Conservatory then relies on phyloP to derive
-	a model-based conservation scores and assembled short regions of conservation.
-	Conservatory is also able to utilize multiple genome per species as pan genomes to account for genome-specific
-	variants or annotation problems.
+  Conservatory is a structural-variants and polyploidization-aware program for the identification of conserved non-coding
+	sequences (CNS) in a large number of genomes. Conservatory identifies cis-elements and protein sequence microsynteny to derive
+	multiple alignments of upstream and downstream regulatory sequences in closely related species. It then reconstructs
+	the ancestral sequences for each CNS and searches for that in syntenic regions of distant genomes. 
+	Conservatory utilizes multiple genomes per species to account for genome-specific variants or annotation problems.
 
 **************************************************************************************************************************
 
 	Conservatory was developed as a collaboration between the Efroni (HUJI) and Lippman (CSHL) labs.
 
-	Version 1.0 is described in this publication:
+
+	Version 2.0.1.
+
+
+	(Previous version 1.5) was described in this publication:
 
 	Hendelman A., Zebell S., Rodriguez-Leal D., Dukler N., Robitaille G., Wu X., Kostyun J., Tal L., Wang P.,
 		Bartlett M.E., Eshed Y., Efroni I*, Lippman ZB.* (2021) Conserved pleiotropy of an ancient plant
-			omeobox gene uncovered by cisregulatory dissection. Cell, 184:1724-1739.
+			homeobox gene uncovered by cisregulatory dissection. Cell, 184:1724-1739.
 
 	For questions\comments email Idan Efroni @ idan.efroni@mail.huji.ac.il
 	
 **********************************************************************************************************************************************************
 
-Setup
+Setup V2.0.1
 
 *** We use bioconda for all installation and environment setup. 
 
-1. Download the program files from github (https://github.com/idanefroni/Conservatory)
+1. Download the program files from GitHub (https://github.com/idanefroni/Conservatory)
 
-2. Make sure the following programs are install and in the conda environment
+2. Make sure the following programs are installed and in the conda environment
 	* lastz
-	* multiz
-	* phyloP
+	* muscle v3.8.1551 
+	* phast
 	* samtools
-	
-3. The vista aligner (http://genome.lbl.gov/vista/downloads.shtml) and MafFilter program (https://jydu.github.io/maffilter/) are included in the repository and
-	are located in the scripts/programs directory. If these programs are installed at a different path on your system, update the conservatory.parameters.txt file
+	* bedtools
+	* wig2bed
+	* bioperl
+	* blastp
+	* agat
+	* seqkit
+	* bgzip
 
-4. Update regulatory sequence length paramters in conservatory.parameters.txt file (default is 50K upstream and 5K downstream)
-    the program can easily process longer sequences, but it will require additional diskspace.
-  
-5. Download the genomes to the genome/family directory. For each genome, conservatory requires three files: the genome fasta file (bziped),
+3. Download the genomes to the genome/family directory. For each genome, conservatory requires three files: the genome fasta file (bziped),
    an annotation GFF3 file and the protein sequence file. Files should be named. <genomename>.fasta.gz, <genomename>.genes.gff3 and <genomename>.proteins.fasta, respectively.
+   make sure you have a phylogenetic tree for each family in Newick format names "<family>.tree" in the genomes directory.
    
-6. Once all genomes are downloaded, set up the genome_database.csv file. This is a comma delimited text file with the following fields:
+4. Once all genomes are downloaded, set up the genome_database.csv file. This is a comma-delimited text file with the following fields:
  Genome - the genome name (must match the name of the genome data files)
  Species - the names of the species. Multiple genomes can be assigned to one species. Conservatory will select the best genome for the species on a gene-by-gene basis
- Family - the name of the species family. A family (which does not has to correspond to a taxonimic family) is a group of genomes which can be compared to one reference
- 	      genome. Conservation is also computed within a specific family, although multiple family can exist in the same conservatory directory.
- ReferenceGenome - the genome name of the reference genome for the specific family (genome must exists in the file).
- MinQuality - minimum alignment quality to consider (default:1000)
- GeneNameField - the field in the GFF3 file CDS lines containing the gene name
- GeneProcessingRegEx - A regular expression that will be deleted from the gene name. This is used to match gene and protein names.
- Gene2SpeciesIdentifiedString - A regular expression the should appear at the begining of the gene name and which will uniqely identify the genome
- ProteinProcessingRegEx - optional. A regular expression that will be deleted from the protein name. This is used to match gene and protein names. 
+ Family - the name of the species family. A family (which does not have to correspond to a taxonomic family) is a group of genomes that can be compared to one reference
+ 	      genome by sequence alignment. For plants, this means usually less than 60 million years of divergence.
+ ReferenceGenome - <Depreceated>
+ UpstreamLength - length of gene upstream region to search for the specific genome. Leave this blank, and "processGenome" will fill this field automatically based on genome characteristics.
+ DownstreamLength - length of gene downstream region to search for the specific genome. Leave this blank, and "processGenome" will fill this field automatically based on genome characteristics.
+ GeneNameField - the field in the GFF3 file CDS line containing the gene name
+ GeneProcessingRegEx - A regular expression that species what characters to delete from the gene name. This is used to match gene and protein names.
+ Gene2SpeciesIdentifiedString - <Deprecated>
+ ProteinProcessingRegEx - A regular expression that species what characters to delete from the protein name. This is used to match gene and protein names.
+ Classification - Six-level classification, separated by dashes, that specify the phylogenic position of the genome. e.g. Embryophyta-Tracheophytes-Angiosperms-Dicots-Asterids-Solanaceae
 
-The genome specification for all genomes used in Hendelman et al. are already in the file.
+5. Build the genome database for a reference genome by running from the conservatory directory:
 
-7. Build the genome database and index by running from the conservatory directory:
+	./processGenomes --reference <referenceGenomeName> --threads <number of threads>
+	
+	This will process all the genomes in the genome_database.csv file for a specific reference. It will create orthologs files and regulatory sequence databases.
+	 processGenomes will not overwrite existing genome databases and indexes. To do so, use the --force or --force-orthology flag. For more info, see processGenomes --help
+		 
+	*** This can be a very long process but only need to be run once. On a single node 16-core Xeon(R) CPU E5-2630 v3 @ 2.40GHz, each genome requires about an hour of computer time.
 
-	./processGenomes --threads <thread-num> --verbose
-	
-	This will process all the genomes in the genome_database.csv file. The processing can be limited to specific families or genomes. processGenomes will not overwrite existing
-	 genome databases and indexes. To do so, use the --force flag. For more info, see processGenomes --help
-	 
-	This process can take several hours per genome, depending on the number of CPU cores and genome size.
-	
-8. Build the phyloP model. For this you will require a phylogenetic tree of each family and an alignment of the an alignment of neutrally evolving sequence. For the paper,
-    we used the fourfold codon position for a large number of orthologous genes. Other options exists.
-    
-	phyloFit --tree <family>.tre --nrates 4 -o genomes/<family> --subst-mod HKY85+Gap <neutralAlignment>.fasta
+6. Provide a neutral model for phyloP under the name <family>.mod and place in the genomes directory.
+   If you want Conservatory to compute a neutral model automatically.
+   
+   * First, determine the orthology by CNS alignments using:
+	./processConservation --reference <referenceGenomeName> --just-family-alignment --threads <number of threads>
+	* this computes the alignments for all genes in the genome. Depending on genome size and computer resources, this can take hours to days.
+   * Build the model using
+	./script/buildModel --reference <referenceGenomeName> --tree <treeFileName>
 
-8. Once the genome database has been generated, you can build the CNS for any given gene using:
-	./scripts/buildConservationFormFamily1 --family <familyName> --locus <genename>
+   The model will be places in the genome directory.
+   
+7. Once the genome database has been generated, you can build the CNS for any given gene using:
+	./scripts/buildConservation --reference <referenceGenome> --locus <geneName> 
+
+	Output alignment files will be in alignments\<familyName>\<geneName>
+	Output CNS files will be in CNS\<familyName>\<geneName>
+
+	You can generate CNS for multiple genes using
 	
-	or generate CNS for all genes using the multithreaded script:
-	./processConservation --family <family> --version 1
+	./processConservation --reference <referenceGenome> --genelist <GFF3 file of genes>
 	
-	Calculating conservation for entire families takes several hours, depending on number of CPU cores and genome size.
+	or
+	./processConservation --reference <referenceGenome>
 	
+	To process all genes in the genome. This is a long process.
+	
+
 	See --help for additional options.
 	
-At the end, the alignment directory contains the multiple alignments for the cis elements of each gene (as MAF files) and the conserved non-coding regions as a BED file and a CSV table in the CNS directory.
 
 **********************************************************************************************************************************************************
 
-Update 2/22/2021:
+** Update History
 
-The ortholog selection and alignment algorithm has been modified from the one used in the paper. To use the modified algorithm, use '--version 2' in processConservation.
-
-
-Update 3/10/2021:
-
-* Additional updates to the alignment parameters and small bug fixes. The default version is now 2. Version 1 is kept for archival purposes. Use '--version 1' in processConservation to use the old version.
-* Add REF mode to builcConCNS function to extract the family concensus CNS sequence within the context of the reference regulatory sequence.
+3/12/2022: Version 2.0.1 beta verions
 
