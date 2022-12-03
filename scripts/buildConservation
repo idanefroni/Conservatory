@@ -1259,7 +1259,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   $CNSforLocus{$curCNS}{'ConservationLevel'}= $referenceGenomeFamily;
   foreach my $curLevel (0..$CLASSIFICATION_CLASSES_NUM) {
   	  if($CNSforLocus{$curCNS}{'ConservationLevel'} eq $referenceGenomeFamily && $CNSConservationLevel[$curLevel]>0) {
-  	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}= $referenceClassification[ $curLevel] ;
+  	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}= $referenceClassification[$curLevel-1] ;
   	  }
   }
 

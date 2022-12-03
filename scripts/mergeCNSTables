@@ -29,8 +29,11 @@ my $CLASSIFICATION_CLASSES_NUM=6;
 
 my %CNSTable;
 my %positionTable;
-my %speciesDictionary;
+my %genomeToSpecies;
+my %genomeToFamily;
+my %speciesToFamily;
 my %speciesClassification;
+
 my $CNSMerged=0;
 my $CNSMergedExtended=0;
 my $CNSDeleted=0;
@@ -65,7 +68,9 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 	chomp($curgenomeline);
 	if(substr($curgenomeline,0,1) ne "#")  {
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;
-		$speciesDictionary{$curgenomeName}=  $curgenomeSpecies;
+		$genomeToSpecies{$curgenomeName}=  $curgenomeSpecies;
+		$genomeToFamily{$curgenomeName} = $curgenomeFamily;
+		$speciesToFamily{$curgenomeSpecies} = $curgenomeFamily;
 		$speciesClassification{$curgenomeSpecies} = $classification;
 	}
 }
@@ -436,20 +441,27 @@ foreach my $curCNS (keys %CNSTable) {
 	my @CNSConservationLevels;
 
 	foreach my $curSpecies (keys %speciesForCNS) {
-  	  my @classification = split /-/ , $speciesClassification{$curSpecies};
+  	  my @classification = split '-' , $speciesClassification{$curSpecies};
     	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
 			$CNSConservationLevels[$curClassificationLevel]{$classification[$curClassificationLevel]}=1;
     	}
    }
   my $maxConservationLevel= $CLASSIFICATION_CLASSES_NUM;
   foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
-	if((scalar keys %{ $CNSConservationLevels[$curClassificationLevel] })>1 && $maxConservationLevel > $curClassificationLevel) { $maxConservationLevel=$curClassificationLevel; }
+	if((scalar keys %{ $CNSConservationLevels[$curClassificationLevel] })>1 && $maxConservationLevel > $curClassificationLevel) {
+		$maxConservationLevel=$curClassificationLevel;
+	}
   }
-  
-  my $conservationLevelName = "Family";
-  if($maxConservationLevel < $CLASSIFICATION_CLASSES_NUM) {
-	$conservationLevelName = "Level" . ($CLASSIFICATION_CLASSES_NUM - $maxConservationLevel);
+
+  my @speciesForCNSArray = keys %speciesForCNS;
+  my $conservationLevelName;
+  if($maxConservationLevel == $CLASSIFICATION_CLASSES_NUM) {  ### If it's only in the family, mark the family
+	 $conservationLevelName = $speciesToFamily{ $speciesForCNSArray[0] };
+  } else {
+	my @classificationLevels = split '-', $speciesClassification{ $speciesForCNSArray[0]};
+	$conservationLevelName = $classificationLevels[ $maxConservationLevel-1];
   }
+
   $CNSTable{$curCNS}{'Level'} = $conservationLevelName;
 }
 
@@ -505,7 +517,7 @@ if($outputMergedCNSFileName ne "") {
 	close ($outputMergedCNSFile);
 }
 
-print "END: Deleted $CNSDeleted duplicated CNSs; Merged $CNSMerged CNSs, of which $CNSMergedExtended were extended and $deepCNSMerged were deep CNSs. Assembled $superGroupMerged CNS groups.\n";
+print "END: Deleted $CNSDeleted duplicated CNSs; Merged $CNSMerged CNSs, of $deepCNSMerged were deep CNSs. Assembled $superGroupMerged CNS groups.\n";
 
 
 
