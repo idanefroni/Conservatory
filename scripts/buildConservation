@@ -33,6 +33,7 @@ my $locusFullName;
 my $referenceGenome;
 my $referenceGenomeSpecies;
 my $referenceGenomeFamily;
+my @referenceClassification;
 
 #### Sequence Filtering and parameters
 my $homoPolymerFilterLength = 8;
@@ -247,7 +248,9 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 	}
 }
 seek ($genomeDatabase,0,SEEK_SET);
+
 die "ERROR: Cannot find reference genome $referenceGenome in the genome database file.\n" unless $referenceGenomeFamily ne "";
+@referenceClassification = split /-/ , $speciesClassification{$referenceGenomeSpecies};
 
 ### Setup model and tree
 my $treeFileName = "$conservatoryDir/genomes/$referenceGenomeFamily.tree";
@@ -649,7 +652,7 @@ while(my $CNSLine = <$CNSFile>) {
 				'Strand' => $refGeneDir,
 				'NumberOfSpecies' => 0,
 				'NumberOfFamilySpecies' => 0,				
-				'ConservationLevel' => 'Family'};
+				'ConservationLevel' => $referenceGenomeFamily};
 				
 		my %cnsSeqs;
 				
@@ -691,7 +694,6 @@ while(my $CNSLine = <$CNSFile>) {
 				
 		#### Now invoke FASTML to reconstruct ancestral sequence
 		my $ancesteralCNSFileName = "$tmpDir/$locus.$cnsRelStart.ancesteral.fasta";
-#		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -g -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
 		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
 		if(!$keep_tmp) { unlink("$tmpCNSFastaFileName"); }
 		unlink("log.txt");
@@ -720,7 +722,6 @@ while(my $CNSLine = <$CNSFile>) {
 		$ancesteralCNSMasked = fuzzyFilterDimers($ancesteralCNSMasked, $dimerPolymerFilterLength,0);
 
 		$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFuzzyFilterLength,1);
-
 
 		$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
 		$CNSforLocus{$CNSName}{'referenceSequence'} = $cnsSeqs{$referenceGenomeSpecies};
@@ -928,6 +929,8 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 
 open (my $genomeDatabase, "<", $genomedbFile);
 
+my %deepAlignmentQualityForSpecies;
+
 while(<$genomeDatabase>) {
 	chomp;
 	my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx) = split /,/;
@@ -962,7 +965,10 @@ while(<$genomeDatabase>) {
 						if($verbose) {
 								print "PROGRESS: Found deep CNS hit ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n";
 						}
-						### Log alignment to fasta, but only if long enough (covers more than minCNSCoverage of the CNS)
+						## If this alignment is superior to existing alignment for the same species, delete the previous alignment and replace with current one. If not, just ignore alignment.
+						$deepAlignmentQualityForSpecies{$curgenomeSpecies}{$curgenomeName} += $upQuality + $downQuality;
+
+						### Log alignment to fasta, but only if long enough (covers more than minCNSCoverage of the CNS)							
 						MAFtoFASTA($MAFUpFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "U",$minCNSCoverageInitial);
 						MAFtoFASTA($MAFDownFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D",$minCNSCoverageInitial);
 					}
@@ -975,7 +981,7 @@ while(<$genomeDatabase>) {
 				}					
 		}
 	 }
-	  close($orthologFile);
+	close($orthologFile);
 	}
   }
 }
@@ -986,7 +992,46 @@ if(!$keep_tmp) {
 }
 
 ###########################################################################################################
+########################### BEGIN FILTERING DEEP CNS ######################################################
+
+## Filter for confilicting multiple genomes for species
+## If we have a species with multiple genome hits, pick the best one
+
+for my $curSpecies (keys %deepAlignmentQualityForSpecies) {
+	my @alignmentGenomes = keys %{ $deepAlignmentQualityForSpecies{$curSpecies} };
+
+	if( (scalar @alignmentGenomes)  > 1 ) { ### We have more than one genome hit for this species, leave only the first one.
+		my @alignmentScores = values %{ $deepAlignmentQualityForSpecies{$curSpecies} };
+		my $bestAlignmentScore = max( @alignmentScores );
+		my $foundBest=0;
+		## now delete all the other genomes
+		for my $curAlignmentGenome (keys %{ $deepAlignmentQualityForSpecies{$curSpecies}}) {
+			if ($deepAlignmentQualityForSpecies{$curSpecies}{$curAlignmentGenome} == $bestAlignmentScore && !$foundBest) {
+				$foundBest=1;
+			} else {
+				if($verbose) { print "PROGRESS: Removing hits for genome $curAlignmentGenome because better hit was found for species $curSpecies ($bestAlignmentScore).\n"; }
+				for my $curCNS (keys %mapAlignmentDeepCNS) {
+					if(defined $mapAlignmentDeepCNS{$curCNS}{$curSpecies}) {
+						my @alignmentsToCNS = @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies}};
+						my @newAlignmentsToCNS;
+						for my $curAlignment (@alignmentsToCNS) {
+							if($curAlignment->{'TargetGenome'} ne $curAlignmentGenome) {
+								push (@newAlignmentsToCNS, $curAlignment);
+							} else {
+								if($verbose) { print "DEBUG: Removing hit $curAlignmentGenome to $curCNS.\n"; }
+							}
+						}
+						$mapAlignmentDeepCNS{$curCNS}{$curSpecies} = \@newAlignmentsToCNS;
+					}
+				}
+			}
+		}
+	}
+}
+
+###########################################################################################################
 #### Filter Family CNSs that have too few hits
+
 if($verbose) { print "PROGRESS: Filtering family CNS.\n"; }
 my @speciesInReferenceFamily = keys %{$speciesDatabase{$referenceGenomeFamily}};
 for my $curCNS (keys %mapAlignmentDeepCNS) {
@@ -1166,7 +1211,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   $CNSforLocus{$curCNS}{'NumberOfSpecies'} = $numberOfSpecies;
 
   #### Now calculate conservation levels
-  my @referenceClassification = split /-/ , $speciesClassification{$referenceGenomeSpecies};
   foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
   	  my @classification = split /-/ , $speciesClassification{$curSpecies};
     	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
@@ -1212,10 +1256,10 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   }
 	
   # Now mark the "Deepness" level of each CNS
-  $CNSforLocus{$curCNS}{'ConservationLevel'}="Family";
+  $CNSforLocus{$curCNS}{'ConservationLevel'}= $referenceGenomeFamily;
   foreach my $curLevel (0..$CLASSIFICATION_CLASSES_NUM) {
-  	  if($CNSforLocus{$curCNS}{'ConservationLevel'} eq "Family" && $CNSConservationLevel[$curLevel]>0) {
-  	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}="Level" . ($CLASSIFICATION_CLASSES_NUM-$curLevel);
+  	  if($CNSforLocus{$curCNS}{'ConservationLevel'} eq $referenceGenomeFamily && $CNSConservationLevel[$curLevel]>0) {
+  	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}= $referenceClassification[ $curLevel] ;
   	  }
   }
 
@@ -1473,12 +1517,18 @@ sub dropAsterixFromProtein {
 	return $seqObj;
 }
 ##################################################################################
-# Returns the species name from the name of a gene
+# Returns species or genome name from the name of a gene
 
 sub geneToSpecies {
 	(my $geneName) = @_;
-	$geneName =~ s/-.*$//;
-	return $geneName;
+	my @geneNameComponents = split '-', $geneName;
+	return $geneNameComponents[0];
+}
+
+sub geneToGenome {
+	(my $geneName) = @_;
+	my @geneNameComponents = split '-', $geneName;
+	return $geneNameComponents[1];
 }
 
 ###################################################################################
@@ -1594,6 +1644,7 @@ sub MAFtoFASTA {
 	   foreach my $alignseq ($aln->each_seq() ) {
 	   	   my $locus = $alignseq->id();
 	   	   my $species = geneToSpecies($locus);
+		   my $genome = geneToGenome($locus);
 	   	   my $newspseq = $alignseq->seq();
 	   	   
 		   if($refseqname eq "") {
@@ -1649,6 +1700,7 @@ sub MAFtoFASTA {
 					"ReferenceRelativePosition" => $refRelative,
 					"ReferenceUpDown" => $dir,
 					"Length" => $reflen,
+					"TargetGenome" => $genome,
 					"TargetSpecies" => $species,
 					"TargetLocus" => $locus,
 					"TargetRelativePosition" => $targetRelative,
