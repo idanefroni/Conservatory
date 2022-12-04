@@ -289,6 +289,7 @@ while(my $curgenomeline= <$genomedb>) {
 			my $upstreamDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.upstream.fasta";
 			my $downstreamDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.downstream.fasta";
 			my $cdsDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.cds.fasta";
+			my $firstIntronDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.introns.fasta";
 			## Introns would be here...
 		
 			if(! -e "$upstreamDB.gz" || $force) {
@@ -332,6 +333,12 @@ while(my $curgenomeline= <$genomedb>) {
 				print localtime() . ": $curgenomeName : END building downstream sequence database.\n";			
 			}  elsif ($verbose) { print localtime() . ": SKIP Downstream sequence database already exists (use --force to rebuild)\n"; }
 			
+			#### Make sure we have Introns file if this is the reference
+#			if(($curgenomeFamily eq $globalReferenceGenomeFamily) && (!(-e "$firstIntronDB.gz") || $force)) {
+#				print localtime() . ": $curgenomeName : START building intron sequence database.\n";
+#				system("$conservatoryDir/scripts/buildIntronDB --genome $curgenomeName");
+#				print localtime() . ": $curgenomeName : END building intron sequence database.\n";				
+#			}
 			#### Make sure we have CDS file if this is the reference
 			if(($curgenomeFamily eq $globalReferenceGenomeFamily) && (!(-e $cdsDB) || $force)) {
 				### openup the genome
