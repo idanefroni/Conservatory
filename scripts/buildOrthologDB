@@ -277,10 +277,11 @@ foreach my $curRefLocus (keys %orthologTable) {
 			$cutoff = 0;
 		}
 	}
+	my $outputOrthologCount=0;
 
 	### Output ortholog pairs
 	foreach my $curLocus (keys %{ $orthologTable{$curRefLocus} }) {
-		if($orthologTable{$curRefLocus}{$curLocus} > $cutoff) {
+		if($orthologTable{$curRefLocus}{$curLocus} >= $cutoff && $outputOrthologCount++ < $MAX_ORTH) {
 			print $output ("$curLocus,$curRefLocus," . $orthologTable{$curRefLocus}{$curLocus}  . "\n");
 			$orthologPairsCount++;
 		}
