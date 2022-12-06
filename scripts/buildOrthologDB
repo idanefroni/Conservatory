@@ -257,32 +257,28 @@ my $orthologPairsCount=0;
 foreach my $curRefLocus (keys %orthologTable) {
 	my $cutoff;
 	my @allevals;
+	my %orthologsForRefLocus;
 
 	foreach my $curLocus (keys %{ $orthologTable{$curRefLocus}} ) {
-		push(@allevals, $orthologTable{$curRefLocus}{$curLocus});
+		my $key = $curLocus . "," . $curRefLocus;
+		$orthologsForRefLocus{$key}= $orthologTable{$curRefLocus}{$curLocus};
+		#push(@allevals, $orthologTable{$curRefLocus}{$curLocus});
 	}
-	@allevals = reverse sort {$a <=> $b}  @allevals;
-	$cutoff = $allevals[0] * $EVAL_CUTOFF_FOR_FAMILY;
-	if(scalar @allevals > $MAX_ORTH) {
-		$cutoff = max($cutoff, $allevals[ $MAX_ORTH])
-	}
+	my @sortedOrthologPairs = reverse (sort { $orthologsForRefLocus{$a} <=> $orthologsForRefLocus{$b} } keys %orthologsForRefLocus );
+
+	$cutoff = $orthologsForRefLocus{$sortedOrthologPairs[0]} * $EVAL_CUTOFF_FOR_FAMILY;
 
 	### Unless its a small protein. then, no cutoff
 	if(($proteinsLengths{"$curRefLocus"} <= $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH)) { # Unless we are processing a high sensitivity gene (small peptides, usually)
 											 # where we have a absolute cutoff.
-		### but Make sure we are not putting out more orthologs than MAX_ORTH
-		if(scalar @allevals > $MAX_ORTH) {
-			$cutoff = $allevals[ $MAX_ORTH];
-		} else {
-			$cutoff = 0;
-		}
+		$cutoff = 0;
 	}
 	my $outputOrthologCount=0;
 
 	### Output ortholog pairs
-	foreach my $curLocus (keys %{ $orthologTable{$curRefLocus} }) {
-		if($orthologTable{$curRefLocus}{$curLocus} >= $cutoff && $outputOrthologCount++ < $MAX_ORTH) {
-			print $output ("$curLocus,$curRefLocus," . $orthologTable{$curRefLocus}{$curLocus}  . "\n");
+	foreach my $curOrthologPair (@sortedOrthologPairs) {
+		if($orthologsForRefLocus{$curOrthologPair} >= $cutoff && $outputOrthologCount++ < $MAX_ORTH) {
+			print $output ("$curOrthologPair," . $orthologsForRefLocus{$curOrthologPair}  . "\n");
 			$orthologPairsCount++;
 		}
 	}
