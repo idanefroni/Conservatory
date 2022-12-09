@@ -10,7 +10,7 @@ use Getopt::Long;
 
 my $genomeDatabaseFileName = "genome_database.csv";
 
-my $MAX_ORTH=8;
+my $MAX_ORTH=16;
 my $MIN_EVAL= 10;
 my $MAX_EVAL = 150;
 my $EVAL_CUTOFF_FOR_FAMILY=0.66;
