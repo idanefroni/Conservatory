@@ -27,9 +27,10 @@ my $referenceGenomeList;
 my $referenceGenomeFamily;
 my %referenceGenomeSpecies;
 my $treeFileName;
-my $minInformativeBases =10000;
+my $minInformativeBases = 50000;
 my $numOfGenesUsed=0;
-my $mode="CODON";  ## neurtal model mode. Either CDS or INTRON
+my $mode="CODON";  ## neurtal model mode. Either CODON or INTRON. Currently only CODON is supported
+my $model="UNREST";
 my $help=0;
 
 my $keepTmp=0;
@@ -38,6 +39,7 @@ GetOptions ("conservatory-directory=s" => \$conservatoryDir,
 			"reference=s" => \$referenceGenomeList,
 			"tree=s" => \$treeFileName,
 			"mode=s" => \$mode,
+			"model=s" => \$model,
 			"keep-tmp" => \$keepTmp,
 			"help" => \$help) or die ("Error in command line arguments\n");
 
@@ -46,7 +48,8 @@ if($help || $referenceGenomeList eq "" || $treeFileName eq "") {
    print "\t--conservatory-directory\tName of the conservatory directory. Default is current directory.\n";
    print "\t--reference\tComma delimited list of reference genomes (At least one is REQUIRED).\n";
    print "\t--tree\t\tFamily tree file for phyloFit (REQUIRED).\n";
-   print "\t--mode\t\tSource for neutral model estimation. Either CODON or INTRON (used 4-variant codon position, or alignments of first intron) DEFAULT: CODON.\n";
+   print "\t--mode\t\tSubstitution model for phyloFit (Default: UNREST).\n";
+   print "\t--mode\t\tSource for neutral model estimation. Either CODON or INTRON (used 4-variant codon position, or alignments of first intron). Only CODON is supported.\n";
    print "\t--keep-tmp\t\tDo not delete the temporary fasta file of the 3rd condon positions.\n";
    print "\t--help\t\tPrints this message.\n\n";
    
@@ -161,8 +164,6 @@ foreach my $curGenome (@genomesInReferenceFamily) {
 		$cdsSeq = substr($cdsSeq,0, length($cdsSeq) - (length($cdsSeq) % 3));
 		$cdsSeq =~ s/(TGA|TAA|TAG)$//;
 
-#		if(defined $proteinSeqDB{$fullGeneName} || ) {  ## Only add the CDS if we have the protein, and only the longest one (unless we find a perfect match).
-#			if(length($seq->seq()) > length($cdsSeqDB{$fullGeneName}) && length($cdsSeqDB{$fullGeneName}) != length($proteinSeqDB{$fullGeneName})*3) {
 		if(length($cdsSeq) == length($proteinSeqDB{$fullGeneName})*3) {
 				$cdsSeqDB{$fullGeneName} = $cdsSeq;
 				$totalCDS++;
@@ -198,8 +199,7 @@ foreach my $curReferenceGenome (keys %referenceGenomeSpecies) {
 
 		while(my $curLine = <$curCREOrthFile>) {
 			my ($genome, $geneName, $upscore, $downscore) = split /\t/, $curLine;
-#			my $orthScore = $upscore + $downscore;
-			my $orthScore = $upscore;
+			my $orthScore = $upscore + $downscore;
 			my $species = $geneName;
 			$species =~ s/-.*$//;
 			if($species ne $referenceGenomeSpecies{$curReferenceGenome} && defined $cdsSeqDB{$geneName} && defined $proteinSeqDB{$geneName}) {
@@ -247,14 +247,11 @@ if(scalar @referenceGenomes > 1) {
 							foreach  my $curSpNum (0..(@orthogroupOne)) {
 								if($orthogroupOne[$curSpNum] ne $orthogroupTwo[$curSpNum]) {
 									$match = 0;
-#									print "DEBUG: Mismatch due to $orthogroupOne[$curSpNum] != $orthogroupTwo[$curSpNum].\n";
 								}
 							}
 							if($match) {
-#								print "..orthogroups accepted.\n";
 								push @orthogroupsToKeep, $curOrthogroupToCheck;
 							} else {
-#								print "..orthogroup rejected due to mismatch in ortholog identity.\n";
 							}
 						} else {
 #							print "..orthogroup rejected due to mismatch in ortholog numbber.\n";
@@ -313,17 +310,21 @@ foreach my $curCREOrtholog (@orthogroupsToKeep) {
 	    	my %fourPositionNucleotide;
       		my @conservation = $cdsAlignment->consensus_conservation();
       		my $consensus_sequence = $cdsAlignment->consensus_string(); 
+			my @gapMatrix = @{ $cdsAlignment->gap_col_matrix() };
       		my $curPos=0;
        		my @columnsToRemove;
 			my $informativeBaseCountInOrthogroup;
 
       		while($curPos < $cdsAlignment->length() ) {
+				my $gapAtPos = sum( values %{ $gapMatrix[$curPos] } );
+
       			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100  && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
-#      			if($conservation[$curPos] == 100 && $conservation[$curPos+1] ==100  && $conservation[$curPos+2] <100 && substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons) {
    					### If perfect conservation for position 1 and 2 of the codon;
 					if($conservation[$curPos+2] < 100) { $informativeBaseCount++; $informativeBaseCountInOrthogroup++; }
    					push @columnsToRemove, [($curPos), ($curPos +1) ];
-   				} else {
+				} elsif (substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons && $gapAtPos<=2) { 
+   					push @columnsToRemove, [($curPos), ($curPos +1) ];
+				} else {
        				push @columnsToRemove, [($curPos),($curPos + 2) ]
    				}
    				$curPos+=3;
@@ -354,7 +355,7 @@ print "INFO: Done prepping FASTA file.\n";
 
 ####### make Model
 print "INFO: START computing model.\n";
-system("phyloFit --tree $treeFileName --subst-mod REV --out-root $referenceGenomeFamily $tmpFastaFileName");
+system("phyloFit --tree $treeFileName --EM --prescision MED --nrates 4 --subst-mod $model --out-root $referenceGenomeFamily $tmpFastaFileName");
 #system("phyloFit --tree $treeFileName --nrates 4 --subst-mod HKY85+GAP --out-root $referenceGenome $tmpFastaFileName");
 print "INFO: END computing model.\n";
 if(!$keepTmp) { unlink($tmpFastaFileName); }

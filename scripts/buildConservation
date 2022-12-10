@@ -502,8 +502,8 @@ if($refGeneDir eq "+") {
 }
 	
 #### Run phyloP 
-my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method LRT --mode CON";
-my $alternativephyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
+my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
+#my $alternativephyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
 my $CNSFound=0;
 
 if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
@@ -512,12 +512,12 @@ if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
 	if((-s "$tmpDir/$locus.up.bed") <= $EMPTY_FILE) {
 		if($verbose) { print "PROGRESS: Upstream phyloP outputfile is empty...\n"; }
 		### There is a bug in phyloP (t=nan) for some reason. If failed, try with a different method
-		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName > /dev/null");
-		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
-		if($testPhylopbug!=0) {
-			print("WARNING: phyloP failed for upstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
-			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
-		}
+#		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName > /dev/null");
+#		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
+#		if($testPhylopbug!=0) {
+#			print("WARNING: phyloP failed for upstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
+#			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
+#		}
 	}
 
 	if((-s "$tmpDir/$locus.up.bed") > $EMPTY_FILE) { 
@@ -539,12 +539,12 @@ if(-s $finalFASTADownFileName > $EMPTY_FILE) {
 	if((-s "$tmpDir/$locus.down.bed") <= $EMPTY_FILE) {
 		if($verbose) { print "PROGRESS: Downstream phyloP outputfile is empty...\n"; }
 		### There is a bug in phyloP (t=nan) for some reason. If failed, try with a different method
-		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName > /dev/null");
-		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
-		if($testPhylopbug!=0) {
-			print("WARNING: phyloP failed for downstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
-			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
-		}
+#		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName > /dev/null");
+#		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
+#		if($testPhylopbug!=0) {
+#			print("WARNING: phyloP failed for downstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
+#			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
+#		}
 	}
 	if(-s "$tmpDir/$locus.down.bed"> $EMPTY_FILE) { 
 		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
