@@ -20,6 +20,7 @@ use Bio::Align::Utilities;
 $|=1;
 
 my @fourLetterCodons = ("CT","GT","GC","AC","TC","CC","CG","GG");
+my $MAX_GAPS=1; ## Number of species with gaps allowed in the alignment
 
 my $conservatoryDir=abs_path(".");
 my $referenceGenomeList;
@@ -27,10 +28,10 @@ my $referenceGenomeList;
 my $referenceGenomeFamily;
 my %referenceGenomeSpecies;
 my $treeFileName;
-my $minInformativeBases = 50000;
+my $minInformativeBases = 20000;
 my $numOfGenesUsed=0;
-my $mode="CODON";  ## neurtal model mode. Either CODON or INTRON. Currently only CODON is supported
-my $model="UNREST";
+my $mode="CODON";  ## neurtal model sequence source. Either CODON or INTRON. Currently only CODON is supported
+my $model="REV";
 my $help=0;
 
 my $keepTmp=0;
@@ -48,7 +49,7 @@ if($help || $referenceGenomeList eq "" || $treeFileName eq "") {
    print "\t--conservatory-directory\tName of the conservatory directory. Default is current directory.\n";
    print "\t--reference\tComma delimited list of reference genomes (At least one is REQUIRED).\n";
    print "\t--tree\t\tFamily tree file for phyloFit (REQUIRED).\n";
-   print "\t--mode\t\tSubstitution model for phyloFit (Default: UNREST).\n";
+   print "\t--mode\t\tSubstitution model for phyloFit (Default: REV).\n";
    print "\t--mode\t\tSource for neutral model estimation. Either CODON or INTRON (used 4-variant codon position, or alignments of first intron). Only CODON is supported.\n";
    print "\t--keep-tmp\t\tDo not delete the temporary fasta file of the 3rd condon positions.\n";
    print "\t--help\t\tPrints this message.\n\n";
@@ -57,10 +58,11 @@ if($help || $referenceGenomeList eq "" || $treeFileName eq "") {
 }
 
 my $genomedbFileName = $conservatoryDir . "/genome_database.csv";
-
+my $defaultModelFile = "$conservatoryDir/scripts/defaultModel.mod";
 die "ERROR: Cannot find file genome database file ($genomedbFileName)\n" unless -e $genomedbFileName;
 die "ERROR: Cannot find file tree filename ($treeFileName)\n" unless -e $treeFileName;
 die "ERROR: Conservatory directory structure at ($conservatoryDir) is corrupt\n" unless (-e "$conservatoryDir/scripts");
+die "ERROR: Cannot find default mode file $defaultModelFile\n" unless (-e $defaultModelFile);
 
 ########## read genome database to get species list
 my @referenceGenomes = split ',', $referenceGenomeList;
@@ -109,7 +111,7 @@ die "ERROR: Cannot find family for the reference genomes ($referenceGenomeList) 
 if(scalar @referenceGenomes != scalar keys %referenceGenomeSpecies) {
 	die "ERROR: Found only " . join(",", keys %referenceGenomeSpecies) . " reference genomes out of the list $referenceGenomeList.\n";
 }
-print "INFO: START automatic phylogenetic model computation for family: $referenceGenomeFamily using reference genomes:" . join(",", keys %referenceGenomeSpecies) . "\n";
+print "PROGRESS: START automatic phylogenetic model computation for family: $referenceGenomeFamily using reference genomes:" . join(",", keys %referenceGenomeSpecies) . "\n";
 
 #### Now read the CDS and proteins files
 
@@ -119,8 +121,8 @@ my @genomesInReferenceFamily = keys %{ $genomesInFamily{$referenceGenomeFamily} 
 
 my $genomesDir = "$conservatoryDir/genomes/$referenceGenomeFamily";
 
-print "START: Reading proteins and CDS sequences for $referenceGenomeFamily.\n";
-print "INFO: Family contains " . scalar @speciesInReferenceFamily . " species:" . join(",", sort @speciesInReferenceFamily) . "\n";
+print "PROGRESS: Reading proteins and CDS sequences for $referenceGenomeFamily.\n";
+print "PROGRESS: Family contains " . scalar @speciesInReferenceFamily . " species:" . join(",", sort @speciesInReferenceFamily) . "\n";
 my %proteinSeqDB;
 my %cdsSeqDB;
 
@@ -322,7 +324,7 @@ foreach my $curCREOrtholog (@orthogroupsToKeep) {
    					### If perfect conservation for position 1 and 2 of the codon;
 					if($conservation[$curPos+2] < 100) { $informativeBaseCount++; $informativeBaseCountInOrthogroup++; }
    					push @columnsToRemove, [($curPos), ($curPos +1) ];
-				} elsif (substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons && $gapAtPos<=2) { 
+				} elsif (substr($consensus_sequence,$curPos, 2) ~~ @fourLetterCodons && $gapAtPos<= $MAX_GAPS) { 
    					push @columnsToRemove, [($curPos), ($curPos +1) ];
 				} else {
        				push @columnsToRemove, [($curPos),($curPos + 2) ]
@@ -351,14 +353,26 @@ foreach my $fastaSeq ( keys %FourVarPosSequence ) {
    	print $tmpFasta ">$fastaSeq\n" . $FourVarPosSequence{$fastaSeq} . "\n";
 }
 close $tmpFasta;
-print "INFO: Done prepping FASTA file.\n";
+print "PROGRESS: Alignment FASTA file assembled.\n";
 
 ####### make Model
-print "INFO: START computing model.\n";
-system("phyloFit --tree $treeFileName --EM --prescision MED --nrates 4 --subst-mod $model --out-root $referenceGenomeFamily $tmpFastaFileName");
+print "PROGRESS: Prepare starting model file";
+my $startModelTmpFileName = "$referenceGenomeFamily.mod.tmp";
+system("cp $defaultModelFile $startModelTmpFileName");
+open (my $treeFile, "<", $treeFileName);
+my $treeLine = <$treeFile>;
+chomp($treeLine);
+close($treeFile);
+open(my $tmpModelFile , ">>" , $startModelTmpFileName);
+print $tmpModelFile "TREE: $treeLine\n";
+close($tmpModelFile);
+
+print "PROGRESS: START computing model.\n";
+system("phyloFit --init-model $startModelTmpFileName --EM --precision MED --nrates 4 --scale-only --subst-mod $model --out-root $referenceGenomeFamily $tmpFastaFileName");
+unlink($startModelTmpFileName);
 #system("phyloFit --tree $treeFileName --nrates 4 --subst-mod HKY85+GAP --out-root $referenceGenome $tmpFastaFileName");
-print "INFO: END computing model.\n";
+print "PROGRESS: END computing model.\n";
 if(!$keepTmp) { unlink($tmpFastaFileName); }
 
 system("mv -f $referenceGenomeFamily.mod $conservatoryDir/genomes/$referenceGenomeFamily.mod");
-print "INFO: DONE.\n";
+print "DONE.\n";
