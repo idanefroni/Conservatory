@@ -72,7 +72,7 @@ my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported b
 									 ## To avoid spliting of very highly conserved CNSs
 
 #### Alignment filtering parameters
-my @minSpeciesPerConservationLevel= (150,100,100,80,30,10); ## Must have atleast these many alignments to support level assignment
+my @minSpeciesPerConservationLevel= (200,125,100,80,30,10); ## Must have atleast these many alignments to support level assignment
 my @minSpeciesAtConservationLevel= (1,1,1,3,5,5); ## Must have atleast these many species from each level to support level assignment
 
 my $minSpeciesPerConservationLevelString="";
@@ -1345,6 +1345,7 @@ sub extractFastaToFile {
 	### and repeating common trimers
 	$seq =~ s/([C|G|A]TT){4}/XXXXXXXXXXXX/g;
 	$seq =~ s/([C|G|A]AA){4}/XXXXXXXXXXXX/g;
+	$seq =~ s/([C|G|A]AT){4}/XXXXXXXXXXXX/g;
 
 	#### and repeating tetramers
 	$seq =~ s/(TCTA){4}/XXXXXXXXXXXXXXXX/g;
@@ -1440,46 +1441,6 @@ sub fuzzyFilterDimers {
 
 	## Now mask Seq
 	foreach my $curPos (@dimerOccurences) {
-		@inSeqArr[$curPos..($curPos+($polymerLength*2-1))] = @replacementArr;
-	}
-
-	return join("", @inSeqArr);
-}
-
-##### Fuzzy filter for repeating trimers sequences
-## Fuzziness is 0 or 1 (number of mismatches accepted)
-sub fuzzyFilterTrimers {
-	my ($inSeq, $polymerLength, $fuzziness) = @_;
-	my @inSeqArr = split //, $inSeq;
-	my @replacementArr = ($filterCharacter) x ($polymerLength * 2);
-	my @trimerPolymers;
-	push @trimerPolymers, ("GAA" x $polymerLength);
-
-	my $fuzzySearchString="(?=($trimerPolymers[1]";
-
-	for my $curPolymer (@trimerPolymers) {
-		if($fuzziness==1) {
-			for my $curNuc (1..($polymerLength*2-1)) {
-				my $curSearch = $curPolymer;
-				substr($curSearch,$curNuc-1,1) = ".";
-				$fuzzySearchString .= "|$curSearch"
-			}
-		} else {
-				$fuzzySearchString .= "|$curPolymer"
-		}
-	}
-	$fuzzySearchString .= "))";
-
-	## Now collected all the places where there is a match (accepting overlapping regions)
-	my @trimerOccurences;
-	$_ = $inSeq;
-
-	while(/$fuzzySearchString/g) {
-		push @trimerOccurences, pos();
-	}
-
-	## Now mask Seq
-	foreach my $curPos (@trimerOccurences) {
 		@inSeqArr[$curPos..($curPos+($polymerLength*2-1))] = @replacementArr;
 	}
 
