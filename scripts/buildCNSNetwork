@@ -24,6 +24,7 @@ GetOptions ("conservatory-directory=s" => \$conservatoryDir,
 			"loci-list=s" => \$lociListFileName,
 			"name=s" => \$networkName,
 			"verbose" => \$verbose,
+			"force" => \$force,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
@@ -32,6 +33,8 @@ if($help || $lociListFileName eq "") {
    print "\t--conservatory-directory\t\tPath of the main conservatory directory.\n";
    print "\t--loci-list\t\t\tFile containing list of genes (REQUIRED).\n";
    print "\t--name\t\t\tName prefix for output files.\n";
+   print "\t--force\t\t\tRecreate merged CNS file.\n";
+   print "\t--verbose\t\t\tPrint extra progress information.\n";
    print "\t--help\t\t\tShow this message.\n";
 
    die;
@@ -69,7 +72,7 @@ my $myLociPositionsFileName = "$conservatoryDir/output/$networkName.map.csv";
 
 
 ## If we don't have the merged CNS files, generate them
-if(!((-e $allCNSMergedFileName) & (-e $allPositionsMergedFileName))) {
+if($force || !((-e $allCNSMergedFileName) && (-e $allPositionsMergedFileName))) {
 	print localtime(). ": Assemble all alignments...\n";
 	system("cat $conservatoryDir/CNS/*.map.csv > $allPositionsFileName");
 

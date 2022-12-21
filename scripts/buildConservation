@@ -420,54 +420,66 @@ if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 		foreach my $curOrtholog (@{ $orthologs{$speciesToAlign} }) {
 			if($curOrtholog->{'UpQuality'} > $EMPTY_FILE || $curOrtholog->{'DownQuality'} > $EMPTY_FILE) {
 				push @orthologsToProcess, $curOrtholog;
-					print $finalCREorthologFile  $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
-				}
+				print $finalCREorthologFile  $curOrtholog->{'Genome'} . "\t" . $curOrtholog->{'Name'} . "\t" . $curOrtholog->{'UpQuality'} . "\t" . $curOrtholog->{'DownQuality'} ."\n"; 
 			}
 		}
+	}
 
-		if((scalar @orthologsToProcess) > 0) {
-			my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
+	if((scalar @orthologsToProcess) > 0) {
+		my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
 	
 			### Load all MAF, collapse species-specific paralogs and convert to FASTA.
 	
-			foreach my $curOrthologToMultipleAlignment (@orthologsToProcessSorted) {
-			
-				MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFUpFileName'}, \%upstreamLengthReference, $curOrthologToMultipleAlignment->{'upstreamLength'}, \%fastaUpstreamAlignment, \%mapAlignmentFamily, "U");
-				MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFDownFileName'}, \%downstreamLengthReference,$curOrthologToMultipleAlignment->{'downstreamLength'}, \%fastaDownstreamAlignment, \%mapAlignmentFamily, "D");
+		foreach my $curOrthologToMultipleAlignment (@orthologsToProcessSorted) {
+		
+			MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFUpFileName'}, \%upstreamLengthReference, $curOrthologToMultipleAlignment->{'upstreamLength'}, \%fastaUpstreamAlignment, \%mapAlignmentFamily, "U");
+			MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFDownFileName'}, \%downstreamLengthReference,$curOrthologToMultipleAlignment->{'downstreamLength'}, \%fastaDownstreamAlignment, \%mapAlignmentFamily, "D");
 				
-				if(!$keep_tmp) {
-					unlink($curOrthologToMultipleAlignment->{'MAFUpFileName'});
-					unlink($curOrthologToMultipleAlignment->{'MAFDownFileName'});
-					unlink($curOrthologToMultipleAlignment->{'upstreamFileName'});
-					unlink($curOrthologToMultipleAlignment->{'downstreamFileName'});
-				}
+			if(!$keep_tmp) {
+				unlink($curOrthologToMultipleAlignment->{'MAFUpFileName'});
+				unlink($curOrthologToMultipleAlignment->{'MAFDownFileName'});
+				unlink($curOrthologToMultipleAlignment->{'upstreamFileName'});
+				unlink($curOrthologToMultipleAlignment->{'downstreamFileName'});
 			}
-			open (my $finalFASTAUpFile, ">$finalFASTAUpFileName");
-			open (my $finalFASTADownFile, ">$finalFASTADownFileName");
-
-			# replace 'X' with 'N' for phyloP and Dump fasta alignment
-			my $upOutSeq = $fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
-			my $downOutSeq = $fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
-			$upOutSeq =~ s/X/N/g;
-			$downOutSeq =~ s/X/N/g;
-
-			print $finalFASTAUpFile ">$referenceGenomeSpecies\n$upOutSeq\n";
-			print $finalFASTADownFile ">$referenceGenomeSpecies\n$downOutSeq\n";
-			
-			for my $curspecies (keys %{ $fastaUpstreamAlignment{$locusFullName} } ) {
-				if($curspecies ne $referenceGenomeSpecies) {
-					print $finalFASTAUpFile ">$curspecies\n" . $fastaUpstreamAlignment{$locusFullName}{$curspecies} . "\n";
-				}
-			}
-			for my $curspecies (keys %{ $fastaDownstreamAlignment{$locusFullName} }) {
-				if($curspecies ne $referenceGenomeSpecies) {
-					print $finalFASTADownFile ">$curspecies\n" . $fastaDownstreamAlignment{$locusFullName}{$curspecies} . "\n";
-				}
-			}	
-			close($finalFASTAUpFile);
-			close($finalFASTADownFile);
 		}
-		if($verbose) { print "\n"; }
+		open (my $finalFASTAUpFile, ">$finalFASTAUpFileName");
+		open (my $finalFASTADownFile, ">$finalFASTADownFileName");
+
+		# replace 'X' with 'N' for phyloP and Dump fasta alignment
+		my $upOutSeq = $fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
+		my $downOutSeq = $fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
+		$upOutSeq =~ s/X/N/g;
+		$downOutSeq =~ s/X/N/g;
+
+		print $finalFASTAUpFile ">$referenceGenomeSpecies\n$upOutSeq\n";
+		print $finalFASTADownFile ">$referenceGenomeSpecies\n$downOutSeq\n";
+		
+		## output the fasta file in order - from most aligned to least aligned
+		my %alignedSeqPerSpecies;
+		for my $curspecies (keys %{ $fastaUpstreamAlignment{$locusFullName} } ) {
+			my $alignedSeqLength = $upstreamLengthReference{$locusFullName} - $fastaUpstreamAlignment{$locusFullName}{$curspecies} =~ tr/N//;
+			$alignedSeqPerSpecies{$curspecies} = $alignedSeqLength;
+		}
+
+		for my $curspecies ( reverse sort { $alignedSeqPerSpecies{$a} <=> $alignedSeqPerSpecies{$b} } keys %alignedSeqPerSpecies ) {
+			if($curspecies ne $referenceGenomeSpecies) {
+				print $finalFASTAUpFile ">$curspecies\n" . $fastaUpstreamAlignment{$locusFullName}{$curspecies} . "\n";
+			}
+		}
+		for my $curspecies (keys %{ $fastaDownstreamAlignment{$locusFullName} } ) {
+			my $alignedSeqLength = $downstreamLengthReference{$locusFullName} - $fastaDownstreamAlignment{$locusFullName}{$curspecies} =~ tr/N//;
+			$alignedSeqPerSpecies{$curspecies} = $alignedSeqLength;
+		}
+
+		for my $curspecies ( reverse sort { $alignedSeqPerSpecies{$a} <=> $alignedSeqPerSpecies{$b} } keys %alignedSeqPerSpecies ) {
+			if($curspecies ne $referenceGenomeSpecies) {
+				print $finalFASTADownFile ">$curspecies\n" . $fastaDownstreamAlignment{$locusFullName}{$curspecies} . "\n";
+			}
+		}	
+		close($finalFASTAUpFile);
+		close($finalFASTADownFile);
+	}
+	if($verbose) { print "\n"; }
 } else {
 	if($verbose) { print "PROGRESS: Not enough CRE-orthologs for $locus.\n"; }
 	exit;
@@ -483,7 +495,7 @@ if($justFamilyAlignment) {
 
 if (! -e $outputCNSDir) { mkdir($outputCNSDir); }
 
-if($verbose) { print "PROGRESS: Begin family conservation analysis for $locus. Model file: $modelFileName. Minimum phyloP score: $minPhyloPscore. \n"; }
+if($verbose) { print "PROGRESS: Begin family conservation analysis for $locus. Model file: $modelFileName. Minimum phyloP score: $minPhyloPscore.\n"; }
 
 my $coordinateTranslateAwkUp;
 my $coordinateTranslateStrUp;
@@ -504,22 +516,22 @@ if($refGeneDir eq "+") {
 	
 #### Run phyloP 
 my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
-#my $alternativephyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
 my $CNSFound=0;
 
 if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
-	system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
 
-	if((-s "$tmpDir/$locus.up.bed") <= $EMPTY_FILE) {
-		if($verbose) { print "PROGRESS: Upstream phyloP outputfile is empty...\n"; }
-		### There is a bug in phyloP (t=nan) for some reason. If failed, try with a different method
-#		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName > /dev/null");
-#		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
-#		if($testPhylopbug!=0) {
-#			print("WARNING: phyloP failed for upstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
-#			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.up.bed");
-#		}
-	}
+	### Run PhyloP multiple times, then merge the output 
+#	unlink("$tmpDir/$locus.up.bed");
+
+#	for my $curPhyloPrun (1..$numberOfPhyloPRuns) {
+#		system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed >> $tmpDir/$locus.up.multiple.bed");
+#	}
+#	system("sort -k1,1 -k2,2n -o $tmpDir/$locus.up.multiple.bed $tmpDir/$locus.up.multiple.bed ");
+#	system("bedtools merge -d -1 -c 5 -o mean -i $tmpDir/$locus.up.multiple.bed > $tmpDir/$locus.up.bed");
+#	if(!$keep_tmp) { unlink("$tmpDir/$locus.up.multiple.bed"); }
+
+	system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed > $tmpDir/$locus.up.bed");
+	system("sort -k1,1 -k2,2n -o $tmpDir/$locus.up.bed $tmpDir/$locus.up.bed");
 
 	if((-s "$tmpDir/$locus.up.bed") > $EMPTY_FILE) { 
 		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
@@ -535,18 +547,9 @@ if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
 }
 
 if(-s $finalFASTADownFileName > $EMPTY_FILE) {
-	system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
-	
-	if((-s "$tmpDir/$locus.down.bed") <= $EMPTY_FILE) {
-		if($verbose) { print "PROGRESS: Downstream phyloP outputfile is empty...\n"; }
-		### There is a bug in phyloP (t=nan) for some reason. If failed, try with a different method
-#		my $testPhylopbug = system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName > /dev/null");
-#		if($verbose) { print("PROGRESS: bug check: $testPhylopbug.\n"); }
-#		if($testPhylopbug!=0) {
-#			print("WARNING: phyloP failed for downstream analysis of $locusFullName (internal bug?). Retrying with alternative parameters...\n");
-#			system("phyloP $alternativephyloPParameters $modelFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n > $tmpDir/$locus.down.bed");
-#		}
-	}
+	system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName | wig2bed > $tmpDir/$locus.down.bed");
+	system("sort -k1,1 -k2,2n -o $tmpDir/$locus.down.bed $tmpDir/$locus.down.bed ");
+
 	if(-s "$tmpDir/$locus.down.bed"> $EMPTY_FILE) { 
 		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
 		if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {

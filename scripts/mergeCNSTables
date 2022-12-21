@@ -21,9 +21,9 @@ my $superCNSPrefix = "Super";
 
 my $verbose=0;
 my $help=0;
-my $minOverlappingSpeciesForMerge=4; ### How many overlapping hits to merge a CNS
-my $minCNSOverlap = 0.25;
-my $minSyntenyBiasToAssignCNS= 1.2; ### Number between 1 and 2 (how many more species need to support a contestant CNS to assign to just one of the genes)
+my $minOverlappingSpeciesForMerge=5; ### How many overlapping hits to merge a CNS
+my $minCNSOverlap = 0.5;
+my $minSyntenyBiasToAssignCNS= 1.2; ### Number between 1 and 2 (how many more species need to support a two-gene CNS to assign to just one of the genes)
 my $removeOriginalCNS=0;
 my $CLASSIFICATION_CLASSES_NUM=6;
 
