@@ -8,6 +8,7 @@ use List::MoreUtils qw(firstidx);
 ###########
 
 my $conservatoryDir=abs_path(".");
+my $tmpDir;
 my $genome="";
 my $family;
 my $force=0;
@@ -38,6 +39,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"skip-conservation" => \$skipConservation,
 			"just-family-alignment" => \$justFamilyAlignment,
+			"tmp-dir=s" => \$tmpDir,			
 			"force" => \$force,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
@@ -57,6 +59,7 @@ if($help || $referenceGenome eq "") {
 	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";	
 	print "\t--skip-conservation\t\tSkip conservation calculation step (just merge existing files).\n";
 	print "\t--just-family-alignment\t\tPerform just the alignment step (no CNS or deep CNS calculations).\n";
+    print "\t--tmp-dir\t\tSpecify the temporary directory (DEFAULT is alignments/<referenceName>/tmp).\n"; 	
 	print "\t--force\t\tForce rebuilding alignments.\n";
 	print "\t--threads\t\tNumber of threads to use.\n";
 	print "\t--verbose\t\tOutput extra progress messages.\n";
@@ -144,6 +147,7 @@ while(my $curgenomeline= <$genomedb>) {
 						if($force) { $alignmentParams .= " --force"; }
 						if($skipMissingGenomes) { $alignmentParams .= " --skip-missing-genomes"; }
 						if($justFamilyAlignment) { $alignmentParams .= " --just-family-alignment"; }
+						if($tmpDir ne "") { $alignmentParams .= " --tmp-dir $tmpDir"; }
 						system("perl $conservatoryDir/scripts/buildConservation $alignmentParams");
 						exit;
 					} else {

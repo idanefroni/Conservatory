@@ -28,6 +28,7 @@ my $EMPTY_FILE = 0; # The size of an empty MAF file, containing no alignments
 my $CLASSIFICATION_CLASSES_NUM=6;  ## The number of phylogeny classification categories in the genome_database file. Currently default is 6 (starts from 0).
 
 my $curDir;
+my $tmpDir;
 my $locus;
 my $locusFullName;
 my $referenceGenome;
@@ -112,6 +113,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-orf-length=i" => \$minORFLength,
 			"just-family-alignment" => \$justFamilyAlignment,
 			"keep-tmp" => \$keep_tmp,
+			"tmp-dir=s" => \$tmpDir,
 			"verbose" => \$verbose,
 			"bam-dump" =>\$dumpBam,
 			"force" => \$force,
@@ -156,7 +158,9 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    print "\t--bam-dump\t\tGenerate bam files for the alignments.\n";
    print "\t--skip-kaks\t\tSkip KaKs calculation (run faster)\n";
    print "\t--skip-missing-genomes\t\tIf genome information can't be found, skip and continue analysis (DEFAULT: Terminate with error message),\n";
-   print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the TMP directory.\n";
+   print "\t--tmp-dir\t\tSpecify the temporary directory (DEFAULT is alignments/<referenceName>/tmp).\n"; 
+   print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the temporary directory.\n";
+
  
    print "\n\t\tGeneral options\n\n";
    print "\t--verbose\t\tOutput extra messages.\n";
@@ -170,7 +174,10 @@ my $genomedbFile = $conservatoryDir . "/genome_database.csv";
 
 my $outputDir = "$conservatoryDir/alignments/$referenceGenome/";
 my $outputCNSDir = "$conservatoryDir/CNS/$referenceGenome/";
-my $tmpDir = "$conservatoryDir/alignments/$referenceGenome/tmp";
+
+if($tmpDir eq "") {
+	$tmpDir = "$conservatoryDir/alignments/$referenceGenome/tmp";
+}
 
 my $genomeDir ="$conservatoryDir/genomes";
 my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
