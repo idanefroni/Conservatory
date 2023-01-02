@@ -225,6 +225,9 @@ die "ERROR: Cannot find fastMLexecutable at $conservatoryDir/scripts/fastml.\n" 
 ###############################################
 ### Make sure we are not over-writing existing CNS file (unless we are forced to)
 if ( (-e $finalCNSFileName) && !$force  ) { die "END: Output CNS file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
+
+if ( (-e "$outputCNSDir/$locus.phylop.bed" ) && !$force  ) { die "END: Output Bed file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
+
 if( (-e $finalFASTAUpFileName) && (!$force) && $justFamilyAlignment) { die "END: Output family alignment file for $locus ($finalFASTAUpFileName) already exists. Use --force to overwrite.\n"; }
 
 ###############################################
