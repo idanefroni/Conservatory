@@ -11,21 +11,27 @@ use Bio::SeqFeatureI;
 use Getopt::Long;
 $|=1;
 
+
+### Filenames
 my $conservatoryDir=abs_path(".");
 my $CNSFileName="";
 my $mapFileName="";
 my $outputCNSFileName="";
 my $outputMapFileName="";
 my $outputMergedCNSFileName="";
-my $superCNSPrefix = "Super";
 
-my $verbose=0;
-my $help=0;
+
+### Merging parameters
+my $superCNSPrefix = "Super";
 my $minOverlappingSpeciesForMerge=5; ### How many overlapping hits to merge a CNS
 my $minCNSOverlap = 0.5;
-my $minSyntenyBiasToAssignCNS= 1.2; ### Number between 1 and 2 (how many more species need to support a two-gene CNS to assign to just one of the genes)
+my $minSyntenyBiasToAssignCNS= 1.2; ### Number between 1 and 2 (how many more species need to support a two-gene CNS assignment to just one of the genes, based on synteny)
 my $removeOriginalCNS=0;
+
+## Filtering parameters
 my $CLASSIFICATION_CLASSES_NUM=6;
+my @minSpeciesRelativeNumPerConservationLevel= (0.6,0.6,0.5,0.5,0.3,0.3); ## Must have atleast these many alignments to support level assignment, following merger. This is stricter than gene-specific filters
+my @classificationCutoffs;
 
 my %CNSTable;
 my %positionTable;
@@ -38,6 +44,9 @@ my $CNSMerged=0;
 my $CNSMergedExtended=0;
 my $CNSDeleted=0;
 my $deepCNSMerged=0;
+
+my $verbose=0;
+my $help=0;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"in-cns=s" => \$CNSFileName,
@@ -75,33 +84,57 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 	}
 }
 
+### Calculate classification level filters
+
+for my $curSpecies (keys %speciesClassification) {
+	my @spClassifications = split /-/,$speciesClassification{$curSpecies};
+	for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1) ) {
+		$classificationCutoffs[$curLevel]{$spClassifications[$curLevel]}++;
+	}
+}
+for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
+	for my $curClassification (keys %{ $classificationCutoffs[$curLevel]}) {
+		$classificationCutoffs[$curLevel]{$curClassification} = $classificationCutoffs[$curLevel]{$curClassification} * $minSpeciesRelativeNumPerConservationLevel[$curLevel];
+	}
+}
+
+
 if ($verbose) { print "END: Loading genome database.\n"; }
 
 if ($verbose) { print "START: Merging CNSs.\n"; }
 
-if($verbose) { print "PROGRESS: Loading mappings...\n" };
+
+my $curPos=1;
 
 ########## Load position table to memory
 open (my $CNSPositionFile, $mapFileName) ||  die "ERROR: Cannot find position file $mapFileName.\n";
 while(<$CNSPositionFile>) {
+	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "\r" };
+
 	chomp;
 	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length, $targetSequence) = split /,/;
-	## Only if non-filtered CNS
-	if(!defined $positionTable{$CNSID}) {
-		$positionTable{$CNSID} = {
-					'CNSID' => $CNSID,
-					'Positions' => () };
-	}
+	
+	### Filter for only embryophyta hits
+	my @classification = split /-/, $speciesClassification{ $genomeToSpecies{$targetSpecies} }; 
+	if($classification[0] eq "Embryophyta") {
+		## Only if non-filtered CNS
+		if(!defined $positionTable{$CNSID}) {
+			$positionTable{$CNSID} = {
+						'CNSID' => $CNSID,
+						'Positions' => () };
+		}
 
-	push( @{ $positionTable{$CNSID}{'Positions'} } , {
-				'TargetSpecies' => $targetSpecies,
-				'TargetLocus' => $targetLocus,
-				'TargetPosition' => $targetRelativePosition,
-				'ReferenceRelativePos' => $referenceRelativePosition,
-				'Length' => $length,
-				'TargetSequence' => $targetSequence} );			
+		push( @{ $positionTable{$CNSID}{'Positions'} } , {
+					'TargetSpecies' => $targetSpecies,
+					'TargetLocus' => $targetLocus,
+					'TargetPosition' => $targetRelativePosition,
+					'ReferenceRelativePos' => $referenceRelativePosition,
+					'Length' => $length,
+					'TargetSequence' => $targetSequence} );			
+	}
 }
 close($CNSPositionFile);
+if($verbose) { print "\n"; };
 
 
 ### Now start merging CNSs. First read and merge all CNSs in the family
@@ -149,7 +182,7 @@ while(<$CNSInputFile>) {
 			$CNSTable{$lastCNS}{'Chromosome'} eq $chromosome &&
 			overlap($CNSTable{$lastCNS}{'Start'},$CNSTable{$lastCNS}{'End'}, $start, $end)) {
 
-				if($verbose) { print "Found overlapping CNS: $lastCNS and $CNSID.\n"; }
+				#if($verbose) { print "Found overlapping CNS: $lastCNS and $CNSID.\n"; }
 
 				## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
 				if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
@@ -158,7 +191,7 @@ while(<$CNSInputFile>) {
 				} elsif($CNSTable{$CNSID}{'SupportingSpecies'} > $CNSTable{$lastCNS}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
 					$CNSToDelete = $lastCNS;
 					$CNSDeleted++;
-				} else {   ### If not CNSs have the same number of supporting species, we have to decide:
+				} else {   ### If both CNSs have the same number of supporting species, we have to decide:
 						### If the genes are same orientation and the CNS is in the same part of the regulatory sequence (Up/downstream)
 						###  then associate with the closest gene.
 						if( ($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart) && ($regulatorySeqPart eq "Upstream") &&
@@ -191,7 +224,7 @@ while(<$CNSInputFile>) {
 						$CNSToDelete = $CNSID;
 						$CNSDeleted++;
 					} else { ### If orientation is different then merge into one CNS.
-						if($verbose) { print "PROGRESS: Merging family CNS $lastCNS and $CNSID...(" . $CNSTable{$lastCNS}{'RegulatorySeqPart'} . ":" . $CNSTable{$CNSID}{'RegulatorySeqPart'} .")\n"; }
+#						if($verbose) { print "PROGRESS: Merging family CNS $lastCNS and $CNSID...(" . $CNSTable{$lastCNS}{'RegulatorySeqPart'} . ":" . $CNSTable{$CNSID}{'RegulatorySeqPart'} .")\n"; }
 						my $diffInCNSPos = $start-$CNSTable{$lastCNS}{'Start'};
 
 						### Pick the longest one
@@ -209,7 +242,7 @@ while(<$CNSInputFile>) {
 							$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
 							my %newmapping = %$mapping;
 							push( @{ $positionTable{$lastCNS}{'Positions'} } , \%newmapping);
-							if($verbose) { print "Updating $CNSID to $lastCNS: " . $newmapping{'TargetSpecies'} . "," . $newmapping{'TargetLocus'} . "\n"; }
+#							if($verbose) { print "Updating $CNSID to $lastCNS: " . $newmapping{'TargetSpecies'} . "," . $newmapping{'TargetLocus'} . "\n"; }
 						}
 
 						### Merge CNS rel position
@@ -226,7 +259,7 @@ while(<$CNSInputFile>) {
 		}
 
 		if($CNSToDelete ne "") {
-			if($verbose) { print "PROGRESS: Deleting $CNSToDelete.\n"; }
+#			if($verbose) { print "PROGRESS: Deleting $CNSToDelete.\n"; }
 			delete $positionTable{$CNSToDelete};
 			delete $CNSTable{$CNSToDelete};
 			if($CNSToDelete eq $lastCNS) { $lastCNS=$CNSID; }
@@ -240,10 +273,17 @@ close($CNSInputFile);
 ###### Now go to the deeper merge - merge across different references
 if($verbose) { print "PROGRESS: Begin merging deep CNS.\n" };
 
+
 ### First, build a map of hits indexed by gene
+
+
 my %positionLocusMap;
+my $totalToScreen = scalar (keys %positionTable);
+$curPos=1;
 
 foreach my $curCNS (keys %positionTable) {
+	if($verbose) { print "PROGRESS: Building CNS Map..." . $curPos++. "/$totalToScreen\r"; };
+
 	foreach my $curHit (@{ $positionTable{$curCNS}{'Positions'} }) {
 		if(!defined $positionLocusMap{ $curHit->{'TargetLocus'} }) {
 			$positionLocusMap{ $curHit->{'TargetLocus'} } = {
@@ -260,20 +300,22 @@ foreach my $curCNS (keys %positionTable) {
 		}	
 }
 
-if($verbose) { print "PROGRESS: Built CNS map.\n" };
+if($verbose) { print "\n\t\t...Done.\n" };
 ### Now Identify CNS to merge
 my %CNSToMerge;
 my %CNSToMergeHitMap;
 
 ### Scan all the hits to the locus. See if an alignment is hitting Two CNSs. If so, merge them.
+$totalToScreen = scalar (keys %positionLocusMap);
+$curPos=1;
 
 foreach my $curLocus (keys %positionLocusMap) {
-	if($verbose) { print "PROGRESS: Testing deep CNS for $curLocus.\n"; }
-	my $curPos=0;
+	#if($verbose) { print "PROGRESS: Testing deep CNS for $curLocus.\n"; }
+	
+	if($verbose) { print "PROGRESS: Identifying deep CNS to merge..." . ($curPos++) . "/$totalToScreen. Found $deepCNSMerged.\r"; }
 	
 	foreach my $firstHit ( @{ $positionLocusMap{$curLocus}{'Positions'} } ) {
 		foreach my $secondHit ( @{ $positionLocusMap{$curLocus}{'Positions'} } ) {
-			# && ($firstHit->{'TargetSpecies'} eq $secondHit->{'TargetSpecies'})
 			if(($firstHit->{'CNSID'} ne $secondHit->{'CNSID'}) && ($CNSTable{ $firstHit->{'CNSID'} } {'ReferenceGenome'} ne $CNSTable{ $secondHit->{'CNSID'} }{'ReferenceGenome'}) && ($CNSTable{ $firstHit->{'CNSID'} } {'RegulatorySeqPart'} eq $CNSTable{ $secondHit->{'CNSID'} }{'RegulatorySeqPart'}) ) {
 				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'}) > $minCNSOverlap ) {
 					### We should merge the CNS
@@ -288,18 +330,12 @@ foreach my $curLocus (keys %positionLocusMap) {
 						$second = $firstHit->{'CNSID'};
 					}
 
-					if(!defined $CNSToMerge{ $first }{ $second }  ) { 
-						$CNSToMerge{ $first } { $second }=1;
-					} else {
-						### make sure we keep the CNS association unidirectional and unique
-
-						$CNSToMerge{ $first }{ $second }++;
+					$CNSToMerge{ $first }{ $second }++;
 				
-						if($CNSToMerge{ $first }{ $second } == $minOverlappingSpeciesForMerge) {
-							if($verbose) { print "PROGRESS: Merge deep CNS $first and $second because of $curLocus of (" . $firstHit->{'TargetSpecies'} . ").\n"; }
-							$CNSMerged++;
-							$deepCNSMerged++;
-						}
+					if($CNSToMerge{ $first }{ $second } == $minOverlappingSpeciesForMerge) {
+#						if($verbose) { print "PROGRESS: Merge deep CNS $first and $second because of $curLocus of (" . $firstHit->{'TargetSpecies'} . ").\n"; }
+						$CNSMerged++;
+						$deepCNSMerged++;
 					}
 				}
 			}
@@ -307,13 +343,13 @@ foreach my $curLocus (keys %positionLocusMap) {
 	}
 }
 
-if($verbose) { print "PROGRESS: Found " . $deepCNSMerged . " CNS to merge.\n"; }
+if($verbose) {print "\n\t\t...Done.\n";}
 ### Now merge merged CNS
-if($verbose) { print "PROGRESS: Collating merged CNSs\n";}
+if($verbose) { print "PROGRESS: Collating merged CNSs.\n";}
 my $CNSMergedInCurrentPass;
 my $superGroupMerged=0;
 my %CNSToCollate;
-
+my $curPass=0;
 do {
 	$CNSMergedInCurrentPass=0;
 	%CNSToCollate=();
@@ -345,13 +381,15 @@ do {
 			delete $CNSToMerge{ $CNSToCollate{$curCNSToCollate} };
 		}
 	}
+	if($verbose) { print "PROGRESS: Collating pass ". $curPass++ . ". Merged $CNSMergedInCurrentPass CNS groups \n"; }
 } while($CNSMergedInCurrentPass >0);
 
-if($verbose) { print "PROGRESS: Forming deep CNS groups.\n"; }
-
+$totalToScreen = scalar (keys %CNSToMerge);
+$curPos=1;
 my %CNSGroups;
 
 foreach my $curCNS (keys %CNSToMerge) {
+	if($verbose) { print "PROGRESS: Forming deep CNS groups...". $curPos++ . "/$totalToScreen\r"; }
 	# filter low support alignments
 	foreach my $cnsB (keys %{ $CNSToMerge{$curCNS } }) {
 		if($CNSToMerge{$curCNS}{$cnsB}< $minOverlappingSpeciesForMerge) {
@@ -427,45 +465,78 @@ if($removeOriginalCNS) {
 	}
 						
 }
+if($verbose) { print "...Done.\n";}
 
-if($verbose) { print "PROGRESS: Remapping CNSs.\n";}
 
+$totalToScreen = scalar (keys %CNSTable);
+$curPos=1;
 foreach my $curCNS (keys %CNSTable) {
 	## Count supporting species
+	if($verbose) { print "PROGRESS: Remapping and filtering..." . $curPos++ . "/$totalToScreen\r"; }
+
 	my %speciesForCNS;
-	foreach my $mapping (@{ $positionTable{$curCNS}{'Positions'} }) {
+	for my $mapping (@{ $positionTable{$curCNS}{'Positions'} }) {
 		$speciesForCNS{ $mapping->{'TargetSpecies'} } =1;
 	}
-	$CNSTable{$curCNS}{'SupportingSpecies'} = scalar keys %speciesForCNS;
+	my @speciesForCNSArray = keys %speciesForCNS;
+	$CNSTable{$curCNS}{'SupportingSpecies'} = scalar @speciesForCNSArray;
 
 	my @CNSConservationLevels;
 
-	foreach my $curSpecies (keys %speciesForCNS) {
+	for my $curSpecies (@speciesForCNSArray) {
   	  my @classification = split '-' , $speciesClassification{$curSpecies};
-    	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
-			$CNSConservationLevels[$curClassificationLevel]{$classification[$curClassificationLevel]}=1;
+    	for my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
+			$CNSConservationLevels[$curClassificationLevel]{$classification[$curClassificationLevel]}++;
     	}
    }
-  my $maxConservationLevel= $CLASSIFICATION_CLASSES_NUM;
-  foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
-	if((scalar keys %{ $CNSConservationLevels[$curClassificationLevel] })>1 && $maxConservationLevel > $curClassificationLevel) {
-		$maxConservationLevel=$curClassificationLevel;
-	}
-  }
 
-  my @speciesForCNSArray = keys %speciesForCNS;
-  my $conservationLevelName;
-  if($maxConservationLevel == $CLASSIFICATION_CLASSES_NUM) {  ### If it's only in the family, mark the family
-	 $conservationLevelName = $speciesToFamily{ $speciesForCNSArray[0] };
-  } else {
-	my @classificationLevels = split '-', $speciesClassification{ $speciesForCNSArray[0]};
-	$conservationLevelName = $classificationLevels[ $maxConservationLevel-1];
-  }
+   my $CNSConservationLevel;
+   #determine for each conservation level if we are over the cut off.
+   for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-2)) {
+		my %classificationForLevel = %{ $CNSConservationLevels[$curLevel] };
+		my %classificationForDeeperLevel = %{ $CNSConservationLevels[$curLevel+1] };
+	
+		if (scalar keys %classificationForDeeperLevel > 1 && scalar keys %classificationForLevel == 1 && $CNSConservationLevel eq "") { ### We have potential for classification. See if we have enough species
+			my @classificationForLevelArray = keys %classificationForLevel;
+			
+			my $bestClassification = @classificationForLevelArray[0];
+			if( $classificationForLevel{$bestClassification} >= $classificationCutoffs[$curLevel]{$bestClassification} ) {
+				$CNSConservationLevel = $bestClassification;
+			} else { ### We have unsupported mapping. removing the errorneous mappings
+#				print "$curCNS:Unsupported $bestClassification  $classificationForLevel{$bestClassification} And we want $classificationCutoffs[$curLevel]{$bestClassification} \n";
+				my @sortedClassificationClasses = reverse sort { $classificationForDeeperLevel{$a} <=> $classificationForDeeperLevel{$b} } keys %classificationForDeeperLevel;
+				my $keepClassification = $sortedClassificationClasses[0];
+				my @positions = @{ $positionTable{$curCNS}{'Positions'} };
+				my @newPositions;
+				for my $curPosition (@positions) {
+					my @spClassifications = split /-/, $speciesClassification{ $curPosition->{'TargetSpecies'} };
+					if($spClassifications[$curLevel+1] eq $keepClassification) {
+						push @newPositions, $curPosition;
+					}
+				}
+				$positionTable{$curCNS}{'Positions'} = \@newPositions;
 
-  $CNSTable{$curCNS}{'Level'} = $conservationLevelName;
+				# remove the other classifications
+				for my $curClassification (@sortedClassificationClasses) {
+					if($curClassification ne $keepClassification) {
+						delete $CNSConservationLevels[$curLevel+1]{$curClassification};
+					}
+				}
+				## If this is the last level, just keep the family
+				if($curLevel == $CLASSIFICATION_CLASSES_NUM -2 ) {
+					$CNSConservationLevel = $keepClassification;
+
+				}
+			}
+		} elsif($CNSConservationLevel eq "" && $curLevel == $CLASSIFICATION_CLASSES_NUM -2 ) {
+			$CNSConservationLevel = (keys %classificationForDeeperLevel)[0];
+		}
+   }
+
+  $CNSTable{$curCNS}{'Level'} = $CNSConservationLevel;
 }
 
-if($verbose) { print "PROGRESS: Done. Output files.\n"; }
+if($verbose) { print "\nPROGRESS: Done. Output files.\n"; }
 
 ########### Output files
 ### New CNS files
@@ -525,45 +596,15 @@ print "END: Deleted $CNSDeleted duplicated CNSs; Merged $CNSMerged CNSs, of $dee
 ### Compute overlap between two fragments. 
 ### Parameters:
 ### overlap(startOne, endOne, StartTwo, endTwo, mode)
-### mode can be "ABS", in which case returns the absolute overlap in bp
-### else, returns relative overlap (0-1).
+### returns relative overlap (0-1).
 ###
 
 sub overlap {
-	my ($startOne, $endOne, $startTwo, $endTwo, $mode) =@_;
+	my ($startOne, $endOne, $startTwo, $endTwo) =@_;
 	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
 		 ($startOne > $endTwo)) {
 		return 0;
 	} else {
-		#### return the percent overlap
-		if($endOne < $endTwo) {
-			if($startOne >= $startTwo) {
-				if($mode eq "ABS") {
-					return ($endOne-$startOne);
-				} else {
-					return 1;
-				}
-			} else {
-				if($mode eq "ABS") {
-					return ($endOne -$startTwo);
-				} else {
-					return ($endOne -$startTwo) /($endOne - $startOne);
-				}
-			} 
-		} else {
-			if($startOne <= $startTwo) {
-				if($mode eq "ABS") {
-					return ($endOne-$startOne);					
-				} else {
-					return 1;
-				}
-			} else {
-				if($mode eq "ABS") {
-					return ($endTwo -$startOne);
-				} else {
-					return ($endTwo -$startOne) /($endOne - $startOne);
-				}
-			} 			
-		}
+		return (min($endOne, $endTwo) - max($startOne, $startTwo))/ max( $endOne-$startOne, $endTwo-$startTwo);
 	}
 }
