@@ -13,11 +13,11 @@ my $genome="";
 my $family;
 my $force=0;
 my $verbose=0;
+my $donotFilter,
 my $help=0;
 my $genomeWasProcessed=0;
 my $threads=16;
 my @threadPids;
-my $version=2;
 
 my $skipConservation=0;
 my $justFamilyAlignment=0;
@@ -31,13 +31,13 @@ my $geneListFileName;
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"reference=s" => \$referenceGenome,
 			"threads=i" => \$threads,
-			"version=i" => \$version,
 			"genelist=s" => \$geneListFileName,
 			"skip-missing-genomes" => \$skipMissingGenomes,
 			"min-identity=i" => \$minIdentity,
 			"min-species=i" => \$minSpeciesNum,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"skip-conservation" => \$skipConservation,
+			"do-not-filter" =>\$donotFilter,
 			"just-family-alignment" => \$justFamilyAlignment,
 			"tmp-dir=s" => \$tmpDir,			
 			"force" => \$force,
@@ -56,7 +56,6 @@ if($help || $referenceGenome eq "") {
 	print "\t--min-species\t\tMinimum number of species share sequence for an alignment to be considered for CNS.\n";
 	print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS.\n";
 	print "\t--skip-missing-genomes\t\tSkip genomes with incomplete data and continue analysis (DEFAULT: terminate with error message).\n";
-	print "\t--version\t\tVersion of aligner to use (1 or 2; DEFAULT 2)\n";	
 	print "\t--skip-conservation\t\tSkip conservation calculation step (just merge existing files).\n";
 	print "\t--just-family-alignment\t\tPerform just the alignment step (no CNS or deep CNS calculations).\n";
     print "\t--tmp-dir\t\tSpecify the temporary directory (DEFAULT is alignments/<referenceName>/tmp).\n"; 	
@@ -205,9 +204,10 @@ while(my $curgenomeline= <$genomedb>) {
 		print localtime() . ": END data merge and sort.\n";		
 		## Merge CNSs
 		print localtime() . ": START build CNS tables.\n";
-		my $verboseOption;
-		if($verbose) { $verboseOption = "--verbose"; }
-		system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv  $verboseOption");
+		my $options;
+		if($verbose) { $options .= "--verbose "; }
+		if($donotFilter) { $options .= "--do-not-filter "; }
+		system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv  $options");
 		unlink("$conservationDir/$family.sorted.csv");
 		unlink("$conservationDir/$family.map.sorted.csv");
 
