@@ -1138,7 +1138,8 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 							"TargetSpecies" => $curHit->{'TargetSpecies'},
 							"TargetLocus" => $curHit->{'TargetLocus'},
 							"TargetSequence" => substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'}),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName})),
-							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} }; 
+							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $CNSBreakpoints[$curBreakpoint] }; 
+#							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} }; 
 					$numberOfHitsReassigned++;
 				}
 			}
