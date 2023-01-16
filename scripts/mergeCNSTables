@@ -8,6 +8,7 @@ use List::Util qw(min max uniq);
 use Bio::AlignIO;
 use Bio::Seq;
 use Bio::LocatableSeq;
+use Bio::Tools::Run::Alignment::Muscle;
 use Algorithm::NeedlemanWunsch;
 use Bio::SimpleAlign;
 use Bio::Tools::GFF;
@@ -36,8 +37,8 @@ my $minCNSIdentityToMerge=70;
 ## Filtering parameters
 my $CLASSIFICATION_CLASSES_NUM=6;
 my $minSpeciesForClassification=6; 	### Minimum absolute number of species to support a classification
-my @minSpeciesRelativeNumPerConservationLevel= (0.333,0.333,0.333,0.333,0,0); ## Must have atleast these many alignments to support level assignment, following merger.
-my @classificationCutoffs;
+#my @minSpeciesRelativeNumPerConservationLevel= (0.333,0.333,0.333,0.333,0,0); ## Must have atleast these many alignments to support level assignment, following merger.
+#my @classificationCutoffs;
 
 my %CNSTable;
 my %positionTable;
@@ -78,6 +79,8 @@ if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq ""
 if ($verbose) { print "START: Loading genome database.\n"; }
 my $genomedbFile = $conservatoryDir . "/genome_database.csv";
 die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
+my $t_muscle = `sh -c 'command -v muscle'`;
+die "ERROR: Cannot find muscle in path. Please make sure muscle v3.8.1551 is installed.\n" unless ($t_muscle ne "");  
 
 open (my $genomeDatabase, "<", $genomedbFile);
 while((my $curgenomeline = <$genomeDatabase>)) {
@@ -93,18 +96,17 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 
 ### Calculate classification level filters
 
-for my $curSpecies (keys %speciesClassification) {
-	my @spClassifications = split /-/,$speciesClassification{$curSpecies};
-	for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1) ) {
-		$classificationCutoffs[$curLevel]{$spClassifications[$curLevel]}++;
-	}
-}
-for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
-	for my $curClassification (keys %{ $classificationCutoffs[$curLevel]}) {
-		$classificationCutoffs[$curLevel]{$curClassification} = $classificationCutoffs[$curLevel]{$curClassification} * $minSpeciesRelativeNumPerConservationLevel[$curLevel];
-	}
-}
-
+#for my $curSpecies (keys %speciesClassification) {
+#	my @spClassifications = split /-/,$speciesClassification{$curSpecies};
+#	for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1) ) {
+#		$classificationCutoffs[$curLevel]{$spClassifications[$curLevel]}++;
+#	}
+#}
+#for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
+#	for my $curClassification (keys %{ $classificationCutoffs[$curLevel]}) {
+#		$classificationCutoffs[$curLevel]{$curClassification} = $classificationCutoffs[$curLevel]{$curClassification} * $minSpeciesRelativeNumPerConservationLevel[$curLevel];
+#	}
+#}
 
 if ($verbose) { print "END: Loading genome database.\n"; }
 
@@ -230,11 +232,9 @@ while(<$CNSInputFile>) {
 							}
 							$CNSDeleted++;
 					} elsif( $CNSTable{$lastCNS}{'RegulatorySeqPart'} eq "Merged" ) {   #### If CNS hits a CNS that was already merged, just delete it
-					#	if($verbose) { print "$CNSID overlaps with $lastCNS, but $lastCNS was already merged. Deleting...\n"}
 						$CNSToDelete = $CNSID;
 						$CNSDeleted++;
 					} else { ### If orientation is different then merge into one CNS.
-#						if($verbose) { print "PROGRESS: Merging family CNS $lastCNS and $CNSID...(" . $CNSTable{$lastCNS}{'RegulatorySeqPart'} . ":" . $CNSTable{$CNSID}{'RegulatorySeqPart'} .")\n"; }
 						my $diffInCNSPos = $start-$CNSTable{$lastCNS}{'Start'};
 
 						### Pick the longest one
@@ -281,7 +281,6 @@ if($verbose) { print "\n"; }
 ###### Now go to the deeper merge - merge across different references
 
 ### First, build a map of hits indexed by gene
-
 
 my %positionLocusMap;
 my $totalToScreen = scalar (keys %positionTable);
@@ -494,10 +493,17 @@ foreach my $curCNS (keys %CNSToMerge) {
 		$positionTable{$CNSGroupName}{'Positions'} = ();
 
 		my $remappedPositions=0;
+		my @ancesteralSeqs;
 
 		foreach my $curCNSToJoin ( @CNSsToJoin ) {
 			my $numPosToMap = scalar @{ $positionTable{$curCNSToJoin}{'Positions'} };
-			if($verbose) { print "$deepCNSNotice. Joining $curCNSToJoin to $CNSGroupName. Remapped $remappedPositions/$numPosToMap.\r"; }
+			# if($verbose) { print "$deepCNSNotice. Joining $curCNSToJoin to $CNSGroupName. Remapped $remappedPositions/$numPosToMap.\r"; }
+			my $ancesteralCNSSeq = Bio::LocatableSeq->new(-seq => $CNSTable{$curCNSToJoin}{'AncesteralSeq'},
+						    	  					  -id => $curCNSToJoin,
+						    	  					  -start => 1,
+						    	  					  -end => length($CNSTable{$curCNSToJoin}{'AncesteralSeq'}));
+			push @ancesteralSeqs, $ancesteralCNSSeq;
+
 			foreach my $mapping ( @{ $positionTable{$curCNSToJoin}{'Positions'} }  ) {
 			
 				### Check to see if it is not there yet
@@ -521,6 +527,12 @@ foreach my $curCNS (keys %CNSToMerge) {
 				}
 			}
 		}
+
+		#### Align CNSs to obtain a consensus sequence for the Super CNS
+
+		my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
+		my $superCNSSeqs = $aligner->align(\@ancesteralSeqs);
+		$CNSTable{$CNSGroupName}{'AncesteralSeq'} = $superCNSSeqs->consensus_string(30);
 	} 
 }
 
@@ -547,15 +559,13 @@ $curPos=1;
 foreach my $curCNS (keys %CNSTable) {
 	## Count supporting species
 	if($verbose) { print "PROGRESS: Remapping and filtering..." . $curPos++ . "/$totalToScreen\r"; }
-#	print "Remap: $curCNS.\n";
-#	print "It has positions:" . (scalar @{ $positionTable{$curCNS}{'Positions'} }) . "\n";
+
 	my %speciesForCNS;
 	for my $mapping (@{ $positionTable{$curCNS}{'Positions'} }) {
 		$speciesForCNS{ $mapping->{'TargetSpecies'} } =1;
 	}
 	my @speciesForCNSArray = keys %speciesForCNS;
 	$CNSTable{$curCNS}{'SupportingSpecies'} = scalar @speciesForCNSArray;
-#	print "species: " . join(",", @speciesForCNSArray) . "\n";
 
 	my @CNSConservationLevels;
 
@@ -563,7 +573,6 @@ foreach my $curCNS (keys %CNSTable) {
   	  my @classification = split '-' , $speciesClassification{$curSpecies};
     	for my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
 			$CNSConservationLevels[$curClassificationLevel]{$classification[$curClassificationLevel]}++;
-#			print "Sp: $curSpecies. Level: $curClassificationLevel:" . $classification[$curClassificationLevel] . "\n";
     	}
    }
    
@@ -575,69 +584,19 @@ foreach my $curCNS (keys %CNSTable) {
    	for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-2)) {
 		my %classificationForLevel = %{ $CNSConservationLevels[$curLevel] };
 		my %classificationForDeeperLevel = %{ $CNSConservationLevels[$curLevel+1] };
-	
 		if (scalar keys %classificationForDeeperLevel > 1 && scalar keys %classificationForLevel == 1 && $CNSConservationLevel eq "") { ### We have potential for classification. See if we have enough species
-			my @classificationForLevelArray = reverse sort { $classificationForLevel{$a} <=> $classificationForLevel{$b} } keys %classificationForLevel;
-			
-			### Check what is the best classification
-			my $bestClassification;
-
-			for my $curClassificationToCheck (@classificationForLevelArray) {
-				if( $classificationForLevel{$curClassificationToCheck} >= $classificationCutoffs[$curLevel]{$curClassificationToCheck} && $classificationForLevel{$curClassificationToCheck} > $minSpeciesForClassification) {
-					$bestClassification = $curClassificationToCheck;
-				}
-			}
-			if($bestClassification eq "") { $bestClassification = @classificationForLevelArray[0]; }
-
-   			if(!$donotFilter) {
-				if( $classificationForLevel{$bestClassification} >= $classificationCutoffs[$curLevel]{$bestClassification} ) {
-					$CNSConservationLevel = $bestClassification;
-				} else { ### We have unsupported mapping. removing the errorneous mappings
-#					print "$curCNS:Unsupported $bestClassification  $classificationForLevel{$bestClassification} And we want $classificationCutoffs[$curLevel]{$bestClassification} \n";
-					my @sortedClassificationClasses = reverse sort { $classificationForDeeperLevel{$a} <=> $classificationForDeeperLevel{$b} } keys %classificationForDeeperLevel;
-					### Check which classification to pick
-					my $keepClassification="";
-					for my $curClassificationToCheck (@sortedClassificationClasses) {
-						if( $classificationForDeeperLevel{$curClassificationToCheck} >= $classificationCutoffs[$curLevel+1]{$curClassificationToCheck} && $classificationForDeeperLevel{$curClassificationToCheck} > $minSpeciesForClassification &&
-						    $keepClassification eq "") {
-							$keepClassification = $curClassificationToCheck;
-#							print "We want classificiation $keepClassification at level $curClassificationToCheck. Because it has " .  $classificationForDeeperLevel{$curClassificationToCheck} ."\n";
-						}  # else { print " But not $curClassificationToCheck because of " . $classificationForDeeperLevel{$curClassificationToCheck} . "\n"; }
-					}
-					if($keepClassification eq "") { $keepClassification = $sortedClassificationClasses[0]; }
-#												print "We didn't know so we picked $keepClassification\n"; }
-
-					my @positions = @{ $positionTable{$curCNS}{'Positions'} };
-					my @newPositions;
-
-					for my $curPosition (@positions) {
-						my @spClassifications = split /-/, $speciesClassification{ $curPosition->{'TargetSpecies'} };
-					#	print "Checking " . $spClassifications[$curLevel+1] . ": $keepClassification at $curLevel\n";
-						if($spClassifications[$curLevel+1] eq $keepClassification) {
-							push @newPositions, $curPosition;
-						}
-					}
-					$positionTable{$curCNS}{'Positions'} = \@newPositions;
-
-					# remove the other classifications
-					for my $curClassification (@sortedClassificationClasses) {
-						if($curClassification ne $keepClassification) {
-							delete $CNSConservationLevels[$curLevel+1]{$curClassification};
-						}
-					}
-					## If this is the last level, just keep it
-					if($curLevel == $CLASSIFICATION_CLASSES_NUM - 3 ) {
-						$CNSConservationLevel = $keepClassification;
-					}
-				}
-			}
-		} elsif($CNSConservationLevel eq "" && $curLevel == $CLASSIFICATION_CLASSES_NUM -2 ) {
-			$CNSConservationLevel = (keys %classificationForDeeperLevel)[0];
+			$CNSConservationLevel = (keys %classificationForLevel)[0];
 		}
-   	} 
-  if(!$donotFilter) { $CNSTable{$curCNS}{'Level'} = $CNSConservationLevel; }
+	}
+	if($CNSConservationLevel eq "") {
+		my @familyClassification = reverse sort { $CNSConservationLevels[$CLASSIFICATION_CLASSES_NUM-1]{$a} <=> $CNSConservationLevels[$CLASSIFICATION_CLASSES_NUM-1]{$b} } keys %{ $CNSConservationLevels[$CLASSIFICATION_CLASSES_NUM - 1] };
+		$CNSConservationLevel = $familyClassification[0];
+	}
+
+  	$CNSTable{$curCNS}{'Level'} = $CNSConservationLevel;
 }
 if($verbose) { print "\n"; }
+
 ## Merge overlapping position hits segments
 $totalToScreen = scalar (keys %CNSTable);
 $curPos=1;

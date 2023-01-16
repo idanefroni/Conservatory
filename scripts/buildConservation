@@ -438,7 +438,7 @@ if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 	if((scalar @orthologsToProcess) > 0) {
 		my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
 	
-			### Load all MAF, collapse species-specific paralogs and convert to FASTA.
+		### Load all MAF, collapse species-specific paralogs and convert to FASTA.
 	
 		foreach my $curOrthologToMultipleAlignment (@orthologsToProcessSorted) {
 		
@@ -529,16 +529,6 @@ my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode
 my $CNSFound=0;
 
 if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
-
-	### Run PhyloP multiple times, then merge the output 
-#	unlink("$tmpDir/$locus.up.bed");
-
-#	for my $curPhyloPrun (1..$numberOfPhyloPRuns) {
-#		system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed >> $tmpDir/$locus.up.multiple.bed");
-#	}
-#	system("sort -k1,1 -k2,2n -o $tmpDir/$locus.up.multiple.bed $tmpDir/$locus.up.multiple.bed ");
-#	system("bedtools merge -d -1 -c 5 -o mean -i $tmpDir/$locus.up.multiple.bed > $tmpDir/$locus.up.bed");
-#	if(!$keep_tmp) { unlink("$tmpDir/$locus.up.multiple.bed"); }
 
 	system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed > $tmpDir/$locus.up.bed");
 	system("sort -k1,1 -k2,2n -o $tmpDir/$locus.up.bed $tmpDir/$locus.up.bed");
@@ -936,7 +926,6 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 	}
 }
 
-
 #################################################################
 ##### Now search for deep CNS (outside the family)
 #####
@@ -977,7 +966,7 @@ while(<$genomeDatabase>) {
 					#############################################################
 					if($upQuality+$downQuality > $minQuality) {
 						if($verbose) {
-								print "PROGRESS: Found deep CNS hit ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n";
+							print "PROGRESS: Found deep CNS hit ($curgenomeFamily:$curgenomeSpecies:$curgenomeName:" . fullNameToShortName($curPutativeOrtholog) . "). Quality: " . ($upQuality+$downQuality) . ".\n";
 						}
 						## If this alignment is superior to existing alignment for the same species, delete the previous alignment and replace with current one. If not, just ignore alignment.
 						$deepAlignmentQualityForSpecies{$curgenomeSpecies}{$curgenomeName} += $upQuality + $downQuality;
@@ -1139,7 +1128,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 							"TargetLocus" => $curHit->{'TargetLocus'},
 							"TargetSequence" => substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'}),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName})),
 							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $CNSBreakpoints[$curBreakpoint] }; 
-#							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} }; 
 					$numberOfHitsReassigned++;
 				}
 			}
@@ -1512,12 +1500,6 @@ sub getMAFQuality {
 ### Run the sequence alignment without terminal output
 sub quietAlign {
 	my ($toalign) = @_;
-	######## T-coffee alignment	
-#	my $aligner = Bio::Tools::Run::Alignment::TCoffee->new(('quiet' => 1,  'dp_mode' => 'fasta_pair_wise'));
-#	$aligner->io->_io_cleanup();
-#	my ($infilename,$type) = $aligner->_setinput($toalign);
-#	my $param_string = $aligner->_setparams(); # . " >/dev/null";
-#	my $alignment = $aligner->_run('align', [$infilename,$type], $param_string);
 	######### Muscle alignment
 	my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1, 'max_iter' => 2, 'diags' => 1));
 	my $alignment = $aligner->align($toalign);
@@ -1748,7 +1730,6 @@ sub MAFtoFASTA {
 							$selectedMergedNuc = substr($curseq,$curchr,1);
 						} else { #if we have a conflict - pick the one that is similar to the reference (### Pick the first one)
 							if((substr($curseq,$curchr,1) eq substr($refseq,$curchr,1)) || (substr($curseq,$curchr,1) eq substr($refseq,$curchr,1))) {
-#								$selectedMergedNuc = substr($refseq,$curchr,1);
 								$selectedMergedNuc = substr($curseq,$curchr,1);
 							} else {
 								$selectedMergedNuc = substr($curseq,$curchr,1); # or if not, the default is the first one.
@@ -1986,7 +1967,6 @@ sub getCNSbreakpoints {
 		### split CNS if larger than minCNSlength and high variability. But don't split CNS if its too short, has too many species
 		## or if the split point is not well supported
 		if((abs($CNSdelta[$pos]) > $deltaSD * $standardDeviationsToSplit) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNSLength) &&
-#		 ($pos - $lastBreakpointPos > $minCNSLength ) && ($CNSCoverage[$pos]< $maxSpeciesToInitiateCNSSplit && $CNSCoverage[$pos+1]< $maxSpeciesToInitiateCNSSplit)) {
 		 ($pos - $lastBreakpointPos > $minCNSLength ) ) {
 			if($verbose) { print "PROGRESS: Splitting CNS at $pos (" . abs($CNSdelta[$pos]) . "," . $CNSCoverage[$pos] . ").\n"; }
 			push @breakpoints, $pos;
@@ -2021,7 +2001,6 @@ sub polishCNSAlignments {
 				$endBreakpoint= $curBreakpoint;
 			}
 		}
-		#print "Polishing: $start-$end to " . $breakpoints[$startBreakpoint] . "-" . $breakpoints[$endBreakpoint] . "\n";
 		$curHit->{'ReferenceRelativePosition'} = $start;
 		$curHit->{'Length'} = $end - $start;
 	}
