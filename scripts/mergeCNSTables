@@ -37,8 +37,6 @@ my $minCNSIdentityToMerge=70;
 ## Filtering parameters
 my $CLASSIFICATION_CLASSES_NUM=6;
 my $minSpeciesForClassification=6; 	### Minimum absolute number of species to support a classification
-#my @minSpeciesRelativeNumPerConservationLevel= (0.333,0.333,0.333,0.333,0,0); ## Must have atleast these many alignments to support level assignment, following merger.
-#my @classificationCutoffs;
 
 my %CNSTable;
 my %positionTable;
@@ -93,20 +91,6 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 		$speciesClassification{$curgenomeSpecies} = $classification;
 	}
 }
-
-### Calculate classification level filters
-
-#for my $curSpecies (keys %speciesClassification) {
-#	my @spClassifications = split /-/,$speciesClassification{$curSpecies};
-#	for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1) ) {
-#		$classificationCutoffs[$curLevel]{$spClassifications[$curLevel]}++;
-#	}
-#}
-#for my $curLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {
-#	for my $curClassification (keys %{ $classificationCutoffs[$curLevel]}) {
-#		$classificationCutoffs[$curLevel]{$curClassification} = $classificationCutoffs[$curLevel]{$curClassification} * $minSpeciesRelativeNumPerConservationLevel[$curLevel];
-#	}
-#}
 
 if ($verbose) { print "END: Loading genome database.\n"; }
 
@@ -385,9 +369,7 @@ for my $curCNSA (keys %CNSToMerge ) {
 		my $pairwise = Bio::SimpleAlign->new();
 		$pairwise->add_seq(Bio::LocatableSeq->new( -seq => join("",@align1), -id=> "seq1", -start=>0, -end=> scalar @align1));
 		$pairwise->add_seq(Bio::LocatableSeq->new( -seq => join("",@align2), -id=> "seq2", -start=>0, -end=> scalar @align2));
-#		print "Testing $curCNSA $curCNSB (" . $pairwise->percentage_identity() . ")\n" . join("", @align1) . "\n". join("",@align2) . "\n";
 		if($pairwise->percentage_identity() < $minCNSIdentityToMerge) {
-#			print "Deleting $curCNSA $curCNSB (" . $pairwise->percentage_identity() . ")\n";
 			delete $CNSToMerge{$curCNSA}{$curCNSB};
 			if((scalar keys %{ $CNSToMerge{$curCNSA} }) ==0) { delete $CNSToMerge{$curCNSA}; }
 			$deletedForLowIdentity++;
@@ -690,6 +672,7 @@ close($outputCNSFile);
 close($outputMapFile);
 
 ##########
+
 if($outputMergedCNSFileName ne "") {
 	open (my $outputMergedCNSFile, ">$outputMergedCNSFileName") || die ("INTERNAL ERROR.\n");
 	foreach my $groupCNS (sort keys %CNSGroups) {
@@ -701,8 +684,6 @@ if($outputMergedCNSFileName ne "") {
 }
 
 print "END: Deleted $CNSDeleted duplicated CNSs; Merged $CNSMerged CNSs, of $deepCNSMerged were deep CNSs, $CNSCollated were collated. Assembled $superGroupMerged CNS groups.\n";
-
-
 
 #############################################################################3
 ### Compute overlap between two fragments. 
