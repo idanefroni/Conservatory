@@ -175,10 +175,10 @@ while(<$CNSInputFile>) {
 		###
 		my $CNSToDelete= "";
 		if($CNSTable{$lastCNS}{'ReferenceGenome'} eq $referenceGenome && 
-			$CNSTable{$lastCNS}{'Chromosome'} eq $chromosome &&
+			$CNSTable{$lastCNS}{'Chromosome'} eq $chromosome && 
 			overlap($CNSTable{$lastCNS}{'Start'},$CNSTable{$lastCNS}{'End'}, $start, $end)) {
 
-				#if($verbose) { print "Found overlapping CNS: $lastCNS and $CNSID.\n"; }
+#				if($verbose) { print "Found overlapping CNS: $lastCNS and $CNSID.\n"; }
 
 				## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
 				if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
