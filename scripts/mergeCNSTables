@@ -49,7 +49,7 @@ my $CNSMerged=0;
 my $CNSMergedExtended=0;
 my $CNSDeleted=0;
 my $deepCNSMerged=0;
-my $donotFilter=0;
+my $skipConcensus=0;
 
 my $verbose=0;
 my $help=0;
@@ -63,13 +63,13 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"verbose" => \$verbose,
 			"min-overlapping" => \$minOverlappingSpeciesForMerge,
 			"remove-original-CNS" => \$removeOriginalCNS,
-			"do-not-filter" => \$donotFilter,
+			"skip-concensus" => \$skipConcensus,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
 if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq "" || $outputMapFileName eq "" ) {
 	print "Conservatory version 2.0.1\n\n";
-	print "mergeCNSTables --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>  [--out-merged <mergedDeepCNSfile>] [--min-overlapping <number>] [--remove-original-CNS] [--do-not-filter].\n\n";
+	print "mergeCNSTables --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>  [--out-merged <mergedDeepCNSfile>] [--min-overlapping <number>] [--remove-original-CNS] [--do-not-filter] [--skip-concensus].\n\n";
 	
 	exit();
 }
@@ -107,7 +107,8 @@ while(<$CNSPositionFile>) {
 	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length, $targetSequence) = split /,/;
 	
 	### Filter for only embryophyta hits
-	my @classification = split /-/, $speciesClassification{ $genomeToSpecies{$targetSpecies} }; 
+	my @classification = split /-/, $speciesClassification{ $targetSpecies }; 
+
 	if($classification[0] eq "Embryophyta") {
 		## Only if non-filtered CNS
 		if(!defined $positionTable{$CNSID}) {
@@ -511,10 +512,15 @@ foreach my $curCNS (keys %CNSToMerge) {
 		}
 
 		#### Align CNSs to obtain a consensus sequence for the Super CNS
-
-		my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
-		my $superCNSSeqs = $aligner->align(\@ancesteralSeqs);
-		$CNSTable{$CNSGroupName}{'AncesteralSeq'} = $superCNSSeqs->consensus_string(30);
+		if(!$skipConcensus) {
+			my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
+			my $superCNSSeqs = $aligner->align(\@ancesteralSeqs);
+			my $concensusString = $superCNSSeqs->consensus_string(30);
+			$concensusString =~ s/\?/N/g;
+			$CNSTable{$CNSGroupName}{'AncesteralSeq'} = $superCNSSeqs->consensus_string(30);
+		} else {
+			$CNSTable{$CNSGroupName}{'AncesteralSeq'} = "NNN";
+		}
 	} 
 }
 
