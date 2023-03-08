@@ -224,17 +224,45 @@ while(<$CNSInputFile>) {
 
 						### Pick the longest one
 						my $longestSeq;
+						my $longestSeqCNS;
 						if( ($CNSTable{$CNSID}{'End'} - $CNSTable{$CNSID}{'Start'}) > ($CNSTable{$lastCNS}{'End'} - $CNSTable{$lastCNS}{'Start'}) ) {
 							$longestSeq = $CNSTable{$CNSID}{'AncesteralSeq'};
+							$longestSeqCNS = $CNSID;
 						} else {
 							$longestSeq = $CNSTable{$lastCNS}{'AncesteralSeq'};
+							$longestSeqCNS = $lastCNS;
 						}
 						## Update all the positions
+
+						### If there is a mismatch of the stands between the merged CNS, reverse complement the mismatched one
+						if($CNSTable{$CNSID}{'Strand'} ne $CNSTable{$lastCNS}{'Strand'} && $longestSeqCNS eq $CNSID) {
+						#	print "We should switch this one $CNSID and $lastCNS.\n";
+							my @lastCNSMappings = @{ $positionTable{$lastCNS}{'Positions'} };
+							$positionTable{$lastCNS}{'Positions'} = ();
+
+							foreach my $mapping (@lastCNSMappings) {
+								my $seq = $mapping->{'TargetSequence'};
+								$seq = reverse $seq;
+                                $seq =~ tr/ACGT/TGCA/;
+								$mapping->{'TargetSequence'} = $seq;
+								my %newmapping = %$mapping;
+								push( @{ $positionTable{$lastCNS}{'Positions'} }, \%newmapping);
+							}
+						}
+						
 						my @CNSMappings = @{ $positionTable{$CNSID}{'Positions'} };
 
 						foreach my $mapping (@CNSMappings) {
-							my @lastCNSMappings = @{ $positionTable{$lastCNS}{'Positions'} };
+
 							$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
+							# If we changed the direction, we should reverse the sequence
+							if($CNSTable{$CNSID}{'Strand'} ne $CNSTable{$lastCNS}{'Strand'} && $longestSeqCNS eq $lastCNS) {
+#								print "Switch! $CNSID and $lastCNS\n";
+								my $seq = $mapping->{'TargetSequence'};
+								$seq = reverse $seq;
+                                $seq =~ tr/ACGT/TGCA/;
+								$mapping->{'TargetSequence'} = $seq;
+							}
 							my %newmapping = %$mapping;
 							push( @{ $positionTable{$lastCNS}{'Positions'} } , \%newmapping);
 						}
@@ -322,6 +350,8 @@ foreach my $curLocus (keys %positionLocusMap) {
 
 					$CNSToMerge{ $first }{ $second }{ $firstHit->{'TargetSpecies'} } ++;
 
+#					if($verbose) { print "PROGRESS: Merging $first and $second because of " . $firstHit->{'TargetSpecies'} . "\n"; }
+
 					if( (scalar keys %{ $CNSToMerge{ $first }{ $second } }) == $minOverlappingSpeciesForMerge) {
 						$CNSMerged++;
 						$deepCNSMerged++;
@@ -356,6 +386,9 @@ for my $curCNSA (keys %CNSToMerge ) {
 		my $nw = Algorithm::NeedlemanWunsch->new(\&score_sub);
 		$nw->gap_open_penalty(-5);
 		$nw->gap_extend_penalty(-0.25);
+
+#		print "aligning: $curCNSA with $curCNSB\n";
+#		print "aligning: " . $CNSTable{$curCNSA}{'AncesteralSeq'} . " and " .  $CNSTable{$curCNSB}{'AncesteralSeq'} . "\n";
 
 		my $seq1Arr = [split//, $CNSTable{$curCNSA}{'AncesteralSeq'}];
 		my $seq2Arr = [split//, $CNSTable{$curCNSB}{'AncesteralSeq'}];
