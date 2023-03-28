@@ -8,7 +8,6 @@ use List::Util qw(min max uniq);
 use Bio::AlignIO;
 use Bio::Seq;
 use Bio::LocatableSeq;
-use Bio::Tools::Run::Alignment::Muscle;
 use Algorithm::NeedlemanWunsch;
 use Bio::SimpleAlign;
 use Bio::Tools::GFF;
@@ -586,10 +585,8 @@ foreach my $curCNS (keys %CNSToMerge) {
 			my $alignedSeqs = Bio::AlignIO->new(-file => "$tmpOutFastaFileName", -format => "fasta");
 
 			my $concensusString = $alignedSeqs->next_aln->consensus_string(30);
-#			unlink($tmpInFastaFileName);
-#			unlink($tmpOutFastaFileName);
-			#my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
-			#my $superCNSSeqs = $aligner->align(\@ancesteralSeqs);
+			unlink($tmpInFastaFileName);
+			unlink($tmpOutFastaFileName);
 			
 			$concensusString =~ s/\?/N/g;
 			$concensusString =~ s/X/N/g;
