@@ -16,7 +16,6 @@ use Bio::SeqFeatureI;
 use Getopt::Long;
 $|=1;
 
-
 ### Filenames
 my $conservatoryDir=abs_path(".");
 my $CNSFileName="";
@@ -25,12 +24,12 @@ my $outputCNSFileName="";
 my $outputMapFileName="";
 my $outputMergedCNSFileName="";
 
-
 ### Merging parameters
 my $superCNSPrefix = "Super";
 my $minOverlappingSpeciesForMerge=5; ### How many overlapping hits to merge a CNS
 my $minCNSOverlap = 0.5;
-my $minSyntenyBiasToAssignCNS= 1.2; ### Number between 1 and 2 (how many more species need to support a two-gene CNS assignment to just one of the genes, based on synteny)
+my $minSyntenyBiasToAssignCNS= 1.1; ### Number between 1 and 2 (how many more species need to support a two-gene CNS assignment to just one of the genes, based on synteny)
+my $minSupportingSpeciesToKeepMultipleCNS = 80;
 my $removeOriginalCNS=0;
 my $minCNSIdentityToMerge=70;
 
@@ -46,7 +45,7 @@ my %speciesToFamily;
 my %speciesClassification;
 
 my $CNSMerged=0;
-my $CNSMergedExtended=0;
+my $CNSDeletedButMappingKept=0;
 my $CNSDeleted=0;
 my $deepCNSMerged=0;
 my $skipConcensus=0;
@@ -62,6 +61,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"out-merged=s" => \$outputMergedCNSFileName,
 			"verbose" => \$verbose,
 			"min-overlapping" => \$minOverlappingSpeciesForMerge,
+			"min-keep-multiple" => \$minSupportingSpeciesToKeepMultipleCNS,
 			"remove-original-CNS" => \$removeOriginalCNS,
 			"skip-concensus" => \$skipConcensus,
 			"help" => \$help) or die ("Error in command line arguments\n");
@@ -69,7 +69,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			
 if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq "" || $outputMapFileName eq "" ) {
 	print "Conservatory version 2.0.1\n\n";
-	print "mergeCNSTables --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>  [--out-merged <mergedDeepCNSfile>] [--min-overlapping <number>] [--remove-original-CNS] [--do-not-filter] [--skip-concensus].\n\n";
+	print "mergeCNSTables --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>  [--out-merged <mergedDeepCNSfile>] [--min-overlapping <number>] [--min-keep-multiple number] [--remove-original-CNS] [--do-not-filter] [--skip-concensus].\n\n";
 	
 	exit();
 }
@@ -257,7 +257,6 @@ while(<$CNSInputFile>) {
 							$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
 							# If we changed the direction, we should reverse the sequence
 							if($CNSTable{$CNSID}{'Strand'} ne $CNSTable{$lastCNS}{'Strand'} && $longestSeqCNS eq $lastCNS) {
-#								print "Switch! $CNSID and $lastCNS\n";
 								my $seq = $mapping->{'TargetSequence'};
 								$seq = reverse $seq;
                                 $seq =~ tr/ACGT/TGCA/;
@@ -281,6 +280,32 @@ while(<$CNSInputFile>) {
 		}
 
 		if($CNSToDelete ne "") {
+			### Now delete the CNS. 
+			### One exception. If this is a deeply conserved CNS, maintain a link to the other genes.
+			if($CNSTable{$CNSToDelete}{'SupportingSpecies'} > $minSupportingSpeciesToKeepMultipleCNS) {
+				$CNSDeletedButMappingKept++;
+				my $CNSToCopyTo = $lastCNS;
+				if($CNSToDelete eq $lastCNS) { $CNSToCopyTo = $CNSID; }
+			
+				my @CNSMappingsToCopy = @{ $positionTable{$CNSToDelete}{'Positions'} };
+				my @CNSMappingsInTargetCNS = @{ $positionTable{$CNSToCopyTo}{'Positions'} };
+
+				foreach my $mapping (@CNSMappingsToCopy) {
+					my %newmapping = %$mapping;
+					my $mappingAlreadyExists=0;
+					## Search to see that we don't already if we already have that mapping
+					foreach my $mappingInCNS (@CNSMappingsInTargetCNS) {
+						if($newmapping{'TargetLocus'} eq $mappingInCNS->{'TargetLocus'} && $newmapping{'TargetPosition'} eq $mappingInCNS->{'TargetPosition'}) {
+							$mappingAlreadyExists=1;
+							next;
+						}
+					}
+					if($mappingAlreadyExists) {
+						push( @{ $positionTable{$CNSToCopyTo}{'Positions'} } , \%newmapping );
+					}
+				}
+			}
+
 			delete $positionTable{$CNSToDelete};
 			delete $CNSTable{$CNSToDelete};
 			if($CNSToDelete eq $lastCNS) { $lastCNS=$CNSID; }
@@ -387,9 +412,6 @@ for my $curCNSA (keys %CNSToMerge ) {
 		$nw->gap_open_penalty(-5);
 		$nw->gap_extend_penalty(-0.25);
 
-#		print "aligning: $curCNSA with $curCNSB\n";
-#		print "aligning: " . $CNSTable{$curCNSA}{'AncesteralSeq'} . " and " .  $CNSTable{$curCNSB}{'AncesteralSeq'} . "\n";
-
 		my $seq1Arr = [split//, $CNSTable{$curCNSA}{'AncesteralSeq'}];
 		my $seq2Arr = [split//, $CNSTable{$curCNSB}{'AncesteralSeq'}];
 		my (@align1, @align2);
@@ -405,6 +427,7 @@ for my $curCNSA (keys %CNSToMerge ) {
 		$pairwise->add_seq(Bio::LocatableSeq->new( -seq => join("",@align2), -id=> "seq2", -start=>0, -end=> scalar @align2));
 		if($pairwise->percentage_identity() < $minCNSIdentityToMerge) {
 			delete $CNSToMerge{$curCNSA}{$curCNSB};
+#			if($verbose) { print "Rejected merge of $curCNSA and $curCNSB (". $pairwise->percentage_identity() . "). Seq: " .$CNSTable{$curCNSA}{'AncesteralSeq'} . " - " . $CNSTable{$curCNSB}{'AncesteralSeq'} . "\n"; }
 			if((scalar keys %{ $CNSToMerge{$curCNSA} }) ==0) { delete $CNSToMerge{$curCNSA}; }
 			$deletedForLowIdentity++;
 		}
@@ -546,11 +569,31 @@ foreach my $curCNS (keys %CNSToMerge) {
 
 		#### Align CNSs to obtain a consensus sequence for the Super CNS
 		if(!$skipConcensus) {
-			my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
-			my $superCNSSeqs = $aligner->align(\@ancesteralSeqs);
-			my $concensusString = $superCNSSeqs->consensus_string(30);
+			#### Do faster alignments
+			## first, prep the fasta file
+			my $tmpInFastaFileName = "/dev/shm/in_$CNSGroupName.fasta";
+			my $tmpOutFastaFileName = "/dev/shm/in_$CNSGroupName.align.fasta";
+			open(my $inFastaFile, ">" , $tmpInFastaFileName);
+			foreach my $curSeq (@ancesteralSeqs) {
+				print $inFastaFile ">" . $curSeq->id() . "\n" . $curSeq->seq() . "\n";
+			}
+			close($inFastaFile);
+
+			### now run muscle to the tmp directory
+			system("muscle -in $tmpInFastaFileName -out $tmpOutFastaFileName -diags -quiet");
+			
+			### Read fasta file
+			my $alignedSeqs = Bio::AlignIO->new(-file => "$tmpOutFastaFileName", -format => "fasta");
+
+			my $concensusString = $alignedSeqs->next_aln->consensus_string(30);
+#			unlink($tmpInFastaFileName);
+#			unlink($tmpOutFastaFileName);
+			#my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1));
+			#my $superCNSSeqs = $aligner->align(\@ancesteralSeqs);
+			
 			$concensusString =~ s/\?/N/g;
-			$CNSTable{$CNSGroupName}{'AncesteralSeq'} = $superCNSSeqs->consensus_string(30);
+			$concensusString =~ s/X/N/g;
+			$CNSTable{$CNSGroupName}{'AncesteralSeq'} = $concensusString;
 		} else {
 			$CNSTable{$CNSGroupName}{'AncesteralSeq'} = "NNN";
 		}
@@ -722,7 +765,7 @@ if($outputMergedCNSFileName ne "") {
 	close ($outputMergedCNSFile);
 }
 
-print "END: Deleted $CNSDeleted duplicated CNSs; Merged $CNSMerged CNSs, of $deepCNSMerged were deep CNSs, $CNSCollated were collated. Assembled $superGroupMerged CNS groups.\n";
+print "END: Deleted $CNSDeleted duplicated CNSs, of which $CNSDeletedButMappingKept mapping kept; Merged $CNSMerged CNSs, of which $deepCNSMerged were deep CNSs, $CNSCollated were collated. Assembled $superGroupMerged CNS groups.\n";
 
 #############################################################################3
 ### Compute overlap between two fragments. 
