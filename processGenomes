@@ -277,11 +277,19 @@ while(my $curgenomeline= <$genomedb>) {
 			}
 
 			###### Build chromosome size file
-			my $chromosomeSizeFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.chrom.size";
-			if( (! -e $chromosomeSizeFile || $force) && $curgenomeName eq $curgenomeReference) {
+			my $chromosomeSizeFileName = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.chrom.size";
+			if( (! -e $chromosomeSizeFileName || $force) && $curgenomeName eq $curgenomeReference) {
 				print localtime() . ": $curgenomeName : START building chromosome size file.\n";
 				system("samtools faidx $genomeFastaFile");
-				system("cut -f1-2 $genomeFastaFile.fai >$chromosomeSizeFile");
+				open(my $chromosomeSizeFile, ">", $chromosomeSizeFileName );
+				open(my $chromosomeIndexFile, "<", "$genomeFastaFile.fai");
+				while(my $line = <$chromosomeIndexFile>) {
+					my ($chr, $length) = split /\t/, $line;
+					print $chromosomeSizeFile "$chr\t" . ($length+1) . "\n";
+				}
+				close($chromosomeSizeFile);
+				close($chromosomeIndexFile);
+				#system("cut -f1-2 $genomeFastaFile.fai >$chromosomeSizeFileName");
 				print localtime() . ": $curgenomeName : END building chromosome size file.\n";
 			}		
 

@@ -229,7 +229,7 @@ if($mode eq "upstream") {
   								$curseq_len =  $nextgenestart - $pstart-1;
   							}
   						} 				
-  						$prom = substr($chromosomes[$chromosome_num], $pstart, $curseq_len);
+  						$prom = substr($chromosomes[$chromosome_num], $pstart-1, $curseq_len);
 				} else {
 					my $pstart = $genefields[3]-$seq_len;
 					my $curseq_len = $seq_len;
