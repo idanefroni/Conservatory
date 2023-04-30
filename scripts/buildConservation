@@ -40,8 +40,8 @@ my @referenceClassification;
 my $homoPolymerFilterLength = 8;         ### Filter homopolymer of this length
 my $homoPolymerFuzzyFilterLength = 12;   ### Filter homopolymer with one variant of this length
 my $atRichRegionFilterLength = 10;       ### Filter atrich regions of this length
-my $atRichRegionFilterFlankLength = 4;   ###   when filtering atrich, leave flanks of this length
-#my $atRichRegionFilterFlankLength = 0;   ###   when filtering atrich, leave flanks of this length
+my $atRichRegionFilterFlankLength = 2;   ###   when filtering atrich, leave flanks of this length
+#my $atRichRegionFilterFlankLength = 0;  ###   when filtering atrich, leave flanks of this length
 my $dimerPolymerFilterLength = 5;        ### Filter repeating dimers of these many repeats
 my $filterCharacter = 'X';
 my $noPositionFilter =0;                 ### Filter CNS based on position (upstream vs downstream)
