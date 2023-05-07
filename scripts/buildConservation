@@ -530,8 +530,6 @@ if($refGeneDir eq "+") {
 	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneStart- $upstreamLengthReference{$locusFullName} + \$2, $refGeneStart - $upstreamLengthReference{$locusFullName} + \$3";
 	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd + 1 + \$2,$refGeneEnd + 1 + \$3,\$5);}}'"; 
 	$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd + 1 + \$2, $refGeneEnd + 1 + \$3";	
-#	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd + 2 + \$2,$refGeneEnd + 2 + \$3,\$5);}}'"; 
-#	$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd + 2 + \$2, $refGeneEnd + 2 + \$3";		
 } else { 
 	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd + $upstreamLengthReference{$locusFullName}-\$3 + 1 ,$refGeneEnd+ $upstreamLengthReference{$locusFullName}-\$2 + 1,\$5);}}'";
 	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$3 + 1 , $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$2 + 1";
@@ -919,6 +917,11 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 				my $startCNSInAlignment = max(0, $CNSforLocus{$curCNS}{'Start'} - $start);
 
 				my $cnsHitSeq = substr($curHit->{'TargetSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS);
+
+				### Calculate insertsions
+				my $untrimmedSequence = substr($curHit->{'UntrimmedSequence'}, 0, $startCNSInAlignment);
+				my $insertions = $untrimmedSequence =~ tr/Z//;
+
 				# Change N back to gaps
 				$cnsHitSeq =~ s/N/-/g;
 
@@ -930,7 +933,7 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 						"TargetSpecies" => $curHit->{'TargetSpecies'},
 						"TargetLocus" => $curHit->{'TargetLocus'},
 						"TargetSequence" => $cnsHitSeq,
-						"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $startCNSInAlignment }; 
+						"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $startCNSInAlignment + $insertions }; 
 				if(! (defined $familySpeciesHittingCNS{$curCNS}{$curSpecies}) ) {
 					$CNSforLocus{$curCNS}{'NumberOfSpecies'}++;
 					$CNSforLocus{$curCNS}{'NumberOfFamilySpecies'}++;
@@ -1685,13 +1688,14 @@ sub MAFtoFASTA {
    		   }
    		   
 		   ### Replace all gaps with N because phyloP doesn't like gaps.
-			
-		   $newspseq =~ s/Z//g;
 		   $newspseq =~ s/-/N/g;
+
+		   my $untrimmedSequence = $newspseq;
+		   $newspseq =~ s/Z//g;
 		   
 		   if($refstart == -1) {
-			$refstart = $alignseq->start()-1;
-			$reflen = length($newspseq);
+		   		$refstart = $alignseq->start()-1;
+				$reflen = length($newspseq);
 		   } else {
 
 			
@@ -1722,7 +1726,8 @@ sub MAFtoFASTA {
 					"TargetSpecies" => $species,
 					"TargetLocus" => $locus,
 					"TargetRelativePosition" => $targetRelative,
-					"TargetSequence" => $newspseq}; 
+					"TargetSequence" => $newspseq,
+					"UntrimmedSequence" => $untrimmedSequence}; 
   		   		}
 
 		   		# Check if we are overriding sequences
