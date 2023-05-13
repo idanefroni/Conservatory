@@ -1,10 +1,10 @@
 #!/usr/bin/perl
-no warnings;
-
-use POSIX;
 use strict;
-use Array::Utils qw(:all);
+use POSIX;
 use Cwd 'abs_path';
+
+use Array::Utils qw(:all);
+
 use List::Util qw(min max uniq);
 use Set::Scalar;
 use Bio::Root::Root;
@@ -18,6 +18,11 @@ use Bio::SimpleAlign;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
 use Getopt::Long;
+#use Clone 'clone';
+
+use lib './scripts';
+use ConservatoryUtils;
+
 $|=1;
 
 ### Filenames
@@ -38,6 +43,9 @@ my $minCNSOverlap = 0.1;
 my $minSyntenyBiasToAssignCNS= 1.1; ### Number between 1 and 2 (how many more species need to support a two-gene CNS assignment to just one of the genes, based on synteny)
 my $minSupportingSpeciesToKeepMultipleCNS = 80;
 my $removeOriginalCNS=0;
+my $minCNSLength=8;
+my $minSpeciesForCNS=6; ### The minimum number of species aligned to a CNS to keep the CNS
+my $minCNSCoverageAfterSplit=0.2;
 
 my $minCNSIdentityToMerge=70;
 
@@ -112,7 +120,7 @@ open (my $CNSPositionFile, $mapFileName) ||  die "ERROR: Cannot find position fi
 while(<$CNSPositionFile>) {
 	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "/$positionLineCount\r" };
 	chomp;
-	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length, $targetSequence) = split /,/;
+	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence) = split /,/;
 	
 	### Filter for only embryophyta hits
 	my @classification = split /-/, $speciesClassification{ $targetSpecies }; 
@@ -128,7 +136,8 @@ while(<$CNSPositionFile>) {
 				'TargetSpecies' => $targetSpecies,
 				'TargetLocus' => $targetLocus,
 				'TargetPosition' => $targetRelativePosition,
-				'ReferenceRelativePos' => $referenceRelativePosition,
+				'TargetStrand' => $targetStrand,
+				'ReferenceRelativePosition' => $referenceRelativePosition,
 				'Length' => $length,
 				'TargetSequence' => $targetSequence} );		
 }
@@ -339,9 +348,10 @@ foreach my $curCNS (keys %positionTable) {
 		 push( @{ $positionLocusMap{ $curHit->{'TargetLocus'} }{'Positions'} } , {
 				'TargetSpecies' => $curHit->{'TargetSpecies'},
 				'TargetLocus' => $curHit->{'TargetLocus'},
+				'TargetStrand' => $curHit->{'TargetStrand'},
 				'CNSID' => $curCNS,
 				'TargetPosition' => $curHit->{'TargetPosition'} ,
-				'ReferenceRelativePos' => $curHit->{'ReferenceRelativePos'},
+				'ReferenceRelativePosition' => $curHit->{'ReferenceRelativePosition'},
 				'Length' => $curHit->{'Length'},
 				'TargetSequence' => $curHit->{'TargetSequence'} } );			
 		}	
@@ -480,7 +490,7 @@ foreach my $anchorCNS (keys %superGroups) {
 	my $deepCNSNotice = "PROGRESS: Forming deep CNS groups...". $curPos++ . "/$totalToScreen.";
 	if($verbose) { print $deepCNSNotice . "\r"; }
 
-	print "\nProcessing super group $anchorCNS with CNSs : " . join("," , keys %{ $superGroups{$anchorCNS} }) . "\n";
+#	print "\nProcessing super group $anchorCNS with CNSs : " . join("," , keys %{ $superGroups{$anchorCNS} }) . "\n";
 	my %CNSsInGroup = %{ $superGroups{$anchorCNS} };
 
 	$deepCNSMerged = $deepCNSMerged + (scalar keys %CNSsInGroup);
@@ -505,13 +515,14 @@ foreach my $anchorCNS (keys %superGroups) {
 	open(my $tmpOutputSuperCNSFastaFile, ">" , $tmpOutputSuperCNSFastaFileName);
 
 	foreach my $curPos (@mergedPositions) {
-		print $tmpOutputSuperCNSFastaFile ">" . $curPos->{'TargetLocus'} . ":" . $curPos->{'TargetPosition'} . "\n" . $curPos->{'TargetSequence'} . "\n";
+		print $tmpOutputSuperCNSFastaFile ">" . $curPos->{'TargetLocus'} . ":" . $curPos->{'TargetPosition'} . ":" . $curPos->{'TargetStrand'} . "\n" . $curPos->{'TargetSequence'} . "\n";
 	}
 
 	close($tmpOutputSuperCNSFastaFile);
-	exit();
+
 	## Now align using MAFFT
-	system("mafft --quiet --thread 16 --maxiterate 1000 $tmpOutputSuperCNSFastaFileName > $tmpOutputSuperCNSFastaAlignedFileName ");
+#	system("mafft --quiet --thread 16 --maxiterate 100 $tmpOutputSuperCNSFastaFileName > $tmpOutputSuperCNSFastaAlignedFileName ");
+	system("mafft --quiet --thread 16 $tmpOutputSuperCNSFastaFileName > $tmpOutputSuperCNSFastaAlignedFileName ");
 
 	my $alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
 										-format => "fasta");
@@ -526,7 +537,7 @@ foreach my $anchorCNS (keys %superGroups) {
 			'Chromosome' => "",
 			'Strand' => "",
 			'Start' => 0,	
-			'End' => length($superCNSAlignment->consensus_string),
+			'End' => $superCNSAlignment->length,
 			'Locus' => "",
 			'RelStart' => "",
 			'RelEnd' => "",
@@ -541,14 +552,14 @@ foreach my $anchorCNS (keys %superGroups) {
 
 	### Map the alignments to the super CNS
 	foreach my $curCNSposition ($superCNSAlignment->each_seq) {
-		my ($targetLocus,$targetPosition) = split /:/, $curCNSposition->id;
+		my ($targetLocus,$targetPosition,$targetStrand) = split /:/, $curCNSposition->id;
 		my ($targetSpecies) = split /-/, $targetLocus;
 		my $sequence = uc($curCNSposition->seq);
 		my ($leadingDashes) = $sequence =~ /^(-+)/;
 		my $positionInCNS = length($leadingDashes);  ## The start position in the CNS is the number of leading dashes
 		if($positionInCNS eq "") { $positionInCNS = 0; }
 
-		### now, clear leading and trailing dashes		
+		### now, clear leading and trailing gaps
 		$sequence =~ s/^(-+)//;
 		$sequence =~ s/(-+)$//;
 
@@ -556,7 +567,8 @@ foreach my $anchorCNS (keys %superGroups) {
 			'TargetSpecies' => $targetSpecies,
 			'TargetLocus' => $targetLocus,
 			'TargetPosition' => $targetPosition,
-			'ReferenceRelativePos' => $positionInCNS,
+			'TargetStrand' => $targetStrand,
+			'ReferenceRelativePosition' => $positionInCNS,
 			'Length' => length($sequence),
 			'TargetSequence' => $sequence } );
 	}
@@ -582,11 +594,80 @@ my $overlappingPositionMerged=0;
 
 #### Now split the merged CNSs
 
+foreach my $curCNS (keys %CNSGroups) {
+	### See if we can split it
+	my @CNShits = @{ $positionTable{$curCNS}{'Positions'}};
+
+	my $CNSBreakpointsRef = getCNSbreakpoints($CNSTable{$curCNS}{'End'}, \@CNShits , $minCNSLength);
+	my @CNSBreakpoints = @$CNSBreakpointsRef;
+
+	if(@CNSBreakpoints > 2) {
+		if($verbose) { print "PROGRESS: Breaking CNS $curCNS. Breakpoints: " . join(",", @CNSBreakpoints) . "\n"; }
+
+		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSCoverageAfterSplit);
+		my @polishedAlignments = @$polishedAlignmentsRef;
+
+		for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
+			### Create a new sub-CNS
+			my $newSubCNSName = "$curCNS.$CNSBreakpoints[$curBreakpoint]";
+
+			## Build the CNS
+			$CNSTable{$newSubCNSName} = {
+				'ReferenceGenome' => "SuperCNS",
+				'CNSID' => $newSubCNSName,
+				'Chromosome' => "",
+				'Strand' => "",
+				'Start' => $CNSBreakpoints[$curBreakpoint],
+				'End' => $CNSBreakpoints[$curBreakpoint+1]-1,			
+				'Locus' => $curCNS,
+				'RelStart' => "",
+				'RelEnd' => "",
+				'Level' => "",
+				'SupportingSpecies' => 0,
+				'ORFLength' => "",
+				'ORFDir' => "",
+				'Omega' => "",
+				'AncesteralSeq' =>"",
+				'RegulatorySeqPart' => ""};
+			
+			$positionTable{$newSubCNSName}{'Positions'} = ();
+			$CNSGroups{$newSubCNSName} =1;
+
+			## Reassign deep alignments
+			foreach my $curHit (@polishedAlignments) {
+				### If there is an overlap, assign the deep CNS to the new subCNS.
+				if(overlap($CNSTable{$newSubCNSName}{'Start'}, $CNSTable{$newSubCNSName}{'End'},
+						   $curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'})>$minCNSCoverageAfterSplit) {
+
+#					print "Add to $newSubCNSName: hit " . $curHit->{'TargetLocus'} . ". Coord:" . $CNSTable{$newSubCNSName}{'Start'} . " at " . $curHit->{'ReferenceRelativePosition'} . " - " . $curHit->{'Length'} . "\n";				
+					push @{ $positionTable{$newSubCNSName}{ 'Positions' } }, {
+							'ReferenceLocus' => $newSubCNSName,
+							'ReferenceRelativePosition' => $curHit->{'ReferenceRelativePosition'} - $CNSTable{$newSubCNSName}{'Start'} ,
+							'ReferenceUpDown' => $curHit->{'ReferenceUpDown'},
+							'Length' => $curHit->{'Length'},
+							'TargetSpecies' => $curHit->{'TargetSpecies'},
+							'TargetLocus' => $curHit->{'TargetLocus'},
+							'TargetStrand' => $curHit->{'TargetStrand'},
+							'TargetSequence' => $curHit->{'TargetSequence'},
+							'TargetPosition' => $curHit->{'TargetPosition'} }; 
+				}
+			}
+
+		}
+		### Finally, delete the original CNS
+		delete $CNSTable{$curCNS};
+		delete $positionTable{$curCNS};
+		delete $CNSGroups{$curCNS};
+	}
+}
+
 
 ### Reconstruct sequences of Super CNS and determine conservation level
 ### First, load super tree
 my $conservatoryTreeio = Bio::TreeIO->new(-file => $conservatoryTreeFileName, -format => 'newick');
 my $conservatoryTree = $conservatoryTreeio->next_tree;
+
+my $origConservatoryTree = $conservatoryTree->clone();
 
 ### Annotated Internal nodes
 my $curNodeNumber=1;
@@ -598,10 +679,10 @@ foreach my $curNode (@nodes) {
 	}
 }
 
-#my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">tmpTree.tree", -format => 'newick');
-#$conservatoryTreeOutput->write_tree($conservatoryTree);
+my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -format => 'newick');
+$conservatoryTreeOutput->write_tree($conservatoryTree);
 
-my %speciesInTree = map { ($_)->id => 1} $conservatoryTree->get_leaf_nodes;
+my %speciesInTree = map { ($_)->id => 1} $conservatoryTree->get_leaf_nodes();
 my $totalToScreen = scalar (keys %CNSTable);
 $curPos=1;
 
@@ -618,48 +699,62 @@ foreach my $curCNS (keys %CNSTable) {
 	}
 
 	$CNSTable{$curCNS}{'SupportingSpecies'} = scalar (keys %speciesSequencesForCNS);
-	## If this is a grouped CNS, we need to reconstruct the ancesteral sequence
-	if(defined $CNSGroups{$curCNS}) {
+	if($CNSTable{$curCNS}{'SupportingSpecies'} > $minSpeciesForCNS ) { 
+		## If this is a grouped CNS, we need to reconstruct the ancesteral sequence
+		if(defined $CNSGroups{$curCNS}) {
 
-		## To do so, first build a species fasta file
-		my $tmpOutputFastaFileName = $tmpDir . "/tmp_sp_$curCNS.fasta";
-		my $tmpOutputFastaAlignedFileName = $tmpDir . "/tmp_sp_$curCNS.align.fasta";
-		open(my $tmpOutputFastaFile , ">" , $tmpOutputFastaFileName);
+			## To do so, first build a species fasta file
+			my $tmpOutputFastaFileName = $tmpDir . "/tmp_sp_$curCNS.fasta";
+			my $tmpOutputFastaAlignedFileName = $tmpDir . "/tmp_sp_$curCNS.align.fasta";
+			my $tmpOutputTrimmedTreeFileName = $tmpDir . "/tmp_tree_$curCNS.tree";
+			open(my $tmpOutputFastaFile , ">" , $tmpOutputFastaFileName);
 
-		### Generate fasta file for sequence reconstruction using tree
-		foreach my $curSpecies (keys %speciesInTree) {
-			if(defined $speciesInTree{$curSpecies}) {
-				if(defined $speciesSequencesForCNS{$curSpecies}) {
-					print $tmpOutputFastaFile ">$curSpecies\n" . $speciesSequencesForCNS{$curSpecies} . "\n";
-				} else {
-					print $tmpOutputFastaFile ">$curSpecies\n" . ('-' x 50). "\n";
+			### Generate fasta file for sequence reconstruction using tree and trim the tree
+			foreach my $curSpecies (keys %speciesInTree) {
+				if(defined $speciesInTree{$curSpecies}) {
+					if(defined $speciesSequencesForCNS{$curSpecies}) {
+						print $tmpOutputFastaFile ">$curSpecies\n" . $speciesSequencesForCNS{$curSpecies} . "\n";
+					}
 				}
 			}
-		}
-		close($tmpOutputFastaFile);
-		## Now align using MAFFT
-		system("mafft --quiet --thread 16 --maxiterate 1000 $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
-		## and perform reconstruction
-		my $tmpOutputAncesteralSequenceFileName = $tmpDir . "/tmp_as_$curCNS.fasta";
-		system("$conservatoryDir/scripts/fastml -b -qf -mh -s $tmpOutputFastaAlignedFileName -t $conservatoryTreeFileName -y /dev/null/a -d /dev/null/a -x /dev/null/a -k /dev/null/a -d /dev/null/a -e /dev/null/a -j $tmpOutputAncesteralSequenceFileName > /dev/null");
+			close($tmpOutputFastaFile);
 
-		### Read concensus sequence
-		my $inReconstructionFasta = Bio::SeqIO->new(-file => $tmpOutputAncesteralSequenceFileName, -format => "fasta", -alphabet => "dna");
-		my $reconstructedSequence;
-		while(my $seq = $inReconstructionFasta->next_seq) {
-			if($seq->id eq "N1") { $reconstructedSequence = $seq->seq; }
-		}
-		$CNSTable{$curCNS}{'AncesteralSeq'} = $reconstructedSequence;
-		unlink($tmpOutputAncesteralSequenceFileName);
-		unlink($tmpOutputFastaFileName);
-		unlink($tmpOutputFastaAlignedFileName);
-	}
+			## Now align using MAFFT
+#			system("mafft --quiet --thread 16 --maxiterate 1000 $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
+			system("mafft --quiet --thread 16 $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
+			## and perform reconstruction
 
-	### Identify the deepest node in the tree - the point of CNS origination
+			my $trimmedTree = $origConservatoryTree->clone();
+			my @trimToTheseLeaves = keys %speciesSequencesForCNS;
+
+			trimTreeToLeaves($trimmedTree, \@trimToTheseLeaves);
+			my $trimmedTreeOutput = Bio::TreeIO->new(-file => ">$tmpOutputTrimmedTreeFileName", -format => 'newick');
+			$trimmedTreeOutput->write_tree($trimmedTree);
+			
+			my $tmpOutputAncesteralSequenceFileName = $tmpDir . "/tmp_as_$curCNS.fasta";
+			system("$conservatoryDir/scripts/fastml -b -qf -mh -s $tmpOutputFastaAlignedFileName -t $tmpOutputTrimmedTreeFileName -y /dev/null/a -d /dev/null/a -x /dev/null/a -k /dev/null/a -d /dev/null/a -e /dev/null/a -j $tmpOutputAncesteralSequenceFileName > /dev/null");
+			### Read concensus sequence
+			my $inReconstructionFasta = Bio::SeqIO->new(-file => $tmpOutputAncesteralSequenceFileName, -format => "fasta", -alphabet => "dna");
+			my $reconstructedSequence;
+			while(my $seq = $inReconstructionFasta->next_seq) {
+				if($seq->id eq "N1") { $reconstructedSequence = $seq->seq; }
+			}
+			$CNSTable{$curCNS}{'AncesteralSeq'} = $reconstructedSequence;
+			unlink($tmpOutputAncesteralSequenceFileName);
+			unlink($tmpOutputFastaFileName);
+			unlink($tmpOutputFastaAlignedFileName);
+			unlink($tmpOutputTrimmedTreeFileName);
+		}
+
+		### Identify the deepest node in the tree - the point of CNS origination
 	
-	my @sharedLeaves = keys %speciesSequencesForCNS;
-	my $deepestNode = findDeepestCommonNode($conservatoryTree, \@sharedLeaves);
-  	$CNSTable{$curCNS}{'Level'} = $deepestNode;
+		my @sharedLeaves = keys %speciesSequencesForCNS;
+		my $lastCommonNode = findDeepestCommonNode($conservatoryTree, \@sharedLeaves);
+  		$CNSTable{$curCNS}{'Level'} = $lastCommonNode;
+	} else {
+		delete $CNSTable{$curCNS};
+		delete $positionTable{$curCNS};
+	}
 }
 
 if($verbose) { print "\n"; }
@@ -699,7 +794,8 @@ foreach my $curCNS (sort keys %CNSTable) {
 					$mapping->{'TargetSpecies'},
 					$mapping->{'TargetLocus'},
 					$mapping->{'TargetPosition'},
-					$mapping->{'ReferenceRelativePos'},
+					$mapping->{'TargetStrand'},					
+					$mapping->{'ReferenceRelativePosition'},
 					$mapping->{'Length'},
 					$mapping->{'TargetSequence'}) ."\n";		
 			}
@@ -712,34 +808,17 @@ close($outputMapFile);
 
 ##########
 
-if($outputMergedCNSFileName ne "") {
-	open (my $outputMergedCNSFile, ">$outputMergedCNSFileName") || die ("INTERNAL ERROR.\n");
-	foreach my $groupCNS (sort keys %CNSGroups) {
-		foreach my $subCNS (@{ $CNSGroups{$groupCNS} } ) {
-			print $outputMergedCNSFile "$groupCNS,$subCNS\n";
-		}
-	}
-	close ($outputMergedCNSFile);
-}
+#if($outputMergedCNSFileName ne "") {
+#	open (my $outputMergedCNSFile, ">$outputMergedCNSFileName") || die ("INTERNAL ERROR.\n");
+#	foreach my $groupCNS (sort keys %CNSGroups) {
+#		foreach my $subCNS (@{ $CNSGroups{$groupCNS} } ) {
+#			print $outputMergedCNSFile "$groupCNS,$subCNS\n";
+#		}
+#	}
+#	close ($outputMergedCNSFile);
+#}
 
 print "END: Deleted $CNSDeleted duplicated CNSs, of which $CNSDeletedButMappingKept mapping kept; Merged $CNSMerged CNSs, of which " . $deepCNSMerged . " were deep CNSs, collated into $CNSCollated grouped CNSs.\n";
-
-#############################################################################3
-### Compute overlap between two fragments. 
-### Parameters:
-### overlap(startOne, endOne, StartTwo, endTwo, mode)
-### returns relative overlap (0-1).
-###
-
-sub overlap {
-	my ($startOne, $endOne, $startTwo, $endTwo) =@_;
-	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
-		 ($startOne > $endTwo)) {
-		return 0;
-	} else {
-		return (min($endOne, $endTwo) - max($startOne, $startTwo))/ max( $endOne-$startOne, $endTwo-$startTwo);
-	}
-}
 
 
 #########################################################################################################
@@ -793,13 +872,18 @@ sub mergeOverlappingTargetsForCNS {
 
 			my $curPosition = $positionMapSorted[0];
 			foreach my $nextPosition (@positionMapSorted) {
-				print $curPosition->{'TargetLocus'} . ":" . $curPosition->{'TargetPosition'} . ":" . $curPosition->{'Length'} . " with " . $nextPosition->{'TargetPosition'} . ":" . $nextPosition->{'Length'} . "\n";
+				#print $curPosition->{'TargetLocus'} . ":" . $curPosition->{'TargetPosition'} . ":" . $curPosition->{'Length'} . " with " . $nextPosition->{'TargetPosition'} . ":" . $nextPosition->{'Length'} . "\n";
 				if(overlap($curPosition->{'TargetPosition'},$curPosition->{'TargetPosition'} + $curPosition->{'Length'},
 					   	$nextPosition->{'TargetPosition'}, $nextPosition->{'TargetPosition'} + $nextPosition->{'Length'})) {
 					### merge the two positions
-					$curPosition->{'TargetSequence'} = substr($curPosition->{'TargetSequence'}, 0, $nextPosition->{'TargetPosition'} - $curPosition->{'TargetPosition'}) . $nextPosition->{'TargetSequence'};
+					### Set up the merged sequence string background
+					my $combinedSequence = '-' x (max($curPosition->{'TargetPosition'} + $curPosition->{'Length'}, $nextPosition->{'TargetPosition'} + $nextPosition->{'Length'} ) - $curPosition->{'TargetPosition'});
+					substr($combinedSequence,0, $curPosition->{'Length'}) = $curPosition->{'TargetSequence'};
+					substr($combinedSequence,$nextPosition->{'TargetPosition'} - $curPosition->{'TargetPosition'}, $nextPosition->{'Length'}) = $nextPosition->{'TargetSequence'};
+					$curPosition->{'TargetSequence'} = $combinedSequence;
+					### 
 					$curPosition->{'Length'} = length($curPosition->{'TargetSequence'});
-					print "Merging overlap. New length: " . $curPosition->{'Length'} . "\n";
+				#	print "Merging overlap. New length: " . $curPosition->{'Length'} . "\n";
 	   			} else {
 					my %newPosition = %$curPosition;
 					push @positionMapMerged, \%newPosition;
@@ -850,4 +934,61 @@ sub findDeepestCommonNode {
 		}
 	}
 	return $deepestNode;
+}
+
+
+################################################################################################################
+#####
+#####  trim tree - given a tree and a set of leaves, trim the tree to include just these leaves. 
+#####    trim also internal nodes, or nodes with only one child
+####
+####
+
+
+sub trimTreeToLeaves {
+	my ($tree, $leavesListRef, $startNode) = @_;
+	my @leavesList = @$leavesListRef;
+	my %leavesMap = map { $_ => 1 } @leavesList;
+
+	if(!defined $startNode) { $startNode = $tree->get_root_node(); }
+
+	if(($startNode == $tree->get_root_node()) && $startNode->is_Leaf()) {
+		die "ERROR: From trimTreeToLeaves: Tree is empty.\n";
+	}
+	## If this is a leaf and not found in our list of leaves to keep, delete
+	if($startNode->is_Leaf()) {
+		if(!defined $leavesMap{$startNode->id()} ) {
+			$tree->remove_Node($startNode);
+		} 
+	} else {
+		### trim the children
+
+		foreach my $curChildNode ($startNode->each_Descendent()) {
+			trimTreeToLeaves($tree, $leavesListRef, $curChildNode);
+		}
+
+		### now, if we have no children leaf, delete ourselves. If we have just one, delete it and assume it's id
+		my @childrenLeft = $startNode->each_Descendent();
+
+		if(scalar @childrenLeft == 0) {
+			if(! ($startNode == $tree->get_root_node() )  ) {
+				$tree->remove_Node($startNode);
+			} else {
+				print "WARNING: From trimmTreeToLeaves: we have deleted all nodes on the tree.\n";
+			}
+
+		} elsif(scalar @childrenLeft == 1 && $childrenLeft[0]->is_Leaf()) {
+
+			$startNode->id( $childrenLeft[0]->id());
+			$startNode->branch_length( $childrenLeft[0]->branch_length() );
+			$tree->remove_Node( $childrenLeft[0]);
+		} elsif(scalar @childrenLeft ==1) {
+			if($startNode == $tree->get_root_node()) {
+				$tree->set_root_node($childrenLeft[0]);
+			} else {
+				$startNode->ancestor()->add_Descendent($childrenLeft[0]);
+				$tree->remove_Node( $startNode);
+			}
+		}
+	}
 }

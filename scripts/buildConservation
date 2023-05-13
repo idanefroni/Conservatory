@@ -2,21 +2,26 @@
 
 use POSIX;
 use strict;
+
 use Text::CSV;
 use Data::Dumper qw(Dumper);
 use List::Util qw(min max sum);
 use List::MoreUtils qw(uniq firstidx);
-use Statistics::Basic qw(:all nofill);
 use Bio::AlignIO;
 use Bio::Align::DNAStatistics;
 use Bio::Tools::Run::Alignment::Muscle;
 use Bio::Tools::Run::Phylo::PAML::Codeml;
 use Bio::Align::Utilities;
 use Bio::TreeIO;
+use Statistics::Basic qw(:all nofill);
 use Cwd;
 use Cwd 'abs_path';
 use Getopt::Long;
 use experimental 'smartmatch';
+
+use lib './scripts';
+use ConservatoryUtils;
+
 $|=1;
 
 ###############################################################################
@@ -41,7 +46,6 @@ my $homoPolymerFilterLength = 8;         ### Filter homopolymer of this length
 my $homoPolymerFuzzyFilterLength = 12;   ### Filter homopolymer with one variant of this length
 my $atRichRegionFilterLength = 10;       ### Filter atrich regions of this length
 my $atRichRegionFilterFlankLength = 2;   ###   when filtering atrich, leave flanks of this length
-#my $atRichRegionFilterFlankLength = 0;  ###   when filtering atrich, leave flanks of this length
 my $dimerPolymerFilterLength = 5;        ### Filter repeating dimers of these many repeats
 my $filterCharacter = 'X';
 my $noPositionFilter =0;                 ### Filter CNS based on position (upstream vs downstream)
@@ -64,15 +68,12 @@ my $minFamilySpeciesForCNS=0.333; # The minimum number of species in the family 
 #### CNS coverage and splitting parameters
 my $minAlignmentLengthToTestOverlap = 30; ### Alignments of less than this length will be checked to see that they significally overlap with the CNS
 my $minCNSCoverageInitial=0.2; ### The minimum coverage of the CNS to be acceptable for an initial deep alignment
-my $minCNSCoverageAfterSplit=0.7; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
+my $minCNSCoverageAfterSplit=0.5; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
 my $minCNSConservationAfterSplit = 0.2; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
-my $standardDeviationsToSplit = 2; ## The number of standard deviation in number of aligned species to trigger a CNS split
+
 
 my $minCNSCoverageFinal=0.7; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
 
-my $minSpeciesToSplitCNS=5;  ### Minimal number of species to consider a split of the CNS
-my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported by atleast this number of species
-									 ## To avoid spliting of very highly conserved CNSs
 
 #### Alignment filtering parameters
 my @minSpeciesPerConservationLevel= (200,125,100,80,30,10); ## Must have atleast these many alignments to support level assignment
@@ -909,7 +910,7 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 		foreach my $curCNS (keys %CNSforLocus) {
 			my $CNSLength = $CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'};
 
-			if (overlap($CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'},$start, $end) > $minCNSCoverageInitial) {
+			if (overlap($CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'},$start, $end)) {
 
 				my $startInCNS = max(0, $start - $CNSforLocus{$curCNS}{'Start'});
 				my $endInCNS = min($CNSLength , $end - $CNSforLocus{$curCNS}{'Start'});
@@ -929,11 +930,12 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 						"ReferenceLocus" => $curCNS,
 						"ReferenceRelativePosition" => $startInCNS,
 						"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
-						"Length" => $endInCNS - $startInCNS,
+						"Length" => length($cnsHitSeq),
 						"TargetSpecies" => $curHit->{'TargetSpecies'},
 						"TargetLocus" => $curHit->{'TargetLocus'},
 						"TargetSequence" => $cnsHitSeq,
-						"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $startCNSInAlignment + $insertions }; 
+						"TargetStrand" => $curHit->{'TargetStrand'},
+						"TargetPosition" => $curHit->{'TargetPosition'} + $startCNSInAlignment + $insertions }; 
 				if(! (defined $familySpeciesHittingCNS{$curCNS}{$curSpecies}) ) {
 					$CNSforLocus{$curCNS}{'NumberOfSpecies'}++;
 					$CNSforLocus{$curCNS}{'NumberOfFamilySpecies'}++;
@@ -1081,13 +1083,13 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 		push @CNShits, @{ $mapAlignmentDeepCNS{$curCNS}{$curSp} };
 	}
 
-	my $CNSBreakpointsRef = getCNSbreakpoints($CNSLength, \@CNShits );
+	my $CNSBreakpointsRef = getCNSbreakpoints($CNSLength, \@CNShits , $minCNSLength);
 	my @CNSBreakpoints = @$CNSBreakpointsRef;
 
 	### If we have breakpoints, break the CNS, polish and reassign all hits
 	if(@CNSBreakpoints >2) {
 		if($verbose) { print "PROGRESS: Breaking CNS $curCNS. Length: $CNSLength. Breakpoints: " . join(",", @CNSBreakpoints) . "\n"; }
-		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits);
+		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSConservationAfterSplit);
 		my @polishedAlignments = @$polishedAlignmentsRef;
 
 		for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
@@ -1137,16 +1139,18 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 					if(not defined $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} }) {
 						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } = [];
 					}
+					my $newSubCNSTargetSequence = substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'}),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName}));
 
 					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } }, {
 							"ReferenceLocus" => $newSubCNSName,
 							"ReferenceRelativePosition" => max( 0, $curHit->{'ReferenceRelativePosition'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
 							"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
-							"Length" => min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName}),
+							"Length" => length($newSubCNSTargetSequence),
 							"TargetSpecies" => $curHit->{'TargetSpecies'},
 							"TargetLocus" => $curHit->{'TargetLocus'},
-							"TargetSequence" => substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'}),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName})),
-							"TargetRelativePosition" => $curHit->{'TargetRelativePosition'} + $CNSBreakpoints[$curBreakpoint] }; 
+							"TargetSequence" => $newSubCNSTargetSequence,
+							"TargetStrand" => $curHit->{'TargetStrand'},							
+							"TargetPosition" => $curHit->{'TargetPosition'} + $CNSBreakpoints[$curBreakpoint] }; 
 					$numberOfHitsReassigned++;
 				}
 			}
@@ -1209,14 +1213,14 @@ if(!$noPositionFilter) {
 		foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
 			$spToDelete = "";
 			foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment} } ) {
-				if(($CNSforLocus{$curCNS}{'Start'}<0) && ($curAlignment->{'TargetRelativePosition'} >0)) {
+				if(($CNSforLocus{$curCNS}{'Start'}<0) && ($curAlignment->{'TargetPosition'} >0)) {
 					$spToDelete = $curSpeciesAlignment;
 				}
-				if(($CNSforLocus{$curCNS}{'Start'}>0) && ($curAlignment->{'TargetRelativePosition'} <0)) {
+				if(($CNSforLocus{$curCNS}{'Start'}>0) && ($curAlignment->{'TargetPosition'} <0)) {
 					$spToDelete = $curSpeciesAlignment;
 				}
 				if($spToDelete ne "") {
-					if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Target position: " . $curAlignment->{'TargetRelativePosition'} . ".\n"; }
+					if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Target position: " . $curAlignment->{'TargetPosition'} . ".\n"; }
 				}
 			}
 			if($spToDelete ne "") {
@@ -1300,9 +1304,8 @@ if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writin
 open(my $finalCNSFile, ">$finalCNSFileName");
 open (my $finalMapFile, ">$finalMapFileName");
 foreach my $curCNS (keys %CNSforLocus) {
-
 	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Chromosome'},$CNSforLocus{$curCNS}{'Strand'},$CNSforLocus{$curCNS}{'absStart'},$CNSforLocus{$curCNS}{'absEnd'},$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'End'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ORF'},$CNSforLocus{$curCNS}{'ORFDir'},$CNSforLocus{$curCNS}{'omega'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
-  	print $finalMapFile "$curCNS,$referenceGenomeSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},0," . ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'}) . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
+  	print $finalMapFile "$curCNS,$referenceGenomeSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},+,0," . ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'}) . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
 } 
 close($finalCNSFile);
  
@@ -1310,7 +1313,7 @@ close($finalCNSFile);
 foreach my $curCNS (keys %CNSforLocus) {
 	foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {	  	   	  	  
 		foreach my $curHit ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} } ) {
-			print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetRelativePosition'},$curHit->{'ReferenceRelativePosition'},$curHit->{'Length'},$curHit->{'TargetSequence'}\n";
+			print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetPosition'},$curHit->{'TargetStrand'},$curHit->{'ReferenceRelativePosition'},$curHit->{'Length'},$curHit->{'TargetSequence'}\n";
 		}
     }
 }
@@ -1333,11 +1336,6 @@ if($verbose) { print "DONE: End $referenceGenome:$locus.\n";	}
 
 ################################################################################
 ###### utility functions #######################################################
-
-## Returns the mean value of an array of integers
-sub mean {
-    return sum(@_)/@_;
-}
 
 ####################################################################################################################################
 #### Extract sequence for locus from a compressed fasta file, filter for low-information sequence and output to a seperate fasta file
@@ -1527,93 +1525,6 @@ sub quietAlign {
 	return $alignment;
 }
 
-########################################################################################
-#### Removes the asterix that some programs use to mark stop and other programs hate
-
-sub dropAsterixFromProtein {
-	my ($seqObj) = @_;
-	my $seq = $seqObj->seq();
-	$seq =~ s/\*//g;
-	$seqObj->seq($seq);
-	return $seqObj;
-}
-##################################################################################
-# Returns species or genome name from the name of a gene
-
-sub geneToSpecies {
-	(my $geneName) = @_;
-	my @geneNameComponents = split '-', $geneName;
-	return $geneNameComponents[0];
-}
-
-sub geneToGenome {
-	(my $geneName) = @_;
-	my @geneNameComponents = split '-', $geneName;
-	return $geneNameComponents[1];
-}
-
-###################################################################################
-# Returns just the locus name from the name of a gene
-sub fullNameToShortName {
-	(my $geneName) = @_;
-	$geneName =~ s/^.[^-]*-[^-]*-//;
-	return $geneName;
-}
-
-###
-sub findAll {
-	my ($seq, $substring) = @_;
-	my @occurences;
-	my $offset=0;
-	
-	my $result = index($seq, $substring, $offset);
-
-	while( $result != -1) {
-		push (@occurences, $result);
-		$offset = $result + 1;
-		$result = index($seq, $substring, $offset);
-	}
-	return @occurences;
-}
-
-#############################################################
-### Returns the length of a sequence without the gaps
-
-sub lengthWithoutGaps {
-	my $seq = $_[0];
-	return length($seq =~ s/-//rg);
-}
-
-#############################################################################3
-### Compute overlap between two fragments. 
-### Parameters:
-### overlap(startOne, endOne, StartTwo, endTwo, mode)
-### returns relative overlap (0-1) (of the first fragment).
-###
-
-sub overlap {
-	my ($startOne, $endOne, $startTwo, $endTwo, $mode) =@_;
-
-	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
-		 ($startOne > $endTwo)) {
-		return 0;
-	} else {
-		#### return the percent overlap
-		if($endOne < $endTwo) {
-			if($startOne >= $startTwo) {
-				return 1;
-			} else {
-				return ($endOne -$startTwo) /($endOne - $startOne);
-			} 
-		} else {
-			if($startOne <= $startTwo) {
-				return 1;
-			} else {
-				return ($endTwo -$startOne) /($endOne - $startOne);
-			} 			
-		}
-	}
-}
 
 ################### Load MAF file and return a FASTA array in reference coordinates
 # alignmentLengthFilter is a number 0-1 indicating what is the minimum overlap (in percent) of the alignment to the reference species
@@ -1667,6 +1578,13 @@ sub MAFtoFASTA {
 	   	   my $species = geneToSpecies($locus);
 		   my $genome = geneToGenome($locus);
 	   	   my $newspseq = $alignseq->seq();
+		   my $strand = $alignseq->strand();
+		   ## Translate strand codes
+		   if($strand == -1) {
+		   		$strand = "-";
+		   } else {
+			$strand = "+";
+		   }
 	   	   
 		   if($refseqname eq "") {
 			 $refseqname = $species;
@@ -1723,13 +1641,13 @@ sub MAFtoFASTA {
 					"ReferenceUpDown" => $dir,
 					"Length" => $reflen,
 					"TargetGenome" => $genome,
+					"TargetStrand" => $strand,
 					"TargetSpecies" => $species,
 					"TargetLocus" => $locus,
-					"TargetRelativePosition" => $targetRelative,
+					"TargetPosition" => $targetRelative,
 					"TargetSequence" => $newspseq,
 					"UntrimmedSequence" => $untrimmedSequence}; 
-  		   		}
-
+			}
 		   		# Check if we are overriding sequences
 		   		my $curspseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
 		   		if( $curspseq eq  "N" x length($curspseq)) {
@@ -1857,174 +1775,3 @@ sub pickBestPutativeOrthologs {
 	return %orthologs;
 }
 
-
-###################### ORF Processing functions
-#### getLongestORF(DNSSequence, Strand) 
-#####
-#### Strand is optional (+ or -) to limit search to one strand. If not provided, ORFs are searched on both strands.
-####
-
-sub getLongestORF {
-   my $seq = $_[0];
-   my $strandToLookAt = $_[1];
-   $seq =~ s/-//g;
-   
-   my $best=0;
-   my ($bests,$beste,$beststrand)=(-1,-1,0);
-   my $dna=Bio::Seq->new(-seq => $seq);
-   my %strand;
-   
-   if ($strandToLookAt eq "+") {
-   	   %strand=('+'=>$dna->seq);
-   } elsif($strandToLookAt eq "-") {
-  	   %strand=('-'=>$dna->revcom->seq);
-   } else {
-   	   %strand=('+'=>$dna->seq,
-               '-'=>$dna->revcom->seq);
-   }
-   
-   foreach my $direction (keys %strand) {
-      my @starts=();
-      my @ends=();
-      for (my $frame=0;$frame< length($seq)-3;$frame++) {
-         unless ($strand{$direction}=~m/^.{$frame}(taa|tga|tag)/i) {
-            push @starts,$frame+1;
-         }
-      }
- 
-      while ($strand{$direction}=~m/(taa|tga|tag)/gi) {
-         push @ends,pos($strand{$direction})-2;
-      }
-      push @ends,($dna->length+2,$dna->length+1,$dna->length);
-
-
-      for my $s (@starts) {
-         for my $e (@ends) {
-            if ($e%3==$s%3 and $e>$s) {
-               my $ORFlength = $e-$s;
-               if($e > $dna->length) {
-                  $ORFlength -= ($e - $dna->length -1);
-                  ### If we have partial codon - remove it
-                  $ORFlength -= ($ORFlength%3);
-               }
-               if ($ORFlength >$best) {
-                  $best= $ORFlength;
-                  ($bests,$beste,$beststrand)=($s,$e,$direction);
-               }
-               last
-            } else {
-               next
-            }
-         }
-      }
-   }
-   my $bestORF;
-   if($beststrand eq "+") {
-   	   $bestORF = substr($dna->seq,$bests-1, $best)
-   } else {
-   	   $bestORF = substr($dna->revcom->seq,$bests-1, $best)
-   }
-   
-   return (length($bestORF), $bestORF, $beststrand ); ## Returns the length of the longest ORF and its sequence	
-}
-
-
-##### determine the expected random ORF based on GC content of cns
-### Based on Oliver and Marin, Journal of Molecular Evolution, 1996 43:216-223.
-###
-sub getRandomORFLength {
-	my $LENGTH_FACTOR = 2;
-	my $randomORFLength;
-	
-	my $sequence = $_[0];
-	my $seqstr = $sequence;
-	my $gcCNS = length($seqstr =~ s/[A|T|N]//rg);
-	$seqstr = $sequence;
-	my $atCNS = length($seqstr =~ s/[G|C|N]//rg);
-
-	my $q= (1-$gcCNS/($gcCNS+$atCNS))/2;
-	my $t= $q**2 - $q**3;
-	if($t == 0) {
-		$randomORFLength=1000;
-	} else {
-		$randomORFLength = ceil(1/$t)*3*$LENGTH_FACTOR+1;
-	}
-	return $randomORFLength;
-}
-
-############################################################################################################3
-#### CNS processing functions
-
-### Accepts an array of hits hashes and returns the breakpoints
-
-sub getCNSbreakpoints {
-	my ($CNSLength, $hitsRef) = @_;
-	my @hits = @$hitsRef;
-	my @CNSCoverage = (0) x $CNSLength;
-
-	foreach my $curHit (@hits) {
-		my $start = $curHit->{'ReferenceRelativePosition'};
-		my $end = $start + $curHit->{'Length'};
-		foreach my $pos ($start..$end) { $CNSCoverage[$pos]++; }
-	}
-
-	### Change point detection. Our data is generally well behaved with few outliers (if any)
-	### we do a simple change detection algorithm. 
-	#####  1. Calculate delta between points. 2. Find the stdev of the delta. 3. Identify places where delta is high (3xstdev),
-	#####    Don't break if creating too small of a fragment (<$minCNSLength)
-
-	#### Calculate the dX
-	my @CNSdelta = (0) x $CNSLength;
-	foreach my $pos (0..((scalar @CNSCoverage)-2)) {
-		$CNSdelta[$pos+1] = $CNSCoverage[$pos+1] - $CNSCoverage[$pos];
-	}
-	my $deltaSD = stddev(@CNSdelta);
-
-	## Now identify breakpoints.
-	###
-	my @breakpoints;
-	my $lastBreakpointPos=0;
-
-	foreach my $pos (0..(scalar @CNSdelta)) {
-		### split CNS if larger than minCNSlength and high variability. But don't split CNS if its too short, has too many species
-		## or if the split point is not well supported
-		if((abs($CNSdelta[$pos]) > $deltaSD * $standardDeviationsToSplit) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNSLength) &&
-		 ($pos - $lastBreakpointPos > $minCNSLength ) ) {
-			if($verbose) { print "PROGRESS: Splitting CNS at $pos (" . abs($CNSdelta[$pos]) . "," . $CNSCoverage[$pos] . ").\n"; }
-			push @breakpoints, $pos;
-			$lastBreakpointPos = $pos;
-		}
-	}
-	# Add start and end points
-	@breakpoints = (0, @breakpoints , $CNSLength);
-	return \@breakpoints;
-}
-
-sub polishCNSAlignments {
-	my ($breakpointRef, $alignmentMapRef) = @_;
-	my @breakpoints = @$breakpointRef; 
-	my @alignmentMap = @$alignmentMapRef;
-
-	foreach my $curHit (@alignmentMap) {
-		my $start =  $curHit->{'ReferenceRelativePosition'};
-		my $end = $start + $curHit->{'Length'};
-		### Find closest breakpoints
-		my $minStart= abs($start - $breakpoints[0]);
-		my $minEnd= abs($end - $breakpoints[0]);
-		my $startBreakpoint=0;
-		my $endBreakpoint=0;
-		for my $curBreakpoint (0..(scalar @breakpoints) ) {
-			if( abs($start - $breakpoints[$curBreakpoint]) < $minStart) {
-				$minStart = abs($start - $breakpoints[$curBreakpoint]);
-				$startBreakpoint= $curBreakpoint;
-			}
-			if( abs($end - $breakpoints[$curBreakpoint]) < $minEnd) {
-				$minEnd = abs($end - $breakpoints[$curBreakpoint]);
-				$endBreakpoint= $curBreakpoint;
-			}
-		}
-		$curHit->{'ReferenceRelativePosition'} = $start;
-		$curHit->{'Length'} = $end - $start;
-	}
-	return \@alignmentMap;
-}
