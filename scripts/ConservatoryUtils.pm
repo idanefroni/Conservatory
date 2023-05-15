@@ -18,37 +18,10 @@ my $standardDeviationsToSplit = 3; ## The number of standard deviation in number
 my $minSpeciesToSplitCNS=5;  ### Minimal number of species to consider a split of the CNS
 my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported by atleast this number of species
 									 ## To avoid spliting of very highly conserved CNSs
+my $minIdentityToKeepBreakpoint	=50;
+my $minSpeciesToKeepBreakpoint	= 5;
+my $minSequenceContentInAlignment = 0.5; 
 
-#############################################################################3
-### Compute overlap between two fragments. 
-### Parameters:
-### overlap(startOne, endOne, StartTwo, endTwo, mode)
-### returns relative overlap (0-1) (of the first fragment).
-###
-
-#sub overlap {
-#	my ($startOne, $endOne, $startTwo, $endTwo, $mode) =@_;
-
-#	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
-#		 ($startOne > $endTwo)) {
-#		return 0;
-#	} else {
-		#### return the percent overlap
-#		if($endOne < $endTwo) {
-#			if($startOne >= $startTwo) {
-#				return 1;
-#			} else {
-#				return ($endOne -$startTwo) /($endOne - $startOne);
-#			} 
-#		} else {
-#			if($startOne <= $startTwo) {
-#				return 1;
-#			} else {
-#				return ($endTwo -$startOne) /($endOne - $startOne);
-#			} 			
-#		}
-#	}
-#}
 
 #############################################################################3
 ### Compute overlap between two fragments. 
@@ -60,7 +33,7 @@ my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported b
 sub overlap {
 	my ($startOne, $endOne, $startTwo, $endTwo) =@_;
 	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
-		 ($startOne > $endTwo)) {
+		 ($startOne > $endTwo) || ($startTwo > $endOne)) {
 		return 0;
 	} else {
 		return (min($endOne, $endTwo) - max($startOne, $startTwo))/ max( $endOne-$startOne, $endTwo-$startTwo);
@@ -291,11 +264,23 @@ sub getCNSbreakpoints {
 	return \@breakpoints;
 }
 
+
+#################################################################################################################
+########
+########  Given a set of hits and breakpoints, cut the hits so they will be aligned to the breakpoints
+########   filter out cuts that have very low identity 
+
 sub polishCNSAlignments {
-	my ($breakpointRef, $alignmentMapRef, $minCNSConservationAfterSplit) = @_;
+	my ($breakpointRef, $alignmentMapRef, $minCNSConservationAfterSplit, $minCNSLength) = @_;
 	my @breakpoints = @$breakpointRef; 
 	my @alignmentMap = @$alignmentMapRef;
 	my @splitAndPolishedAlignments;
+
+	### set up the alignment summary
+	my %alignmentsForBreakpoints;
+	for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
+		$alignmentsForBreakpoints{$curBreakpoint} = Bio::SimpleAlign->new();
+	}
 
 	foreach my $curHit (@alignmentMap) {
 		my $start =  $curHit->{'ReferenceRelativePosition'};
@@ -303,37 +288,47 @@ sub polishCNSAlignments {
 
 		for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
 			### if the hit overlaps the sub CNS
-#			print "Testing polish: " . $curHit->{'TargetLocus'} . ": $breakpoints[$curBreakpoint] - " . $breakpoints[$curBreakpoint+1] . " and " . $curHit->{'ReferenceRelativePosition'} . "-" . $curHit->{'Length'}  . "\n";
 
 			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'} )) {
 
 				### distance from breakpoint start
 				my $positionInCNS = max($breakpoints[$curBreakpoint], $curHit->{'ReferenceRelativePosition'});
 
-			#	print "editing seq: " . $curHit->{'TargetSequence'} . ". start is $start. Cutting from " . $breakpoints[$curBreakpoint] . "\n";
 				my $subCNSSeqStart = max(0,$breakpoints[$curBreakpoint] - $start);
 				my $subCNSTargetSeq = substr($curHit->{'TargetSequence'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'ReferenceRelativePosition'}, $curHit->{'Length'} - $breakpoints[$curBreakpoint]+$start ));
 				### remove trailing and leading gaps
-			#	print "-- Possible hit Seq: $subCNSTargetSeq. Trimmed: ";	
 				$subCNSTargetSeq =~ s/(-+)$//;
-				my $numOfLeadingGaps = $subCNSTargetSeq =~ s/^(-+)//;
-				if($numOfLeadingGaps eq "") { $numOfLeadingGaps = 0; }
+ 			    my $numOfTrailingGaps = length($1);
+       
+				$subCNSTargetSeq =~ s/^(-+)//;
+				my $numOfLeadingGaps = length($1);
+
+				if(!defined $numOfLeadingGaps) { $numOfLeadingGaps = 0; }
+				if(!defined $numOfTrailingGaps) { $numOfTrailingGaps = 0; }
 
 				my $numOfInternalGaps = $subCNSTargetSeq =~ tr/-//;
 				if($numOfInternalGaps eq "") { $numOfInternalGaps = 0; }
 
-			#	print " $subCNSTargetSeq ($numOfInternalGaps gaps).\n";
-
-				### Only include the hit of the coverage is sufficient
-				if((length($subCNSTargetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSConservationAfterSplit) {
-			#		print "-- hit at $positionInCNS. leading gaps $numOfLeadingGaps. new length " . length($subCNSTargetSeq) . "\n";	
+				### Only include the hit of the coverage is sufficient and if its not too gappy
+				if((length($subCNSTargetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSConservationAfterSplit && length($subCNSTargetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subCNSTargetSeq)) < $minSequenceContentInAlignment ) {
 					my $newTargetPosition;  ## update the target coordinates - byt that depends if the hit is on the plus or minus strand
-					#### DEBBUG THIS
+
 					if($curHit->{'TargetStrand'} eq "+" ) {
-						$newTargetPosition = $curHit->{'TargetPosition'} + $breakpoints[$curBreakpoint] + $numOfLeadingGaps
+						$newTargetPosition = $curHit->{'TargetPosition'} + $breakpoints[$curBreakpoint] + $numOfLeadingGaps;
 					} else {
 						$newTargetPosition = $curHit->{'TargetPosition'} + $curHit->{'Length'} - length($subCNSTargetSeq) - $subCNSSeqStart;
 					}
+					my $alignedSeq = ('-' x ($positionInCNS-$breakpoints[$curBreakpoint]+$numOfLeadingGaps)) . $ subCNSTargetSeq;
+          			### pad end of alignments with gaps to make it equal length
+		          	$alignedSeq = $alignedSeq . ('-' x ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] - length($alignedSeq)));
+          
+					### Log the alignment to the breakpointlist
+					$alignedSeq =~ tr/-/N/;
+					my $seq = Bio::LocatableSeq->new(-seq => $alignedSeq,
+													 -start => 1,
+													 -end => length($alignedSeq),
+												     -id => $curHit->{'TargetLocus'}. $curHit->{'TargetPosition'});
+					$alignmentsForBreakpoints{$curBreakpoint}->add_seq($seq);
 
 					push (@splitAndPolishedAlignments, {
 							"TargetSpecies" => $curHit->{'TargetSpecies'},
@@ -344,11 +339,28 @@ sub polishCNSAlignments {
 							"ReferenceLocus" => $curHit->{'ReferenceLocus'},
 							"TargetSequence" => $subCNSTargetSeq,
 							"ReferenceRelativePosition" => $positionInCNS+$numOfLeadingGaps,
-							"TargetPosition" => $newTargetPosition 
+							"TargetPosition" => $newTargetPosition,
+							"Breakpoint" => $curBreakpoint
 					});
 				}
 			}
 		}
 	}
-	return \@splitAndPolishedAlignments;
+
+	my %breakpointsToDelete;
+	for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
+		if( $alignmentsForBreakpoints{$curBreakpoint}->percentage_identity() < $minIdentityToKeepBreakpoint ||  $alignmentsForBreakpoints{$curBreakpoint}->num_sequences < $minSpeciesToKeepBreakpoint ) {
+			$breakpointsToDelete{$curBreakpoint}=1;
+		}
+
+	}
+
+	my @splitAndPolishedAlignmentsFiltered;
+	foreach my $curAlignment (@splitAndPolishedAlignments) {
+		if(!defined $breakpointsToDelete{ $curAlignment->{'Breakpoint'} }) {
+			push(@splitAndPolishedAlignmentsFiltered, $curAlignment);
+		}
+	}
+
+	return \@splitAndPolishedAlignmentsFiltered;
 }

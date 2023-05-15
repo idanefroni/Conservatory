@@ -45,7 +45,7 @@ my $minSupportingSpeciesToKeepMultipleCNS = 80;
 my $removeOriginalCNS=0;
 my $minCNSLength=8;
 my $minSpeciesForCNS=6; ### The minimum number of species aligned to a CNS to keep the CNS
-my $minCNSCoverageAfterSplit=0.2;
+my $minCNSCoverageAfterSplit=0.3;
 
 my $minCNSIdentityToMerge=70;
 
@@ -604,7 +604,7 @@ foreach my $curCNS (keys %CNSGroups) {
 	if(@CNSBreakpoints > 2) {
 		if($verbose) { print "PROGRESS: Breaking CNS $curCNS. Breakpoints: " . join(",", @CNSBreakpoints) . "\n"; }
 
-		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSCoverageAfterSplit);
+		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSCoverageAfterSplit, $minCNSLength);
 		my @polishedAlignments = @$polishedAlignmentsRef;
 
 		for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {

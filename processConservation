@@ -207,7 +207,7 @@ while(my $curgenomeline= <$genomedb>) {
 		my $options;
 		if($verbose) { $options .= "--verbose "; }
 		if($donotFilter) { $options .= "--do-not-filter "; }
-		system("perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv  $options");
+		system("/usr/bin/perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv  $options");
 		unlink("$conservationDir/$family.sorted.csv");
 		unlink("$conservationDir/$family.map.sorted.csv");
 

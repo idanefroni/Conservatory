@@ -1089,7 +1089,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	### If we have breakpoints, break the CNS, polish and reassign all hits
 	if(@CNSBreakpoints >2) {
 		if($verbose) { print "PROGRESS: Breaking CNS $curCNS. Length: $CNSLength. Breakpoints: " . join(",", @CNSBreakpoints) . "\n"; }
-		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSConservationAfterSplit);
+		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSConservationAfterSplit, $minCNSLength);
 		my @polishedAlignments = @$polishedAlignmentsRef;
 
 		for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
@@ -1606,7 +1606,7 @@ sub MAFtoFASTA {
    		   }
    		   
 		   ### Replace all gaps with N because phyloP doesn't like gaps.
-		   $newspseq =~ s/-/N/g;
+#		   $newspseq =~ s/-/N/g;
 
 		   my $untrimmedSequence = $newspseq;
 		   $newspseq =~ s/Z//g;
