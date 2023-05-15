@@ -36,9 +36,10 @@ my $outputMergedCNSFileName="";
 
 my $conservatoryTreeFileName;
 
+
 ### Merging parameters
 my $superCNSPrefix = "Super";
-my $minOverlappingSpeciesForMerge=1; ### How many overlapping hits to merge a CNS
+my $minOverlappingSpeciesForMerge=5; ### How many overlapping hits to merge a CNS
 my $minCNSOverlap = 0.1;
 my $minSyntenyBiasToAssignCNS= 1.1; ### Number between 1 and 2 (how many more species need to support a two-gene CNS assignment to just one of the genes, based on synteny)
 my $minSupportingSpeciesToKeepMultipleCNS = 80;
@@ -48,6 +49,7 @@ my $minSpeciesForCNS=6; ### The minimum number of species aligned to a CNS to ke
 my $minCNSCoverageAfterSplit=0.3;
 
 my $minCNSIdentityToMerge=70;
+my $keep_tmp=0;
 
 ## Filtering parameters
 my $CLASSIFICATION_CLASSES_NUM=6;
@@ -64,7 +66,6 @@ my $CNSMerged=0;
 my $CNSDeletedButMappingKept=0;
 my $CNSDeleted=0;
 my $deepCNSMerged=0;
-my $skipConcensus=0;
 
 my $verbose=0;
 my $help=0;
@@ -79,13 +80,13 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-overlapping" => \$minOverlappingSpeciesForMerge,
 			"min-keep-multiple" => \$minSupportingSpeciesToKeepMultipleCNS,
 			"remove-original-CNS" => \$removeOriginalCNS,
-			"skip-concensus" => \$skipConcensus,
+			"keep-"
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
 if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq "" || $outputMapFileName eq "" ) {
 	print "Conservatory version 2.0.1\n\n";
-	print "mergeCNSTables --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>  [--out-merged <mergedDeepCNSfile>] [--min-overlapping <number>] [--min-keep-multiple number] [--remove-original-CNS] [--do-not-filter] [--skip-concensus].\n\n";
+	print "mergeCNSTables --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>  [--out-merged <mergedDeepCNSfile>] [--min-overlapping <number>] [--min-keep-multiple number] [--remove-original-CNS].\n\n";
 	
 	exit();
 }
@@ -733,6 +734,7 @@ foreach my $curCNS (keys %CNSTable) {
 			
 			my $tmpOutputAncesteralSequenceFileName = $tmpDir . "/tmp_as_$curCNS.fasta";
 			system("$conservatoryDir/scripts/fastml -b -qf -mh -s $tmpOutputFastaAlignedFileName -t $tmpOutputTrimmedTreeFileName -y /dev/null/a -d /dev/null/a -x /dev/null/a -k /dev/null/a -d /dev/null/a -e /dev/null/a -j $tmpOutputAncesteralSequenceFileName > /dev/null");
+			unlink("log.txt"); ### remove the fastml leftover file
 			### Read concensus sequence
 			my $inReconstructionFasta = Bio::SeqIO->new(-file => $tmpOutputAncesteralSequenceFileName, -format => "fasta", -alphabet => "dna");
 			my $reconstructedSequence;

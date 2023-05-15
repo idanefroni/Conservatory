@@ -12,7 +12,7 @@ our @EXPORT = qw (overlap geneToSpecies geneToGenome fullNameToShortName lengthW
 
 
 ##############################################################################
-##### Parameters
+##### CNS Splitting Parameters
 
 my $standardDeviationsToSplit = 3; ## The number of standard deviation in number of aligned species to trigger a CNS split
 my $minSpeciesToSplitCNS=5;  ### Minimal number of species to consider a split of the CNS
@@ -100,12 +100,6 @@ sub findAll {
 	return @occurences;
 }
 
-## Returns the mean value of an array of integers
-#sub mean {
-#    return sum(@_)/@_;
-#}
-
-
 ###################### ORF Processing functions
 #### getLongestORF(DNSSequence, Strand) 
 #####
@@ -177,10 +171,12 @@ sub getLongestORF {
    return (length($bestORF), $bestORF, $beststrand ); ## Returns the length of the longest ORF and its sequence	
 }
 
-
-##### determine the expected random ORF based on GC content of cns
+##############################################################################################
+##### determine the expected random ORF based on GC content of CNS
+###
 ### Based on Oliver and Marin, Journal of Molecular Evolution, 1996 43:216-223.
 ###
+
 sub getRandomORFLength {
 	my $LENGTH_FACTOR = 2;
 	my $randomORFLength;
@@ -192,8 +188,8 @@ sub getRandomORFLength {
 	my $atCNS = length($seqstr =~ s/[G|C|N]//rg);
 
 	my $q= (1-$gcCNS/($gcCNS+$atCNS))/2;
-	my $t= $q**2 - $q**3;
-	if($t == 0) {
+	my $t= $q**2 - $q**3;   ## Olive and Marin, JME
+	if($t == 0) {  ### maximal value for ORF length
 		$randomORFLength=1000;
 	} else {
 		$randomORFLength = ceil(1/$t)*3*$LENGTH_FACTOR+1;
@@ -204,7 +200,11 @@ sub getRandomORFLength {
 ############################################################################################################3
 #### CNS processing functions
 
-### Accepts an array of hits hashes and returns the breakpoints
+### Accepts CNS length, an array of hits hashes and returns the breakpoints to sub CNSs.
+###
+###  sub CNS are created where there is a drop of >3 standard deviations in the number of alignments (and atleast 5) for the nucleotide, as long as the CNS is larger than minCNSLength.
+###
+
 
 sub getCNSbreakpoints {
 	my ($CNSLength, $hitsRef, $minCNSLength) = @_;
@@ -265,14 +265,16 @@ sub getCNSbreakpoints {
 }
 
 
-#################################################################################################################
+########################################################################################################################################
 ########
-########  Given a set of hits and breakpoints, cut the hits so they will be aligned to the breakpoints
-########   filter out cuts that have very low identity 
+########  Given a set of hits and breakpoints, split the hits so they will be aligned to the breakpoints as closely as possible
+########   filter out cuts that have very low identity
+########
+########
 
 sub polishCNSAlignments {
 	my ($breakpointRef, $alignmentMapRef, $minCNSConservationAfterSplit, $minCNSLength) = @_;
-	my @breakpoints = @$breakpointRef; 
+	my @breakpoints = @$breakpointRef;
 	my @alignmentMap = @$alignmentMapRef;
 	my @splitAndPolishedAlignments;
 
