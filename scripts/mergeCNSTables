@@ -711,7 +711,7 @@ foreach my $curCNS (keys %CNSTable) {
 				$speciesSequencesForCNS{ $speciesName } = $curPosInCNS->{'TargetSequence'};
 			}
 		} else { 
-#			print "WARNING: Species $speciesName not in tree.!\n";
+#			print "WARNING: Species $speciesName not in tree!\n";
 		}
 	}
 
