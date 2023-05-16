@@ -50,10 +50,14 @@ my $minCNSCoverageAfterSplit=0.3;
 
 my $minCNSIdentityToMerge=70;
 my $keep_tmp=0;
+my $outputAnnotatedTree=0;
 
 ## Filtering parameters
 my $CLASSIFICATION_CLASSES_NUM=6;
 my $minSpeciesForClassification=6; 	### Minimum absolute number of species to support a classification
+my $minSequenceContentToConsiderReconstruction = 33; ## how many of the sequences in the alignment has to be informative (non-gap)
+													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
+													  # this is to avoid reconstructing sequences based on small number of samples.
 
 my %CNSTable;
 my %positionTable;
@@ -80,7 +84,8 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-overlapping" => \$minOverlappingSpeciesForMerge,
 			"min-keep-multiple" => \$minSupportingSpeciesToKeepMultipleCNS,
 			"remove-original-CNS" => \$removeOriginalCNS,
-			"keep-"
+			"keep-tmp" => \$keep_tmp,
+			"annotated-tree" => \$outputAnnotatedTree,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
@@ -97,6 +102,10 @@ die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $
 
 $conservatoryTreeFileName = $conservatoryDir . "/genomes/Conservatory.tree";
 if(! -e $conservatoryTreeFileName) { print "WARNING: Cannot find conservatory tree ($conservatoryTreeFileName).\n"; $conservatoryTreeFileName=""; }
+### Load the super tree
+my $conservatoryTreeio = Bio::TreeIO->new(-file => $conservatoryTreeFileName, -format => 'newick');
+my $conservatoryTree = $conservatoryTreeio->next_tree;
+if(!defined $conservatoryTree) { die "ERROR: Cannot read tree file $conservatoryTreeFileName. Bad format.\n"; }
 
 open (my $genomeDatabase, "<", $genomedbFile);
 while((my $curgenomeline = <$genomeDatabase>)) {
@@ -664,9 +673,6 @@ foreach my $curCNS (keys %CNSGroups) {
 
 
 ### Reconstruct sequences of Super CNS and determine conservation level
-### First, load super tree
-my $conservatoryTreeio = Bio::TreeIO->new(-file => $conservatoryTreeFileName, -format => 'newick');
-my $conservatoryTree = $conservatoryTreeio->next_tree;
 
 my $origConservatoryTree = $conservatoryTree->clone();
 
@@ -684,6 +690,9 @@ my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -f
 $conservatoryTreeOutput->write_tree($conservatoryTree);
 
 my %speciesInTree = map { ($_)->id => 1} $conservatoryTree->get_leaf_nodes();
+
+#print "Tree leaves:" . join("\n", keys %speciesInTree) . "\n";
+
 my $totalToScreen = scalar (keys %CNSTable);
 $curPos=1;
 
@@ -694,8 +703,15 @@ foreach my $curCNS (keys %CNSTable) {
 	### Count supporting species and pick the longest alignment from each species
 	my %speciesSequencesForCNS;
 	foreach my $curPosInCNS (@{ $positionTable{$curCNS}{'Positions'}}) {
-		if(defined $speciesInTree{ $curPosInCNS->{'TargetSpecies'} } &&  $curPosInCNS->{'Length'} > length($speciesSequencesForCNS{ $curPosInCNS->{'TargetSpecies'} }) ) {
-			$speciesSequencesForCNS{ $curPosInCNS->{'TargetSpecies'} } = $curPosInCNS->{'TargetSequence'};
+		my $speciesName = $curPosInCNS->{'TargetSpecies'};		
+		## replace the dot in species name which makes tree life difficult
+		$speciesName =~ s/\./_/g;
+		if(defined $speciesInTree{ $speciesName }) {
+			if($curPosInCNS->{'Length'} > length($speciesSequencesForCNS{ $curPosInCNS->{'TargetSpecies'} }) ) {
+				$speciesSequencesForCNS{ $speciesName } = $curPosInCNS->{'TargetSequence'};
+			}
+		} else { 
+#			print "WARNING: Species $speciesName not in tree.!\n";
 		}
 	}
 
@@ -741,11 +757,26 @@ foreach my $curCNS (keys %CNSTable) {
 			while(my $seq = $inReconstructionFasta->next_seq) {
 				if($seq->id eq "N1") { $reconstructedSequence = $seq->seq; }
 			}
+			### Now filter the sequence based on information content. When little sequence coverage is available, fastml usually just guesses the nucleotide.
+			my $inAlignedFasta = Bio::AlignIO->new(-file => $tmpOutputFastaAlignedFileName,
+										-format => "fasta");
+			my $inAligned = $inAlignedFasta->next_aln;
+
+			### TODO: put filter here based on alignment file
+			my @gappiness = getGappiness($inAligned);
+		    for my $pos (0..(scalar @gappiness -1 )) {
+    		    if ($gappiness[$pos] > $minSequenceContentToConsiderReconstruction) {
+            		substr($reconstructedSequence, $pos, 1) = "-";
+        		}
+    		}
+
 			$CNSTable{$curCNS}{'AncesteralSeq'} = $reconstructedSequence;
-			unlink($tmpOutputAncesteralSequenceFileName);
-			unlink($tmpOutputFastaFileName);
-			unlink($tmpOutputFastaAlignedFileName);
-			unlink($tmpOutputTrimmedTreeFileName);
+			if(!$keep_tmp) {
+				unlink($tmpOutputAncesteralSequenceFileName);
+				unlink($tmpOutputFastaFileName);
+				unlink($tmpOutputFastaAlignedFileName);
+				unlink($tmpOutputTrimmedTreeFileName);
+			}
 		}
 
 		### Identify the deepest node in the tree - the point of CNS origination

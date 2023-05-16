@@ -5,10 +5,12 @@ use strict;
 use warnings;
 use List::Util qw(min max uniq);
 use Statistics::Basic qw(:all nofill);
+use Bio::SimpleAlign;
+
 use Exporter;
 
 our @ISA= qw( Exporter );
-our @EXPORT = qw (overlap geneToSpecies geneToGenome fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments);
+our @EXPORT = qw (overlap geneToSpecies geneToGenome fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness);
 
 
 ##############################################################################
@@ -23,7 +25,7 @@ my $minSpeciesToKeepBreakpoint	= 5;
 my $minSequenceContentInAlignment = 0.5; 
 
 
-#############################################################################3
+#############################################################################
 ### Compute overlap between two fragments. 
 ### Parameters:
 ### overlap(startOne, endOne, StartTwo, endTwo)
@@ -98,6 +100,29 @@ sub findAll {
 		$result = index($seq, $substring, $offset);
 	}
 	return @occurences;
+}
+
+##################################################################################
+#####
+##### Gappiness - return the percentrage of gaps for each position in a simplealign object
+sub getGappiness {
+	my ($align) = @_;
+	my @gapPercentages;
+
+    for (my $pos = 1; $pos <= $align->length; $pos++) {
+		my $gap_count = 0;
+        
+        # Iterate over all sequences at once
+        foreach my $seq ($align->each_seq) {
+            my $symbol = $seq->subseq($pos, $pos);
+            $gap_count++ if $symbol eq '-';
+        }
+        
+        my $gapPercentageForPos = ($gap_count / $align->num_sequences) * 100;
+        push @gapPercentages, $gapPercentageForPos;
+    }
+    
+	return @gapPercentages;
 }
 
 ###################### ORF Processing functions
