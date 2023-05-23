@@ -30,6 +30,7 @@ my $keep_tmp=0;
 my $outputAnnotatedTree=0;
 
 ## Filtering parameters
+my $minSpeciesForCNS=6;
 my $minSequenceContentToConsiderReconstruction = 33; ## how many of the sequences in the alignment has to be informative (non-gap)
 													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
 													  # this is to avoid reconstructing sequences based on small number of samples.
@@ -108,8 +109,8 @@ my $startLine=0;
 my $endLine= $CNSLineCount;
 
 if($totalSplits>1) {
-	$startLine = ($CNSLineCount/$totalSplits) * ($splitNum-1);
-	$endLine = ($CNSLineCount/$totalSplits) * ($splitNum);
+	$startLine = floor(($CNSLineCount/$totalSplits) * ($splitNum-1));
+	$endLine = ceil( ($CNSLineCount/$totalSplits) * ($splitNum) + 1);
 	$outputCNSFileName = $outputCNSFileName . "_" . $splitNum;
 }
 ### Start merging CNSs. First read and merge all CNSs in the family
