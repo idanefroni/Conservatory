@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use POSIX;
+use Cwd;
 use Cwd 'abs_path';
 
 use Array::Utils qw(:all);
@@ -21,11 +22,12 @@ $|=1;
 
 ### Filenames
 my $conservatoryDir=abs_path(".");
-my $tmpDir= "/dev/shm/";
+my $tmpDirRoot= "/dev/shm/";
 my $CNSFileName="";
 my $mapFileName="";
 my $outputCNSFileName="";
 my $conservatoryTreeFileName;
+my $conservatoryAnnotatedTreeFileName;
 my $keep_tmp=0;
 my $outputAnnotatedTree=0;
 
@@ -50,6 +52,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"verbose" => \$verbose,
 			"split=i" => \$splitNum,
 			"total-splits=i" => \$totalSplits,
+			"tmp-dir=s" => \$tmpDirRoot,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
@@ -60,26 +63,80 @@ if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq ""
 	exit();
 }
 
-if ($verbose) { print "START: Loading genome database.\n"; }
-my $genomedbFile = $conservatoryDir . "/genome_database.csv";
-die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
-
 $conservatoryTreeFileName = $conservatoryDir . "/genomes/Conservatory.tree";
+$conservatoryAnnotatedTreeFileName = $conservatoryDir . "/genomes/Conservatory.Annotated.tree";
+
 if(! -e $conservatoryTreeFileName) { print "WARNING: Cannot find conservatory tree ($conservatoryTreeFileName).\n"; $conservatoryTreeFileName=""; }
+if(! -e $conservatoryAnnotatedTreeFileName) { print "WARNING: Cannot find annotated conservatory tree ($conservatoryAnnotatedTreeFileName).\n"; $conservatoryAnnotatedTreeFileName=""; }
 ### Load the super tree
 my $conservatoryTreeio = Bio::TreeIO->new(-file => $conservatoryTreeFileName, -format => 'newick');
 my $conservatoryTree = $conservatoryTreeio->next_tree;
 if(!defined $conservatoryTree) { die "ERROR: Cannot read tree file $conservatoryTreeFileName. Bad format.\n"; }
 
+my $conservatoryAnnotatedTreeio = Bio::TreeIO->new(-file => $conservatoryAnnotatedTreeFileName, -format => 'newick');
+my $conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
+if(!defined $conservatoryAnnotatedTree) { die "ERROR: Cannot read annotated tree file $conservatoryAnnotatedTreeFileName. Bad format.\n"; }
+my %speciesInTree = map { ($_)->id => 1} $conservatoryTree->get_leaf_nodes();
 
-my $positionLineCount = (qx(wc -l $mapFileName))[0];
-chomp ($positionLineCount);
-my $curPos=1;
+### Annotated Internal nodes
+#my $curNodeNumber=1;
+#my @nodes = $conservatoryTree->get_nodes();
+#foreach my $curNode (@nodes) {
+#	if($curNode->id eq "") { 
+#		$curNode->id("N$curNodeNumber");
+#		$curNodeNumber++;
+#	}
+#}
+#my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -format => 'newick');
+#$conservatoryTreeOutput->write_tree($conservatoryTree);
+
+
+### Prepare temporary files
+
+my $tmpDir = $tmpDirRoot . "/S" . $splitNum . "/";
+my $tmpCNSToReconstructFileName = "$tmpDir/tmpCNSToReconstruct.txt";
+
+mkdir $tmpDir;
+### Collect the CNS we need to reconstruct
+### Check number of CNSs
+my $CNSLineCount = (qx(wc -l $CNSFileName))[0];
+chomp($CNSLineCount);
+my $startLine=0;
+my $endLine= $CNSLineCount;
+
+if($totalSplits>1) {
+	$startLine = floor(($CNSLineCount/$totalSplits) * ($splitNum-1));
+	$endLine = ceil( ($CNSLineCount/$totalSplits) * ($splitNum) + 1);
+	$outputCNSFileName = $outputCNSFileName . "_" . $splitNum;
+}
+open (my $tmpCNSToReconstructFile , ">$tmpCNSToReconstructFileName") || die ("ERROR: Cannot open temporary file $tmpCNSToReconstructFileName.\n");
+open (my $CNSInputFile, $CNSFileName) ||  die "ERROR: Cannot find CNS file $CNSFileName.\n";
+
+### Go to starting position
+print "PROGRESS: Compiling CNS list (" . ($endLine - $startLine) . " CNSs)\n";
+
+foreach (1..$startLine) {
+	my $line = <$CNSInputFile>;
+}
+my $curPos=$startLine;
+my %CNSTable;
+while($curPos++ <= $endLine) {
+
+	my $line = <$CNSInputFile>;
+	chomp $line;
+	my ($referenceGenome, $cnsToReconstruct, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/, $line;
+	print $tmpCNSToReconstructFile "$cnsToReconstruct\n";
+}
+
+seek($CNSInputFile, 0, SEEK_SET);
+close($tmpCNSToReconstructFile);
+
+$curPos=1;
 
 ########## Load position table to memory
-open (my $CNSPositionFile, $mapFileName) ||  die "ERROR: Cannot find position file $mapFileName.\n";
+open (my $CNSPositionFile, "grep -f $tmpCNSToReconstructFileName $mapFileName |") ||  die "ERROR: Cannot find position file $mapFileName.\n";
 while(<$CNSPositionFile>) {
-	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "/$positionLineCount\r" };
+	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "\r" };
 	chomp;
 	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence) = split /,/;
 	
@@ -102,35 +159,13 @@ while(<$CNSPositionFile>) {
 close($CNSPositionFile);
 if($verbose) { print "\n"; };
 
-### Check number of CNSs
-my $CNSLineCount = (qx(wc -l $CNSFileName))[0];
-chomp($CNSLineCount);
-my $startLine=0;
-my $endLine= $CNSLineCount;
+### record current directory and move to the temporary directory. This is because fastml creates a log.txt file
+### In the working directory and there is no way to change that. When run in parallel this creates file conflicts...
 
-if($totalSplits>1) {
-	$startLine = floor(($CNSLineCount/$totalSplits) * ($splitNum-1));
-	$endLine = ceil( ($CNSLineCount/$totalSplits) * ($splitNum) + 1);
-	$outputCNSFileName = $outputCNSFileName . "_" . $splitNum;
-}
+my $curDir = getcwd();
+chdir $tmpDir;
+
 ### Start merging CNSs. First read and merge all CNSs in the family
-
-my $origConservatoryTree = $conservatoryTree->clone();
-### Annotated Internal nodes
-my $curNodeNumber=1;
-my @nodes = $conservatoryTree->get_nodes();
-foreach my $curNode (@nodes) {
-	if($curNode->id eq "") { 
-		$curNode->id("N$curNodeNumber");
-		$curNodeNumber++;
-	}
-}
-#my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -format => 'newick');
-#$conservatoryTreeOutput->write_tree($conservatoryTree);
-my %speciesInTree = map { ($_)->id => 1} $conservatoryTree->get_leaf_nodes();
-
-open (my $CNSInputFile, $CNSFileName) ||  die "ERROR: Cannot find CNS file $CNSFileName.\n";
-
 ### Go to starting position
 print "PROGRESS: Skipping to line $startLine.\n";
 
@@ -175,11 +210,11 @@ while($curPos <= $endLine) {
 	} else {
 		### Identify the deepest node in the tree - the point of CNS origination
 		my @sharedLeaves = keys %speciesSequencesForCNS;
-		my $lastCommonNode = findDeepestCommonNode($conservatoryTree, \@sharedLeaves);
+		my $lastCommonNode = findDeepestCommonNode($conservatoryAnnotatedTree, \@sharedLeaves);
 		$CNSTable{$cnsToReconstruct}{'Level'} = $lastCommonNode;
 
 		## Reconstruct the ancesteral sequence
-		$CNSTable{$cnsToReconstruct}{'AncesteralSeq'} = getReconstructedCNSSequence($cnsToReconstruct, $origConservatoryTree, \%speciesSequencesForCNS);
+		$CNSTable{$cnsToReconstruct}{'AncesteralSeq'} = getReconstructedCNSSequence($cnsToReconstruct, $conservatoryTree, \%speciesSequencesForCNS);
 	}
 }
 
@@ -189,6 +224,10 @@ if($verbose) { print "\n"; }
 if($verbose) { print "\nPROGRESS: Done. Output files.\n"; }
 
 ########### Output files
+
+## Go back to our working directory
+
+chdir $curDir;
 ### New CNS files
 open (my $outputCNSFile, ">$outputCNSFileName") || die ("INTERNAL ERROR.\n");
 
@@ -346,15 +385,12 @@ sub findDeepestCommonNode {
 	return $deepestNode;
 }
 
-
 ################################################################################################################
 #####
 #####  trim tree - given a tree and a set of leaves, trim the tree to include just these leaves. 
 #####    trim also internal nodes, or nodes with only one child
 ####
 ####
-
-
 sub trimTreeToLeaves {
 	my ($tree, $leavesListRef, $startNode) = @_;
 	my @leavesList = @$leavesListRef;

@@ -679,14 +679,14 @@ foreach my $curCNS (keys %CNSGroups) {
 my $origConservatoryTree = $conservatoryTree->clone();
 
 ### Annotated Internal nodes
-my $curNodeNumber=1;
-my @nodes = $conservatoryTree->get_nodes();
-foreach my $curNode (@nodes) {
-	if($curNode->id eq "") { 
-		$curNode->id("N$curNodeNumber");
-		$curNodeNumber++;
-	}
-}
+#my $curNodeNumber=1;
+#my @nodes = $conservatoryTree->get_nodes();
+#foreach my $curNode (@nodes) {
+#	if($curNode->id eq "") { 
+#		$curNode->id("N$curNodeNumber");
+#		$curNodeNumber++;
+#	}
+#}
 
 #my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -format => 'newick');
 #$conservatoryTreeOutput->write_tree($conservatoryTree);

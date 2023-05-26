@@ -1,0 +1,60 @@
+#! /bin/sh
+#######################################################################################################################
+Help()
+{
+   # Display Help
+   echo
+   echo "This script prepares the CNS input for a parallel blastx query"
+   echo "It takes sequences that are more than 30 bp and less than 4000 from START codon"
+   echo "filters automatically sequences over 200 bp."
+   echo "Divides sequences into <N> files and places in directory <output dir>."
+   echo	"Outputs:"
+   echo
+   echo "Syntax: splitBlastFilesForORF [-n -o]"
+   echo "Arguments:"
+   echo "t     Number of splits"
+   echo "i     Input CNS File"
+   echo	"o     Output path (optional)"
+   echo
+}
+######################################################################################################################
+
+while getopts i:t:o::h flag; do
+        case "${flag}" in
+                t) splits=${OPTARG};;
+                o) output_path=${OPTARG};;
+		i) input_file=${OPTARG};;
+                h) Help
+                        exit;;
+        esac
+done
+
+output_path=${output_path:-""}
+file_name=${input_file##*/}
+tmp_fasta_file=${output_path}/tmpFilteredFasta.fasta
+
+echo "Splitting fasta from $file_name into $splits parts. Using $output_path as output"
+
+awk -F "," 'function abs(v) {return v < 0 ? -v : v} length($15) > 30 && abs($8) < 4000 {printf(">%s\n%s\n",$2,$15)}' $input_file > $tmp_fasta_file
+
+# Step 2: Extract header lines from the FASTA file
+grep '^>' $tmp_fasta_file > ${output_path}/headers.txt
+
+TOTAL_LINES=$(wc -l < ${output_path}/headers.txt)
+
+echo "Total lines: $TOTAL_LINES"
+
+LINES_PER_SEGMENT=$(expr $TOTAL_LINES / $splits)
+
+split -l $LINES_PER_SEGMENT -d -a 4 ${output_path}/headers.txt ${output_path}/splitfasta_
+
+# Step 6: Iterate over each segment file and extract corresponding sequence lines
+for file in ${output_path}/splitfasta_*; do
+    SPLIT_NUMBER=$(echo $file | grep -o '[0-9]\+')
+    grep -A 1 -f "$file" ${tmp_fasta_file} > "${output_path}/toblast_$SPLIT_NUMBER.fasta"
+done
+
+# Step 7: Clean up temporary files
+rm $tmp_fasta_file ${output_path}/headers.txt ${output_path}splitfasta_*
+
+echo 'Done'
