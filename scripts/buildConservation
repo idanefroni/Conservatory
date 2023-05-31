@@ -232,12 +232,12 @@ die "ERROR: Cannot find wig2bed in path. Please make sure bedops is installed.\n
 my $t_muscle = `sh -c 'command -v muscle'`;
 die "ERROR: Cannot find muscle in path. Please make sure muscle v3.8.1551 is installed.\n" unless ($t_muscle ne "");  
 
-die "ERROR: Cannot find fastMLexecutable at $conservatoryDir/scripts/fastml.\n" unless (-x "$conservatoryDir/scripts/fastml");
+die "ERROR: Cannot find fastML executable at $conservatoryDir/scripts/fastml.\n" unless (-x "$conservatoryDir/scripts/fastml");
 ###############################################
 ### Make sure we are not over-writing existing CNS file (unless we are forced to)
 if ( (-e $finalCNSFileName) && !$force  ) { die "END: Output CNS file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
 
-if ( (-e "$outputCNSDir/$locus.phylop.bed" ) && !$force  ) { die "END: Output Bed file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
+#if ( (-e "$outputCNSDir/$locus.phylop.bed" ) && !$force  ) { die "END: Output Bed file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
 
 if( (-e $finalFASTAUpFileName) && (!$force) && $justFamilyAlignment) { die "END: Output family alignment file for $locus ($finalFASTAUpFileName) already exists. Use --force to overwrite.\n"; }
 
@@ -317,6 +317,11 @@ if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:
 	
 #remember where we are
 $curDir = getcwd;
+my $origTmpDir = $tmpDir;
+$tmpDir = "$tmpDir/$locus/";
+
+mkdir($tmpDir);
+
 chdir $tmpDir;
 
 ####### Set up the reference fasta files
@@ -713,6 +718,8 @@ while(my $CNSLine = <$CNSFile>) {
 				
 		#### Now invoke FASTML to reconstruct ancestral sequence
 		my $ancesteralCNSFileName = "$tmpDir/$locus.$cnsRelStart.ancesteral.fasta";
+		####
+
 		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
 		if(!$keep_tmp) { unlink("$tmpCNSFastaFileName"); }
 		unlink("log.txt");
@@ -1327,6 +1334,7 @@ foreach my $curCNS (keys %CNSforLocus) {
 close($finalMapFile);
 
 #### Go back to the original directory, and we are done!
+rmdir($tmpDir);
 chdir $curDir;	
 
 if($verbose) { print "DONE: End $referenceGenome:$locus.\n";	}
