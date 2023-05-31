@@ -1139,8 +1139,14 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 					if(not defined $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} }) {
 						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } = [];
 					}
-					my $newSubCNSTargetSequence = substr($curHit->{'TargetSequence'}, max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'}),  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName}));
+					my $startInTargetSequence = max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'});
 
+					my $newSubCNSTargetSequence = substr($curHit->{'TargetSequence'}, $startInTargetSequence,  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName}));
+					my $choppedSequence = substr($curHit->{'TargetSequence'},0, $startInTargetSequence);
+					my $numberOfGaps = $choppedSequence =~ tr/-//;
+
+					my $newTargetPosition = $curHit->{'TargetPosition'} + $startInTargetSequence - $numberOfGaps;
+					
 					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } }, {
 							"ReferenceLocus" => $newSubCNSName,
 							"ReferenceRelativePosition" => max( 0, $curHit->{'ReferenceRelativePosition'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
@@ -1150,7 +1156,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 							"TargetLocus" => $curHit->{'TargetLocus'},
 							"TargetSequence" => $newSubCNSTargetSequence,
 							"TargetStrand" => $curHit->{'TargetStrand'},							
-							"TargetPosition" => $curHit->{'TargetPosition'} + $CNSBreakpoints[$curBreakpoint] }; 
+							"TargetPosition" => $newTargetPosition }; 
 					$numberOfHitsReassigned++;
 				}
 			}
@@ -1578,12 +1584,16 @@ sub MAFtoFASTA {
 	   	   my $species = geneToSpecies($locus);
 		   my $genome = geneToGenome($locus);
 	   	   my $newspseq = $alignseq->seq();
+		   my $originalspseq = $newspseq;
+
+		   $originalspseq =~ tr/-//;  ## remove any gaps from the original seq
+
 		   my $strand = $alignseq->strand();
 		   ## Translate strand codes
 		   if($strand == -1) {
 		   		$strand = "-";
 		   } else {
-			$strand = "+";
+			    $strand = "+";
 		   }
 	   	   
 		   if($refseqname eq "") {
@@ -1605,9 +1615,6 @@ sub MAFtoFASTA {
    		   	   substr($newspseq, $_,1) = "Z";
    		   }
    		   
-		   ### Replace all gaps with N because phyloP doesn't like gaps.
-#		   $newspseq =~ s/-/N/g;
-
 		   my $untrimmedSequence = $newspseq;
 		   $newspseq =~ s/Z//g;
 		   
@@ -1646,8 +1653,8 @@ sub MAFtoFASTA {
 					"TargetLocus" => $locus,
 					"TargetPosition" => $targetRelative,
 					"TargetSequence" => $newspseq,
-					"UntrimmedSequence" => $untrimmedSequence}; 
-			}
+					"UntrimmedSequence" => $originalspseq}; 
+				}
 		   		# Check if we are overriding sequences
 		   		my $curspseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
 		   		if( $curspseq eq  "N" x length($curspseq)) {

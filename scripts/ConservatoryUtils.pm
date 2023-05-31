@@ -340,11 +340,18 @@ sub polishCNSAlignments {
 				if((length($subCNSTargetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSConservationAfterSplit && length($subCNSTargetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subCNSTargetSeq)) < $minSequenceContentInAlignment ) {
 					my $newTargetPosition;  ## update the target coordinates - byt that depends if the hit is on the plus or minus strand
 
+#					if($curHit->{'TargetStrand'} eq "+" ) {
+#						$newTargetPosition = $curHit->{'TargetPosition'} + $breakpoints[$curBreakpoint] + $numOfLeadingGaps;
+#					} else {
+#						$newTargetPosition = $curHit->{'TargetPosition'} + $curHit->{'Length'} - length($subCNSTargetSeq) - $subCNSSeqStart;
+#					}
 					if($curHit->{'TargetStrand'} eq "+" ) {
-						$newTargetPosition = $curHit->{'TargetPosition'} + $breakpoints[$curBreakpoint] + $numOfLeadingGaps;
+						$newTargetPosition = $curHit->{'TargetPosition'} + $subCNSSeqStart + $numOfLeadingGaps;
 					} else {
 						$newTargetPosition = $curHit->{'TargetPosition'} + $curHit->{'Length'} - length($subCNSTargetSeq) - $subCNSSeqStart;
 					}
+
+
 					my $alignedSeq = ('-' x ($positionInCNS-$breakpoints[$curBreakpoint]+$numOfLeadingGaps)) . $ subCNSTargetSeq;
           			### pad end of alignments with gaps to make it equal length
 		          	$alignedSeq = $alignedSeq . ('-' x ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] - length($alignedSeq)));

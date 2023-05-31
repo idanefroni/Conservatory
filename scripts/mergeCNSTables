@@ -1,8 +1,6 @@
 #!/usr/bin/perl
 use strict;
 use POSIX;
-use threads;
-use Thread::Semaphore;
 use Cwd 'abs_path';
 
 use Array::Utils qw(:all);
@@ -28,7 +26,7 @@ $|=1;
 
 ### Filenames
 my $conservatoryDir=abs_path(".");
-my $tmpDir= "/dev/shm/";
+my $tmpDir= "$conservatoryDir/tmp/";
 my $CNSFileName="";
 my $mapFileName="";
 my $outputCNSFileName="";
@@ -52,11 +50,7 @@ my $minCNSIdentityToMerge=70;
 my $keep_tmp=0;
 my $outputAnnotatedTree=0;
 
-my $threads = 1;
-
 ## Filtering parameters
-my $CLASSIFICATION_CLASSES_NUM=6;
-my $minSpeciesForClassification=6; 	### Minimum absolute number of species to support a classification
 my $minSequenceContentToConsiderReconstruction = 33; ## how many of the sequences in the alignment has to be informative (non-gap)
 													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
 													  # this is to avoid reconstructing sequences based on small number of samples.
@@ -66,12 +60,12 @@ my %positionTable;
 my %genomeToSpecies;
 my %genomeToFamily;
 my %speciesToFamily;
-my %speciesClassification;
 
 my $CNSMerged=0;
 my $CNSDeletedButMappingKept=0;
 my $CNSDeleted=0;
 my $deepCNSMerged=0;
+my $alignCNSProcess=0;
 
 my $verbose=0;
 my $help=0;
@@ -85,7 +79,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-overlapping" => \$minOverlappingSpeciesForMerge,
 			"min-keep-multiple" => \$minSupportingSpeciesToKeepMultipleCNS,
 			"remove-original-CNS" => \$removeOriginalCNS,
-			"threads=i" => \$threads,
+			"align-CNS-process" =>\$alignCNSProcess,
 			"keep-tmp" => \$keep_tmp,
 			"annotated-tree" => \$outputAnnotatedTree,
 			"help" => \$help) or die ("Error in command line arguments\n");
@@ -119,7 +113,6 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 		$genomeToSpecies{$curgenomeName}=  $curgenomeSpecies;
 		$genomeToFamily{$curgenomeName} = $curgenomeFamily;
 		$speciesToFamily{$curgenomeSpecies} = $curgenomeFamily;
-		$speciesClassification{$curgenomeSpecies} = $classification;
 	}
 }
 
@@ -136,9 +129,6 @@ while(<$CNSPositionFile>) {
 	chomp;
 	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence) = split /,/;
 	
-	### Filter for only embryophyta hits
-	my @classification = split /-/, $speciesClassification{ $targetSpecies }; 
-
 	## Only if non-filtered CNS
 	if(!defined $positionTable{$CNSID}) {
 		$positionTable{$CNSID} = {
@@ -395,10 +385,11 @@ foreach my $curLocus (keys %positionLocusMap) {
 				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'}) > $minCNSOverlap ) {
 
 					## Record the merging species
-					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
-						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } = 1;
-						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } = 1;
-					}
+#					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
+						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ++;
+						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ++;
+#						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
+#					}
 				}
 			}
 		}
@@ -502,9 +493,10 @@ $totalToScreen = scalar (keys %superGroups);
 $curPos=1;
 my %CNSGroups;
 
+### First, generate 
 foreach my $anchorCNS (keys %superGroups) {
 
-	if($verbose) { print "PROGRESS: Forming super CNS groups...". $curPos++ . "/$totalToScreen.\r"; }
+	if($verbose) { print "PROGRESS: Forming super CNS group fasta files...". $curPos++ . "/$totalToScreen.\r"; }
 	my %CNSsInGroup = %{ $superGroups{$anchorCNS} };
 
 	$deepCNSMerged = $deepCNSMerged + (scalar keys %CNSsInGroup);
@@ -524,79 +516,138 @@ foreach my $anchorCNS (keys %superGroups) {
 	## Assemble sequences
 
 	#### build FASTA file for alignment
+	if(@mergedPositions >0) {
+		my $tmpOutputSuperCNSFastaFileName = $tmpDir . "/tmp_$anchorCNS.fasta";
+		my $tmpOutputSuperCNSFastaAlignedFileName = $tmpDir . "/tmp_$anchorCNS.aligned.fasta";
+		open(my $tmpOutputSuperCNSFastaFile, ">" , $tmpOutputSuperCNSFastaFileName);
+
+		foreach my $curPos (@mergedPositions) {
+			print $tmpOutputSuperCNSFastaFile ">" . $curPos->{'TargetLocus'} . ":" . $curPos->{'TargetPosition'} . ":" . $curPos->{'TargetStrand'} . "\n" . $curPos->{'TargetSequence'} . "\n";
+		}
+
+		close($tmpOutputSuperCNSFastaFile);
+	}
+}
+
+
+
+### Now align all the position files
+system("ls $tmpDir | grep 'tmp_.*fasta' | grep -v aligned > $tmpDir/tmp_filestoalign.txt");
+
+if($alignCNSProcess) {
+	if($verbose) { print "WAITING: for the alignCNS process to do the alignments for us...\n"; }
+} else {
+	print "PROGRESS: Aligning CNSs\n";
+	system("$conservatoryDir/scripts/alignCNS 1 1")
+}
+## Align using external aligned process (alignCNS)
+
+$curPos=1;
+
+### And then, read the alignments, and build the Super CNS
+foreach my $anchorCNS (keys %superGroups) {
 	my $tmpOutputSuperCNSFastaFileName = $tmpDir . "/tmp_$anchorCNS.fasta";
 	my $tmpOutputSuperCNSFastaAlignedFileName = $tmpDir . "/tmp_$anchorCNS.aligned.fasta";
-	open(my $tmpOutputSuperCNSFastaFile, ">" , $tmpOutputSuperCNSFastaFileName);
+	my %CNSsInGroup = %{ $superGroups{$anchorCNS} };
 
-	foreach my $curPos (@mergedPositions) {
-		print $tmpOutputSuperCNSFastaFile ">" . $curPos->{'TargetLocus'} . ":" . $curPos->{'TargetPosition'} . ":" . $curPos->{'TargetStrand'} . "\n" . $curPos->{'TargetSequence'} . "\n";
-	}
 
-	close($tmpOutputSuperCNSFastaFile);
+	if(-e $tmpOutputSuperCNSFastaFileName) { ## if we have the alignment file
+		### wait for someone to do the alignments for us
+		if(! -e $tmpOutputSuperCNSFastaAlignedFileName) { 
+			sleep 1 while ( !(-e $tmpOutputSuperCNSFastaAlignedFileName) );
+			sleep 1 while ( (-s $tmpOutputSuperCNSFastaAlignedFileName) ==0  );
+			sleep 30; ## If we have just found our file, wait for alignment to finish.
+		};
 
-	## Align using MAFFT
-	system("mafft --quiet --thread $threads $tmpOutputSuperCNSFastaFileName > $tmpOutputSuperCNSFastaAlignedFileName ");
+		if($verbose) { print "PROGRESS: Forming super CNS groups...". $curPos++ . "/$totalToScreen (Current: $anchorCNS).\r"; }
 
-	my $alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
-										-format => "fasta");
-	my $superCNSAlignment = $alignedCNSFile->next_aln;
+		my $alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
+											-format => "fasta");
 
-	### Set up the super CNS
-	my $CNSGroupName = "$superCNSPrefix.$anchorCNS";
-
-	$CNSTable{$CNSGroupName} = {
-			'ReferenceGenome' => "SuperCNS",
-			'CNSID' => $CNSGroupName,
-			'Chromosome' => "",
-			'Strand' => "",
-			'Start' => 0,	
-			'End' => $superCNSAlignment->length,
-			'Locus' => "",
-			'RelStart' => "",
-			'RelEnd' => "",
-			'Level' => "",
-			'SupportingSpecies' => 0,
-			'ORFLength' => "",
-			'ORFDir' => "",
-			'Omega' => "",
-			'AncesteralSeq' => $superCNSAlignment->consensus_string(50),
-			'RegulatorySeqPart' => ""};
-	$positionTable{$CNSGroupName}{'Positions'} = ();
-
-	### Map the alignments to the super CNS
-	foreach my $curCNSposition ($superCNSAlignment->each_seq) {
-		my ($targetLocus,$targetPosition,$targetStrand) = split /:/, $curCNSposition->id;
-		my ($targetSpecies) = split /-/, $targetLocus;
-		my $sequence = uc($curCNSposition->seq);
-		my ($leadingDashes) = $sequence =~ /^(-+)/;
-		my $positionInCNS = length($leadingDashes);  ## The start position in the CNS is the number of leading dashes
-		if($positionInCNS eq "") { $positionInCNS = 0; }
-
-		### Clear leading and trailing gaps
-		$sequence =~ s/^(-+)//;
-		$sequence =~ s/(-+)$//;
-
-		push ( @{ $positionTable{$CNSGroupName}{'Positions'} } , {
-			'TargetSpecies' => $targetSpecies,
-			'TargetLocus' => $targetLocus,
-			'TargetPosition' => $targetPosition,
-			'TargetStrand' => $targetStrand,
-			'ReferenceRelativePosition' => $positionInCNS,
-			'Length' => length($sequence),
-			'TargetSequence' => $sequence } );
-	}
-
-	$CNSGroups{$CNSGroupName} = 1;
-	if($removeOriginalCNS) {
-		foreach my $curCNS (keys %CNSsInGroup) {
-			delete $CNSTable{$curCNS};
-			delete $positionTable{$curCNS};
-			delete $CNSToMergeMap{$curCNS};
+		my $superCNSAlignment;
+		eval {					
+			$superCNSAlignment = $alignedCNSFile->next_aln;
+		};
+		if($@ || !defined($superCNSAlignment)) {  ## If there was a error, wait and try again
+			if($verbose) { print "\nERROR In loading $anchorCNS. Waiting for fixed file.\n"; }
+			my $fastaFileOK=0;
+			while(!$fastaFileOK) {
+				sleep 30;
+				if($verbose) { print "\nERROR: Still can't load $anchorCNS. Trying self alignment or waiting for the fixed file.\n"; }	
+				$alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
+											-format => "fasta");
+				eval {
+					$superCNSAlignment = $alignedCNSFile->next_aln;
+				};
+				if(!$@  && defined($superCNSAlignment) ) {
+					$fastaFileOK = 1;
+				}
+				### Something went wrong with the alignment for this file. too big? aborted?
+				### Try to do it ourselves
+				system("mafft --quiet --auto --thread -1 --ep 0.3 --op 7 $tmpOutputSuperCNSFastaFileName > $tmpOutputSuperCNSFastaAlignedFileName");			
+			}
 		}
+
+		### Set up the super CNS
+		my $CNSGroupName = "$superCNSPrefix.$anchorCNS";
+
+		$CNSTable{$CNSGroupName} = {
+				'ReferenceGenome' => "SuperCNS",
+				'CNSID' => $CNSGroupName,
+				'Chromosome' => "",
+				'Strand' => "",
+				'Start' => 0,	
+				'End' => $superCNSAlignment->length,
+				'Locus' => "",
+				'RelStart' => "",
+				'RelEnd' => "",
+				'Level' => "",
+				'SupportingSpecies' => 0,
+				'ORFLength' => "",
+				'ORFDir' => "",
+				'Omega' => "",
+				'AncesteralSeq' => $superCNSAlignment->consensus_string(50),
+				'RegulatorySeqPart' => ""};
+		$positionTable{$CNSGroupName}{'Positions'} = ();
+
+		### Map the alignments to the super CNS
+		foreach my $curCNSposition ($superCNSAlignment->each_seq) {
+			my ($targetLocus,$targetPosition,$targetStrand) = split /:/, $curCNSposition->id;
+			my ($targetSpecies) = split /-/, $targetLocus;
+			my $sequence = uc($curCNSposition->seq);
+			my ($leadingDashes) = $sequence =~ /^(-+)/;
+			my $positionInCNS = length($leadingDashes);  ## The start position in the CNS is the number of leading dashes
+			if($positionInCNS eq "") { $positionInCNS = 0; }
+
+			### Clear leading and trailing gaps
+			$sequence =~ s/^(-+)//;
+			$sequence =~ s/(-+)$//;
+
+			push ( @{ $positionTable{$CNSGroupName}{'Positions'} } , {
+				'TargetSpecies' => $targetSpecies,
+				'TargetLocus' => $targetLocus,
+				'TargetPosition' => $targetPosition,
+				'TargetStrand' => $targetStrand,
+				'ReferenceRelativePosition' => $positionInCNS,
+				'Length' => length($sequence),
+				'TargetSequence' => $sequence } );
+		}
+
+		$CNSGroups{$CNSGroupName} = 1;
+		if($removeOriginalCNS) {
+			foreach my $curCNS (keys %CNSsInGroup) {
+				delete $CNSTable{$curCNS};
+				delete $positionTable{$curCNS};
+				delete $CNSToMergeMap{$curCNS};
+			}
+		}
+		unlink($tmpOutputSuperCNSFastaFileName);
+		unlink($tmpOutputSuperCNSFastaAlignedFileName);	
+	} else {
+		print("WARNING: Cannot find file $tmpOutputSuperCNSFastaFileName.\n");
+
 	}
-	unlink($tmpOutputSuperCNSFastaFileName);
-	unlink($tmpOutputSuperCNSFastaAlignedFileName);	
-} 
+}
 
 if($verbose) { print "\n";}
 
