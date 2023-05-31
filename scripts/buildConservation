@@ -1586,7 +1586,7 @@ sub MAFtoFASTA {
 	   	   my $newspseq = $alignseq->seq();
 		   my $originalspseq = $newspseq;
 
-		   $originalspseq =~ tr/-//;  ## remove any gaps from the original seq
+#		   $originalspseq =~ tr/-//;  ## remove any gaps from the original seq
 
 		   my $strand = $alignseq->strand();
 		   ## Translate strand codes
@@ -1652,8 +1652,8 @@ sub MAFtoFASTA {
 					"TargetSpecies" => $species,
 					"TargetLocus" => $locus,
 					"TargetPosition" => $targetRelative,
-					"TargetSequence" => $newspseq,
-					"UntrimmedSequence" => $originalspseq}; 
+					"TargetSequence" => $originalspseq,
+					"UntrimmedSequence" => $untrimmedSequence}; 
 				}
 		   		# Check if we are overriding sequences
 		   		my $curspseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
