@@ -385,11 +385,11 @@ foreach my $curLocus (keys %positionLocusMap) {
 				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'}) > $minCNSOverlap ) {
 
 					## Record the merging species
-#					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
-						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ++;
-						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ++;
+					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
+						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
+						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
 #						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
-#					}
+					}
 				}
 			}
 		}
@@ -400,6 +400,7 @@ if($verbose) {print "\n";}
 my $deletedForLowSupport=0;
 
 ### Filter CNS merge events with too few hits
+if($verbose) { print("PROGRESS: Filtering " . (scalar (keys %CNSToMergeMap) ) . " CNSs...\n");  }
 
 foreach my $curCNSA (keys %CNSToMergeMap) {
 	foreach my $curCNSB (keys %{ $CNSToMergeMap{$curCNSA} }) {
@@ -416,6 +417,8 @@ foreach my $curCNSA (keys %CNSToMergeMap) {
 if($verbose) { print "PROGRESS: Removed $deletedForLowSupport CNS merge events for low support.\n"; }
 
 ### Release memory
+if($verbose) { print("PROGRESS: Releasing memory...\n");  }
+
 undef (%positionLocusMap);
 
 ### Convert Merge table to number of supporting species. Filter out CNS hits that have low identity scores following alignment to avoid merger of CNS that have diverged too far
@@ -424,6 +427,7 @@ $curPos=1;
 my $deletedForLowIdentity=0;
 
 #### Filter CNS merge events with low sequence similarity (too divergent)
+if($verbose) { print("PROGRESS: Merging overlapping CNS for $totalToScreen CNSs...\n");  }
 
 for my $curCNSA (keys %CNSToMergeMap ) {
 	if($verbose) { print "PROGRESS: Merging overlapping CNS hits and filtering divergent sequences..." . $curPos++ . "/$totalToScreen. Removed $deletedForLowIdentity CNS merge events.\r"; }
@@ -529,16 +533,16 @@ foreach my $anchorCNS (keys %superGroups) {
 	}
 }
 
-
-
 ### Now align all the position files
-system("ls $tmpDir | grep 'tmp_.*fasta' | grep -v aligned > $tmpDir/tmp_filestoalign.txt");
+if(scalar (keys %superGroups) >0) {
+	system("ls $tmpDir | grep 'tmp_.*fasta' | grep -v aligned > $tmpDir/tmp_filestoalign.txt");
 
-if($alignCNSProcess) {
-	if($verbose) { print "WAITING: for the alignCNS process to do the alignments for us...\n"; }
-} else {
-	print "PROGRESS: Aligning CNSs\n";
-	system("$conservatoryDir/scripts/alignCNS 1 1")
+	if($alignCNSProcess) {
+		if($verbose) { print "WAITING: for the alignCNS process to do the alignments for us...\n"; }
+	} else {
+		print "PROGRESS: Aligning CNSs\n";
+		system("$conservatoryDir/scripts/alignCNS 1 1")
+	}
 }
 ## Align using external aligned process (alignCNS)
 
