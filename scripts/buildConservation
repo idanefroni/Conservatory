@@ -61,7 +61,8 @@ my $alignmentSeqOverlapToMerge = 0.8; # In case we have multiple alignments from
 my $minOrthologsForConservationAnalysis =5; # The smallest number of orthologs to consider conservation analysis
 my $minPhyloPscore=2;  # Default minumum phyloP score
 my $minCNSLength=8;
-my $CNSMergeLength=5;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
+#my $CNSMergeLength=5;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
+my $CNSMergeLength=6;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 
 my $minFamilySpeciesForCNS=0.333; # The minimum number of species in the family (out of the total species in the family) that have a CNS to be considered as one
 

@@ -58,35 +58,12 @@ while(my $curgenomeline = <$genomeDatabase>) {
 }
 
 ###### First, assemble the CNS and mapping
-my $allCNSFileName = "$conservatoryDir/output/All.cns.csv.tmp";
-my $allPositionsFileName = "$conservatoryDir/output/All.map.csv.tmp";
 
-my $allCNSMergedFileName = "$conservatoryDir/output/All.merged.cns.csv";
-my $allPositionsMergedFileName = "$conservatoryDir/output/All.merged.map.csv";
-my $allMergedDeepCNSFileName = "$conservatoryDir/output/All.merged.deep.cns.csv";
+my $allCNSMergedFileName = "$conservatoryDir/output/conservatoryV4.final.cns.csv";
+my $allPositionsMergedFileName = "$conservatoryDir/output/conservatoryV4.final.map.csv";
 
 my $myLociPositionsFileName = "$conservatoryDir/output/$networkName.map.csv";
 
-#my $mergedCNSFileName = "$conservatoryDir/output/$networkName.cns.csv";
-#my $mergedMapFileName = "$conservatoryDir/output/$networkName.map.csv";
-
-
-## If we don't have the merged CNS files, generate them
-if($force || !((-e $allCNSMergedFileName) && (-e $allPositionsMergedFileName))) {
-	print localtime(). ": Assemble all alignments...\n";
-	system("cat $conservatoryDir/CNS/*.map.csv > $allPositionsFileName");
-
-	print localtime(). ": Assemble all CNS...\n";
-	system("cat $conservatoryDir/CNS/*.cns.csv > $allCNSFileName");
-
-	###### merge CNS
-	print localtime(). ": Merge deep CNS...\n";
-	my $verboseString;
-	if($verbose) { $verboseString = "--verbose";}
-	system("perl $conservatoryDir/scripts/mergeCNSTables --remove-original-CNS --in-cns $allCNSFileName --in-map $allPositionsFileName --out-cns $allCNSMergedFileName --out-map $allPositionsMergedFileName --out-merged $allMergedDeepCNSFileName $verboseString");
-#	unlink($allCNSFileName);
-#	unlink($allPositionsFileName);
-}
 
 #### Now filter just for the loci we want
 print localtime(). ": Filter loci...\n";
@@ -173,15 +150,6 @@ while(my $curNodeLine = <$nodeFile>) {
 }
 
 
-open (my $mergedCNSFile, $allMergedDeepCNSFileName);
-while(my $curMergedCNSLine = <$mergedCNSFile>) {
-	chomp ($curMergedCNSLine);
-	my ($CNSIDA,$CNSIDB) = split /,/, $curMergedCNSLine;
-	if((defined $usedCNS{$CNSIDA}) || (defined $usedCNS{$CNSIDB})) {
-		print $outputSIFFile  "$CNSIDA is $CNSIDB\n";
-	}
-}
-
 ## read the short name
 open (my $lociListFile, $lociListFileName) || die ("Internal error");
 
@@ -225,7 +193,6 @@ foreach my $curNode (keys %nodesDic) {
 						  $nodesDic{$curNode}{'Classification_6'}) . "\n";
 										
 }
-close($mergedCNSFile);
 close($nodeFile);
 
 
