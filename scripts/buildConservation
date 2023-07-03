@@ -94,6 +94,7 @@ my $dumpBam = 0;
 my $skipKaKs=0;
 my $skipMissingGenomes=0;
 my $justFamilyAlignment = 0;
+my $justOneOrtholog =0;
 
 my $help = 0;
 
@@ -116,6 +117,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-species-per-conservation-level" => \$minSpeciesPerConservationLevelString,
 			"min-orf-length=i" => \$minORFLength,
 			"atrich-length-filter=i" => \$atRichRegionFilterLength,
+			"just-one-ortholog" => \$justOneOrtholog,
 			"no-position-filter" => \$noPositionFilter,
 			"cns-merge-length" => \$CNSMergeLength,
 			"just-family-alignment" => \$justFamilyAlignment,
@@ -238,7 +240,7 @@ die "ERROR: Cannot find fastML executable at $conservatoryDir/scripts/fastml.\n"
 ### Make sure we are not over-writing existing CNS file (unless we are forced to)
 if ( (-e $finalCNSFileName) && !$force  ) { die "END: Output CNS file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
 
-#if ( (-e "$outputCNSDir/$locus.phylop.bed" ) && !$force  ) { die "END: Output Bed file for $locus ($finalCNSFileName) already exists. Use --force to overwrite.\n"; }
+#if ( (-e "$outputCNSDir/$locus.phylop.bed" ) && !$force  ) { die "END: Output Bed file for $locus already exists. Use --force to overwrite.\n"; }
 
 if( (-e $finalFASTAUpFileName) && (!$force) && $justFamilyAlignment) { die "END: Output family alignment file for $locus ($finalFASTAUpFileName) already exists. Use --force to overwrite.\n"; }
 
@@ -958,7 +960,6 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 #################################################################
 ##### Now search for deep CNS (outside the family)
 #####
-
 open (my $genomeDatabase, "<", $genomedbFile);
 
 my %deepAlignmentQualityForSpecies;
@@ -1060,7 +1061,6 @@ for my $curSpecies (keys %deepAlignmentQualityForSpecies) {
 		}
 	}
 }
-
 ###########################################################################################################
 #### Filter Family CNSs that have too few hits
 
@@ -1193,7 +1193,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	}
 }
 
-
 #####################################################################
 ## Filter CNS for unlikely and sporious alignments
 ## Then classify the conservation level of the CNS 
@@ -1217,7 +1216,6 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 		}
 	}
 }
-
 
 ### Filter CNSs that switch position (up to downstream)
 
@@ -1723,7 +1721,7 @@ sub pickBestPutativeOrthologs {
 			push @qScores, ($derefCurOrth{'UpQuality'} + $derefCurOrth{'DownQuality'}) ;
 		}
 		
-		if( (scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1 ) {
+		if( ( (scalar @{ $orthologs{$curOrthSpecies} }) / (scalar uniq ( @genomeNames )) > 1) && !$justOneOrtholog) {
 
 			my @bestOrthologsGroup;
 			my $bestQuality =0;

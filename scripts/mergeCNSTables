@@ -205,7 +205,7 @@ while(<$CNSInputFile>) {
 				} elsif($CNSTable{$CNSID}{'SupportingSpecies'} > $CNSTable{$lastCNS}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
 					$CNSToDelete = $lastCNS;
 					$CNSDeleted++;
-				} else {   ### If both CNSs have the same number of supporting species, we have to decide:
+				} else {   ### If both CNSs have a similar number of supporting species, we have to decide:
 						### If the genes are same orientation and the CNS is in the same part of the regulatory sequence (Up/downstream)
 						###  then associate with the closest gene.
 						if( ($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart) && ($regulatorySeqPart eq "Upstream") &&
@@ -251,7 +251,7 @@ while(<$CNSInputFile>) {
 						}
 						## Update all the positions
 
-						### If there is a mismatch of the stands between the merged CNS, reverse complement the mismatched one
+						### If there is a difference of the stands between the merged CNS, reverse complement the mismatched one
 						if($CNSTable{$CNSID}{'Strand'} ne $CNSTable{$lastCNS}{'Strand'} && $longestSeqCNS eq $CNSID) {
 
 							my @lastCNSMappings = @{ $positionTable{$lastCNS}{'Positions'} };
@@ -384,7 +384,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 
 				if(overlap($firstHit->{'TargetPosition'}, $firstHit->{'TargetPosition'}+$firstHit->{'Length'}, $secondHit->{'TargetPosition'}, $secondHit->{'TargetPosition'}+$secondHit->{'Length'}) > $minCNSOverlap ) {
 
-					## Record the merging species
+					## Record the merging species 
 					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
 						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
 						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;

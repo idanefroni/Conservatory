@@ -123,6 +123,12 @@ while(my $curgenomeline= <$genomedb>) {
 					
 					## Get genename
 					$curLocus =~ s/^.[^-]*-[^-]*-//;
+
+					## If the file exists, skip
+					if((-e "$conservatoryDir/CNS/$referenceGenome/$curLocus.phylop.bed")) {
+						print "SKIPPING: $curLocus already processed.\n";
+						next;
+					}
 					
 					# now find a place for the thread
 					
@@ -208,8 +214,8 @@ while(my $curgenomeline= <$genomedb>) {
 		if($verbose) { $options .= "--verbose "; }
 		if($donotFilter) { $options .= "--do-not-filter "; }
 		system("/usr/bin/perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv  $options");
-		unlink("$conservationDir/$family.sorted.csv");
-		unlink("$conservationDir/$family.map.sorted.csv");
+		#unlink("$conservationDir/$family.sorted.csv");
+		#unlink("$conservationDir/$family.map.sorted.csv");
 
 		print localtime() . ": END CNS table build.\n";
 		
