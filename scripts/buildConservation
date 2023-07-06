@@ -1612,7 +1612,7 @@ sub MAFtoFASTA {
 		       $inFASTARef->{$reflocus}{$species} = "N" x $seqLengthRef->{$reflocus};
 		   }
 
-		   if($species eq $refseqname) {
+		   if($locus eq $reflocus) {
 	   		 # Identify all insertions from the sequence to keep the seq in reference coordinates		 
 		   	 @insertions = findAll($newspseq, "-");
 		   }
