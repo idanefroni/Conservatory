@@ -32,8 +32,8 @@ my $keep_tmp=0;
 my $outputAnnotatedTree=0;
 
 ## Filtering parameters
-my $minSpeciesForCNS=6;
-my $minSequenceContentToConsiderReconstruction = 33; ## how many of the sequences in the alignment has to be informative (non-gap)
+my $minSpeciesForCNS=5;
+my $minSequenceContentToConsiderReconstruction = 0.33; ## how many of the sequences in the alignment has to be informative (non-gap)
 													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
 													  # this is to avoid reconstructing sequences based on small number of samples.
 
@@ -334,7 +334,7 @@ sub getReconstructedCNSSequence {
 	my @gappiness = getGappiness($inAligned);
 
     for my $pos (0..(scalar @gappiness -1 )) {
-	    if ($gappiness[$pos] > $minSequenceContentToConsiderReconstruction) {
+	    if ($gappiness[$pos] > ($minSequenceContentToConsiderReconstruction*100)) {
        		substr($reconstructedSequence, $pos, 1) = "-";
    		}
 	}

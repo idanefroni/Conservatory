@@ -44,16 +44,11 @@ my $minSyntenyBiasToAssignCNS= 1.1; ### Number between 1 and 2 (how many more sp
 my $minSupportingSpeciesToKeepMultipleCNS = 80;
 my $removeOriginalCNS=0;
 my $minCNSLength=8;
-my $minSpeciesForCNS=6; ### The minimum number of species aligned to a CNS to keep the CNS
+my $minSpeciesForCNS=5; ### The minimum number of species aligned to a CNS to keep the CNS
 my $minCNSCoverageAfterSplit=0.3;
 my $minCNSIdentityToMerge=70;
 my $keep_tmp=0;
 my $outputAnnotatedTree=0;
-
-## Filtering parameters
-my $minSequenceContentToConsiderReconstruction = 33; ## how many of the sequences in the alignment has to be informative (non-gap)
-													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
-													  # this is to avoid reconstructing sequences based on small number of samples.
 
 my %CNSTable;
 my %positionTable;
@@ -388,7 +383,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
 						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
 						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
-#						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
+						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
 					}
 				}
 			}
@@ -745,22 +740,6 @@ my $origConservatoryTree = $conservatoryTree->clone();
 
 #my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -format => 'newick');
 #$conservatoryTreeOutput->write_tree($conservatoryTree);
-
-#my $totalToScreen = scalar (keys %CNSTable);
-#$curPos=1;
-
-#foreach my $cnsToReconstruct (keys %CNSTable) {
-
-#	if($verbose) { print "PROGRESS: Counting sequences..." . $curPos++ . "/$totalToScreen\r"; }	
-
-#	my %speciesForCNS = getSpeciesForCNS($cnsToReconstruct, \%positionTable);
-#	$CNSTable{$cnsToReconstruct}{'SupportingSpecies'} = scalar (keys %speciesForCNS);
-
-#	if($CNSTable{$cnsToReconstruct}{'SupportingSpecies'} < $minSpeciesForCNS ) { 
-#		delete $CNSTable{$cnsToReconstruct};
-#		delete $positionTable{$cnsToReconstruct};
-#	}
-#}
 
 if($verbose) { print "\n"; }
 

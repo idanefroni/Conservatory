@@ -8,6 +8,8 @@ use File::Copy;
 ###########
 my $MIN_REGULATORY_SEQ_LEN=10;
 my $MAX_REGULATORY_SEQ_LEN=100;
+my $REGULATORY_SEQ_UPDOWN_RATIO=5;
+my $RECOMMENDED_SEQLEN_PERCENTILE=0.975;
 
 my $conservatoryDir=abs_path(".");
 my $genomeDatabaseFileName = "genome_database.csv";
@@ -24,6 +26,7 @@ my $forceRun=0;
 my $referenceGenomeName;
 my $blastThreads=4;
 my $blastProcesses=4;
+my $totalProcesses = $blastThreads * $blastProcesses;
 my $upstreamLength;
 my $downstreamLength;
 my $ignoreMissingFiles=0;
@@ -138,7 +141,7 @@ while(my $curgenomeline= <$genomedb>) {
 			#### Maybe it is here but not compressed. check
 			if( -e $genomeFastaFileUncompressed) {
 				print localtime() . ": Genome file was found, but was not compressed. Zipping $genomeFastaFileUncompressed ...\n";
-				system("bgzip -f $genomeFastaFileUncompressed");
+				system("bgzip -@ $totalProcesses -f $genomeFastaFileUncompressed");
 			} else {
 				$foundError=1;
 				print localtime() . ": ERROR Cannot find genome fasta file ($genomeFastaFile)\n";
@@ -158,11 +161,7 @@ while(my $curgenomeline= <$genomedb>) {
 		}
 
 		if($curgenomeName eq $referenceGenomeName) {
-			if(!( -e $genomeTEFile)) {
-				$foundError=1;
-				print localtime() . ": ERROR Cannot find TE annotation file for reference genome ($genomeTEFile)\n";
-				
-			}
+
 			if($globalReferenceGenomeSpecies ne "") {
 				print localtime() . ": ERROR Only one reference genome allowed.\n";
 				$foundError=1;
@@ -212,6 +211,7 @@ while(my $curgenomeline= <$genomedb>) {
 			my $genomeFastaFileUncompressed = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.fasta";
 			my $genomeProteinFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.proteins.fasta";
 			my $genomeGFFFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.genes.gff3";
+			my $genomeTEFile = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.te.gff3";
 			
 			$curgenomeReference = $referenceGenomeName;
 			$curgenomeReferenceFamily = $globalReferenceGenomeFamily;
@@ -256,18 +256,18 @@ while(my $curgenomeline= <$genomedb>) {
 				my @sortedSpaces = sort { $a <=> $b } @allSpaces;
 				# calculate recommended regulatory sequence lengths
 				my $recommendedUpstream, my $recommendedDownstream;
-				my $per95thIntergenic = ceil($sortedSpaces[ (scalar @sortedSpaces)*0.975]/1000);
+				my $per95thIntergenic = ceil($sortedSpaces[ (scalar @sortedSpaces)*$RECOMMENDED_SEQLEN_PERCENTILE]/1000);
 				if ($per95thIntergenic > $MAX_REGULATORY_SEQ_LEN) {
 					$recommendedUpstream = $MAX_REGULATORY_SEQ_LEN;
-					$recommendedDownstream = $MAX_REGULATORY_SEQ_LEN/5;
+					$recommendedDownstream = $MAX_REGULATORY_SEQ_LEN/$REGULATORY_SEQ_UPDOWN_RATIO;
 				} elsif ($per95thIntergenic < $MIN_REGULATORY_SEQ_LEN) {
 					$recommendedUpstream = $MIN_REGULATORY_SEQ_LEN;
-					$recommendedDownstream = $MIN_REGULATORY_SEQ_LEN/5;
+					$recommendedDownstream = $MIN_REGULATORY_SEQ_LEN/$REGULATORY_SEQ_UPDOWN_RATIO;
 				} else {
 					$recommendedUpstream = $per95thIntergenic;
-					$recommendedDownstream = ceil($per95thIntergenic/5);
+					$recommendedDownstream = ceil($per95thIntergenic/$REGULATORY_SEQ_UPDOWN_RATIO);
 				}
-				print localtime() . ": $curgenomeName : 97.5th percentile intergenic region legnth is $per95thIntergenic kb\n";
+				print localtime() . ": $curgenomeName : $RECOMMENDED_SEQLEN_PERCENTILE percentile intergenic region legnth is $per95thIntergenic kb\n";
 				print localtime() . ": $curgenomeName : Recommended $recommendedUpstream kb upstream and $recommendedDownstream kb downstream\n";
 				close($footprintFile);
 				## Now update the genome Database file
@@ -299,6 +299,8 @@ while(my $curgenomeline= <$genomedb>) {
 			my $cdsDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.cds.fasta";
 			my $firstIntronDB = "$conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.introns.fasta";
 			## Introns would be here...
+			my $teOption="";
+			if(-e $genomeTEFile) { $teOption = $genomeTEFile; }
 		
 			if(! -e "$upstreamDB.gz" || $force) {
 				if( -e "$upstreamDB.gz") { ## If it is found, delete old indices
@@ -307,16 +309,12 @@ while(my $curgenomeline= <$genomedb>) {
 					if(-e "$upstreamDB.gz.gzi") { unlink("$upstreamDB.gz.gzi"); }
 				}
 				print localtime() . ": $curgenomeName : START building upstream sequence database.\n";
-				if($curgenomeName eq $referenceGenomeName) { ### If it is a reference genome, filter TE
-					system("perl $conservatoryDir/scripts/buildRegulatorySeqDB upstream $genomeFastaFile $genomeFootprintGFFFile " . 1000*$upstreamLength . " $upstreamDB $conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.te.gff3");
-				} else {
-					system("perl $conservatoryDir/scripts/buildRegulatorySeqDB upstream $genomeFastaFile $genomeFootprintGFFFile " . 1000*$upstreamLength . " $upstreamDB");
-				}
+				system("perl $conservatoryDir/scripts/buildRegulatorySeqDB upstream $genomeFastaFile $genomeFootprintGFFFile " . 1000*$upstreamLength . " $upstreamDB $teOption");
 				
 				die localtime() . ": ABORT Internal error. Can not run buildRegulatorySeqDB script!\n" unless -r $upstreamDB;
 			
 				# now zip and index
-				system("bgzip -f $upstreamDB");
+				system("bgzip -@ $totalProcesses -f $upstreamDB");
 				system("samtools faidx $upstreamDB.gz");
 			
 				print localtime() . ": $curgenomeName : END building upstream sequence database.\n";
@@ -329,24 +327,14 @@ while(my $curgenomeline= <$genomedb>) {
 					if(-e "$downstreamDB.gz.gzi") { unlink("$downstreamDB.gz.gzi"); }
 				}
 				print localtime() . ": $curgenomeName : START building downstream sequence database.\n";
-				if($curgenomeName eq $referenceGenomeName) { ### If it is a reference genome, filter TE
-					system("perl $conservatoryDir/scripts/buildRegulatorySeqDB downstream $genomeFastaFile $genomeFootprintGFFFile " . 1000*$downstreamLength . " $downstreamDB $conservatoryDir/genomes/$curgenomeFamily/$curgenomeName.te.gff3");
-				} else {
-					system("perl $conservatoryDir/scripts/buildRegulatorySeqDB downstream $genomeFastaFile $genomeFootprintGFFFile " . 1000*$downstreamLength . " $downstreamDB");
-				}
+				system("perl $conservatoryDir/scripts/buildRegulatorySeqDB downstream $genomeFastaFile $genomeFootprintGFFFile " . 1000*$downstreamLength . " $downstreamDB $teOption");
 				die localtime() . ": ABORT Internal error. Can not run buildRegulatorySeqDB script!\n" unless -r $downstreamDB;
 				# now zip and index
-				system("bgzip -f $downstreamDB");
+				system("bgzip -@ $totalProcesses -f $downstreamDB");
 				system("samtools faidx $downstreamDB.gz");
 				print localtime() . ": $curgenomeName : END building downstream sequence database.\n";			
 			}  elsif ($verbose) { print localtime() . ": SKIP Downstream sequence database already exists (use --force to rebuild)\n"; }
 			
-			#### Make sure we have Introns file if this is the reference
-#			if(($curgenomeFamily eq $globalReferenceGenomeFamily) && (!(-e "$firstIntronDB.gz") || $force)) {
-#				print localtime() . ": $curgenomeName : START building intron sequence database.\n";
-#				system("$conservatoryDir/scripts/buildIntronDB --genome $curgenomeName");
-#				print localtime() . ": $curgenomeName : END building intron sequence database.\n";				
-#			}
 			#### Make sure we have CDS file if this is the reference
 			if(($curgenomeFamily eq $globalReferenceGenomeFamily) && (!(-e $cdsDB) || $force)) {
 				### openup the genome
@@ -359,7 +347,6 @@ while(my $curgenomeline= <$genomedb>) {
 				unlink("$genomeFastaFileUncompressed.tmp");
 				unlink("$genomeFastaFileUncompressed.index");
 				
-#				system("agat_sp_extract_sequences.pl --gff $genomeGFFFile --fasta $genomeFastaFileUncompressed -t cds -o $cdsDB >/dev/null 2>/dev/null");
 				system("agat_sp_extract_sequences.pl --gff $genomeGFFFile --fasta $genomeFastaFileUncompressed -t cds -o $cdsDB");
 				unlink($genomeFastaFileUncompressed);
 
@@ -382,8 +369,6 @@ while(my $curgenomeline= <$genomedb>) {
 					print localtime() . ": $curgenomeName : END reciprocal blast (genome -> reference).\n";
 				}
 				if(! ((-e $blastREF2G) || (-e "$blastREF2G.gz"))) {
-#					my $genomeReferenceProteinFile = "$conservatoryDir/genomes/$curgenomeReferenceFamily/$curgenomeReference.proteins.fasta";
-#					system("blastp -query $genomeReferenceProteinFile -db $conservatoryDir/genomes/blastdb/$curgenomeName -out $blastREF2G -evalue 10 -outfmt 6 -num_threads $blastthreads");
 					print localtime() . ": $curgenomeName : START reciprocal blast (reference -> genome).\n";
 					system("perl scripts/fblastp --genomeB $curgenomeReference --genomeA $curgenomeName --out $blastREF2G --blast-threads $blastThreads --blast-processes $blastProcesses");
 					system("pigz --force $blastREF2G");	
@@ -398,7 +383,7 @@ while(my $curgenomeline= <$genomedb>) {
 			} else { print localtime(). ": SKIP Ortholog database already exists (use --force-orthology to rebuild)\n"; }
 			print localtime() . ": END processing genome $curgenomeName\n-------------------------------------------------------------------------------------------------------------\n";
 		}
-		print $genomedbProcess "$curgenomeName,$curgenomeSpecies,$curgenomeFamily,$curgenomeReference,$upstreamLength,$downstreamLength,$geneNameField,$geneProcessingRegEx,$gene2SpeciesIdentifier,$proteinProcessingRegEx,$clade\n";
+		print $genomedbProcess "$curgenomeName,$curgenomeSpecies,$curgenomeFamily,,$upstreamLength,$downstreamLength,$geneNameField,$geneProcessingRegEx,$gene2SpeciesIdentifier,$proteinProcessingRegEx,$clade\n";
 	} else {  print $genomedbProcess $curgenomeline . "\n"; } ### Spit out comments
 }
 close($genomedb);

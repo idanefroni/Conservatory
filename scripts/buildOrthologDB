@@ -10,11 +10,14 @@ use Getopt::Long;
 
 my $genomeDatabaseFileName = "genome_database.csv";
 
+#### Parameters
 my $MAX_ORTH=16;
 my $MIN_EVAL= 10;
 my $MAX_EVAL = 150;
 my $EVAL_CUTOFF_FOR_FAMILY=0.66;
-my $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH=100;
+my $MAX_HIGH_SENSITIVITY_PROTEIN_LENGTH=120;
+##################
+
 my $conservatoryDir=abs_path(".");
 my $help=0;
 my $genome="";
@@ -183,7 +186,6 @@ while(my $curline = <$g2ref>) {
 		$curReadLocus= $locus;
 		$blastHitForLocusCount=0;
 	}
-#	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus }) && $blastHitForLocusCount++ < $MAX_ORTH) {
 	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus })) {
 
 		if(defined $genome2RefHits{$refLocus}{$locus}) {
@@ -223,7 +225,6 @@ while(my $curline = <$ref2g>) {
 		$blastHitForLocusCount=0;
 	}
 
-#	if(($eval < $MIN_EVAL) && $blastHitForLocusCount++ < $MAX_ORTH ) {
 	if(($eval < $MIN_EVAL)) {
 
 		if(defined $ref2GenomeHits{$refLocus}{$locus}) {

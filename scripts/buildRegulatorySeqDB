@@ -4,20 +4,22 @@ use List::Util qw(min max);
 use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
-#################################
-#####  Run mode
-#####   the program can run in two modes - Truncate or mask
-#####   In trucate mode, the upstream\downstream sequences are truncated at the next annotated gene
-#####   In mask mode, the entire length of the regulatory sequence is used and all annotated genes are masked (XXX)
-#####
-#####  In version 2, the default is mask
-#####
-#####
+$|=1;
+
+sub cleanChrName {
+	my $chr = shift(@_);
+	chomp($chr);
+	if(substr($chr,0,1) eq ">") {
+		$chr = substr($chr,1);
+	}
+	if(index($chr, " ")!= -1 || index($chr, "\t") != -1) {
+		$chr = (split(' ', $chr))[0];
+	}
+	return "C" . $chr;
+}
+
 
 my $RUN_MODE = "mask";
-
-#my $RUN_MODE = "truncate";
-####
 
 if( @ARGV < 3) {
    print "buildRegulatorySeqDB <upstream|downstream> <FastaFile> <GFFFile> <Length> <OutputFastaFile> [TE Annotation GFF File]\n";
@@ -30,82 +32,56 @@ my $teAnnotationFileName = $ARGV[5];
 my $gffFileName = $ARGV[2];
 
 
-open (DB, "gunzip -c $ARGV[1] |") || die "can`t open file $ARGV[0]";
+open (my $genomeFastaFile, "gunzip -c $ARGV[1] |") || die "can`t open file $ARGV[0]";
 open (my $gfffile, $gffFileName) || die "can't open file $gffFileName";
 open (my $output, ">", "$ARGV[4]");
 
 # read genomes
 
-my @chromosomes;
-my @chromosomes_names;
-my $cur_chr_num = 0;
-my $cur_chr = <DB>;
-my $cur_chrom_seq ="";
-sub clean_chr {
-	my $chr = shift(@_);
-	chomp($chr);
-	$chr = substr($chr,1);
-	if(index($chr, " ")!= -1 || index($chr, "\t") != -1) {
-		$chr = (split(' ', $chr))[0];
+my %chromosomes;
+
+my $curChr = "";
+
+while(my $curLine = <$genomeFastaFile>) {
+	chomp($curLine);	
+	if(substr($curLine,0,1) eq ">") {
+		if($curChr ne "") {
+		}
+		$curChr = cleanChrName($curLine);
+	} else {
+		$chromosomes{$curChr} .= $curLine;
 	}
-	return "C" . $chr;
 }
 
-my $cur_line;
-while($cur_line = <DB>) {
-	if(substr($cur_line,0,1) eq ">") {
-		$chromosomes[$cur_chr_num] = $cur_chrom_seq;
-		$cur_chr = clean_chr($cur_chr);
-		$chromosomes_names[$cur_chr_num] = $cur_chr;
-		$cur_chr_num++;
-		$cur_chr = $cur_line;
-		$cur_chrom_seq = "";
-	} else {
-		chomp($cur_line);
-		$cur_chrom_seq = $cur_chrom_seq . $cur_line;
-	}
-}
-# dump last chromosome
-$chromosomes[$cur_chr_num] = $cur_chrom_seq;
-$cur_chr = clean_chr($cur_chr);
-$chromosomes_names[$cur_chr_num] = $cur_chr;
-my %index;
-@index{@chromosomes_names} = (0..$#chromosomes_names);
+close($genomeFastaFile);
 
 #### Filter TEs, if required
 if(-e $teAnnotationFileName) {
 	my $gff = Bio::Tools::GFF->new(-file => $teAnnotationFileName,
 				   -gff_version => 3);
 	while(my $curTE = $gff->next_feature) {
-		my $chromosome = "C" . $curTE->seq_id;
-		if(defined $index{$chromosome}) {
-			my $chromosome_num = $index{$chromosome};
-			#print $chromosome . "-" . $chromosome_num . " - " . length($chromosomes[$chromosome_num]) . " - " . $curTE->start . " - " . $curTE->end ."\n"; 
-			substr($chromosomes[$chromosome_num], $curTE->start, $curTE->end - $curTE->start) = "X" x ($curTE->end - $curTE->start);
+		my $chromosome = cleanChrName ($curTE->seq_id);
+		if(defined $chromosomes{$chromosome}) {
+			substr($chromosomes{$chromosome}, $curTE->start, $curTE->end - $curTE->start) = "X" x ($curTE->end - $curTE->start);
 		}
 	}
 }
 
-##### Mask coding sequences (if in mask mode)
-if($RUN_MODE eq "mask") {
-	my $gff = Bio::Tools::GFF->new(-file => $gffFileName,
-				   -gff_version => 3);
-	while(my $curGene = $gff->next_feature) {
-		my $chromosome = "C" . $curGene->seq_id;
-		if(defined $index{$chromosome}) {
-			my $chromosome_num = $index{$chromosome};
+my $gff = Bio::Tools::GFF->new(-file => $gffFileName,
+			   -gff_version => 3);
+while(my $curGene = $gff->next_feature) {
+	my $chromosome = cleanChrName ($curGene->seq_id);
+	if(defined $chromosomes{$chromosome}) {
 #			print $chromosome . "-" . $curGene->start . " -- Length: " . length($chromosomes[$chromosome_num]) . "\n";
-			### Make sure no error in annotation placed a gene outside contig limits
-			if($curGene->end < length($chromosomes[$chromosome_num] )) {
-				substr($chromosomes[$chromosome_num], $curGene->start-1, $curGene->end - $curGene->start) = "X" x ($curGene->end - $curGene->start);
-			}
+		### Make sure no error in annotation placed a gene outside contig limits
+		if($curGene->end < length($chromosomes{$chromosome} )) {
+			substr($chromosomes{$chromosome}, $curGene->start-1, $curGene->end - $curGene->start) = "X" x ($curGene->end - $curGene->start);
 		}
 	}
-
 }
 
-my $mylastgeneend_pos=0;
-my $mylastchromosome_num=0;
+my $lastGeneEnd_pos=0;
+my $lastChromosome=0;
 
 if($mode eq "upstream") {
 	while(my $gffline = <$gfffile>)	{
@@ -116,16 +92,10 @@ if($mode eq "upstream") {
 		my $genename = $geneinfo{"Name"};
 								
 		if($genefields[2] eq "Footprint") {
-			my $chromosome = "C" . $genefields[0];
-			if((exists $index{$chromosome})) {
-				my $chromosome_num = $index{$chromosome};
+			my $chromosome = cleanChrName($genefields[0]);
+			if(defined $chromosomes{$chromosome}) {
 				my $dir = $genefields[6];
   		
-				if($chromosome_num != $mylastchromosome_num) {
-					$mylastchromosome_num = $chromosome_num;
-					$mylastgeneend_pos= -99999999;
-				}
-
 				print $output ">". $genename . "\n";
 				my $prom;
 
@@ -133,49 +103,21 @@ if($mode eq "upstream") {
 					my $loc = $genefields[3];
 					my $pstart = $loc - $seq_len;
 				
-					if($pstart < $mylastgeneend_pos && $RUN_MODE eq "truncate") {
-						# one exterme case - overlapping genes. In this case, promoter is NULL. Maybe there is a better way of dealing with this. The problem
-						# of using gene coding sequence as promoter is that coding sequences have much higher conservation rates that promoters which will confuse downstream analysis
-						if($mylastgeneend_pos >= $loc) {
-							$prom = "";
-						} else {
-							$prom = substr($chromosomes[$chromosome_num], $mylastgeneend_pos-1, $seq_len - $mylastgeneend_pos + $pstart);
-						}
-					} elsif($pstart <= 0) {
-						## If this is at the start of the chromosome and we don't have enough upstream seq
-						$prom = substr($chromosomes[$chromosome_num], 0, $loc-1)
+					if($pstart <= 0) { ## If this is at the start of the chromosome and we don't have enough upstream seq						
+						$prom = substr($chromosomes{$chromosome}, 0, $loc-1)
 					} else {
-						$prom = substr($chromosomes[$chromosome_num], $pstart-1, $seq_len);
+						$prom = substr($chromosomes{$chromosome}, $pstart-1, $seq_len);
 					}
 				} else {
 					my $loc = $genefields[4]; 
-					## peek at the next line to check when the next gene start. That's not nice programming.
-					my $curfilepos = tell $gfffile;
-					my $peekgene = <$gfffile>;
-					my @peekgenefields = split(/\t/, $peekgene);
-					my $nextgenestart = $peekgenefields[3];
-					seek($gfffile, $curfilepos,0);
-  				
-					if($loc + $seq_len > $nextgenestart && $RUN_MODE eq "truncate") {
-						# check for overlapping genes...
-						if($nextgenestart < $loc) {
-							$prom="";
-						} else {
-							$prom = substr($chromosomes[$chromosome_num], $loc, $nextgenestart - $loc);
-						}
-					} else {
-						$prom = substr($chromosomes[$chromosome_num], $loc, $seq_len);
-					}
+					$prom = substr($chromosomes{$chromosome}, $loc, $seq_len);
 					# reverse complement sequence
 					$prom = reverse $prom;
 					$prom =~ tr/ACGT/TGCA/;
 				}
 				print  $output ('N' x ($seq_len - length($prom)) . $prom . "\n");
-
-				$mylastgeneend_pos = max($genefields[3], $genefields[4]);
 			} else {
-				print $output ">". $genename . "\n" . ('N' x $seq_len) . "\n";
-				#print ("ERROR when processing line $gffline.\n Chromosome $chromosome does not exists\n"); 
+				print $output ">". $genename . "\n" . ('N' x $seq_len) . "\n"; #If the chromosome is not annotated, print Ns; 
 			}
 		}
 	  }
@@ -190,46 +132,16 @@ if($mode eq "upstream") {
 			my $genename = $geneinfo{"Name"};
 				
 			if($genefields[2] eq "Footprint") {
-				my $chromosome = "C" . $genefields[0];
-				if((exists $index{$chromosome})) {
-					my $chromosome_num = $index{$chromosome};
+				my $chromosome = cleanChrName($genefields[0]);
+				if(defined $chromosomes{$chromosome}) {
 					my $dir = $genefields[6];
-  					if($chromosome_num != $mylastchromosome_num) {
-  						$mylastchromosome_num = $chromosome_num;
-  						$mylastgeneend_pos=0;
-  					}
 
   					print $output ">". $genename . "\n";
   					my $prom;
 
   					if($dir eq "+") {
   						my $pstart = $genefields[4]+1;
-
-  						## peek at the next line to check when the next gene start. That's not nice programming.
-  						my $curfilepos = tell $gfffile;
-  						my $peekgene = <$gfffile>;
-  						seek($gfffile, $curfilepos,0);
-						my $nextgenestart=0;
-						# If this is not the last gene
-						if($peekgene ne "") {
-  							my @peekgenefields = split(/\t/, $peekgene);
-  							$nextgenestart = $peekgenefields[3];
-						} else {
-							$nextgenestart = $pstart+$seq_len;
-						}
-  						$curseq_len = $seq_len;
-
-  						# get sequence until the next gene
-  						if($pstart+$seq_len > $nextgenestart && $RUN_MODE eq "truncate") {
-  							# one exterme case - overlapping genes. In this case, promoter is NULL. Maybe there is a better way of dealing with this. The problem
-  							# of usign gene coding sequence as promoter is that coding sequences have much higher conservation rates that promoters which will confiuse downstream analysis
-  							if($nextgenestart <= $pstart) {
-  								$curseq_len=0;
-  							} else {
-  								$curseq_len =  $nextgenestart - $pstart-1;
-  							}
-  						} 				
-  						$prom = substr($chromosomes[$chromosome_num], $pstart-1, $curseq_len);
+  						$prom = substr($chromosomes{$chromosome}, $pstart-1, $seq_len);
 				} else {
 					my $pstart = $genefields[3]-$seq_len;
 					my $curseq_len = $seq_len;
@@ -238,24 +150,16 @@ if($mode eq "upstream") {
 						$pstart=0;
 						$curseq_len = $geneend;
 					}
-   	     	  
-					if($pstart < $mylastgeneend_pos && $RUN_MODE eq "truncate") {
-						if($geneend < $mylastgeneend_pos) {
-							$curseq_len=0;
-						} else {
-							$curseq_len = $geneend - $mylastgeneend_pos;
-							$pstart = $mylastgeneend_pos;
-						}
-					}
-					$prom = substr($chromosomes[$chromosome_num], $pstart-1, $curseq_len);
+					$prom = substr($chromosomes{$chromosome}, $pstart-1, $curseq_len);
 					# reverse complement sequence
 					$prom = reverse $prom;
 					$prom =~ tr/ACGT/TGCA/;
 				}
 				print $output ($prom . ('N' x ($seq_len - length($prom))) . "\n");
-				$mylastgeneend_pos = max($genefields[3], $genefields[4]);
+			} else {
+				print $output ">". $genename . "\n" . ('N' x $seq_len) . "\n"; #If the chromosome is not annotated, print Ns; 
 			}
 		}
+	 }
 	}
-  }	
-}
+}	
