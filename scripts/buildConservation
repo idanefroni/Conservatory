@@ -37,7 +37,7 @@ my $tmpDir;
 my $locus;
 my $locusFullName;
 my $referenceGenome;
-my $referenceGenomeSpecies;
+my $referenceSpecies;
 my $referenceGenomeFamily;
 my @referenceClassification;
 
@@ -61,7 +61,6 @@ my $alignmentSeqOverlapToMerge = 0.8; # In case we have multiple alignments from
 my $minOrthologsForConservationAnalysis =5; # The smallest number of orthologs to consider conservation analysis
 my $minPhyloPscore=2;  # Default minumum phyloP score
 my $minCNSLength=8;
-#my $CNSMergeLength=5;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 my $CNSMergeLength=6;   # What is the maximum distance between conserved nucleotides to merge into a single CNS
 
 my $minFamilySpeciesForCNS=0.333; # The minimum number of species in the family (out of the total species in the family) that have a CNS to be considered as one
@@ -73,12 +72,12 @@ my $minCNSCoverageAfterSplit=0.5; ### The minimum coverage of CNS to assign to a
 my $minCNSConservationAfterSplit = 0.2; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
 
 
-my $minCNSCoverageFinal=0.7; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
-
+#my $minCNSCoverageFinal=0.7; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
+my $minCNSCoverageFinal=0.5; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
 
 #### Alignment filtering parameters
 my @minSpeciesPerConservationLevel= (200,125,100,80,30,10); ## Must have atleast these many alignments to support level assignment
-my @minSpeciesAtConservationLevel= (1,1,1,3,5,5); ## Must have atleast these many species from each level to support level assignment
+my @minSpeciesAtConservationLevel= (1,1,1,3,5,6); ## Must have atleast these many species from each level to support level assignment
 
 my $minSpeciesPerConservationLevelString="";
 my $minORFLength="auto";
@@ -91,7 +90,6 @@ my $keep_tmp = 0;
 my $verbose = 0;
 my $force=0;  
 my $dumpBam = 0;
-my $skipKaKs=0;
 my $skipMissingGenomes=0;
 my $justFamilyAlignment = 0;
 my $justOneOrtholog =0;
@@ -126,7 +124,6 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"verbose" => \$verbose,
 			"bam-dump" =>\$dumpBam,
 			"force" => \$force,
-			"skip-kaks" => \$skipKaKs,
 			"skip-missing-genomes" => \$skipMissingGenomes,
 			"help" => \$help) or die ("Error in command line arguments\n");
 
@@ -167,10 +164,8 @@ if( $locus eq "" or $referenceGenome eq "" or $help or !($orthologSelectionStrat
    print "\t--atrich-length-filter\t\tLength of AT-rich strech to mask (Default 10).\n";
    print "\t--cns-merge-length\t\tMerge CNSs which distance apart is less than this parameter (Default 5).\n";   
    print "\t--no-position-filter\t\tDo not filter CNS conservation based on relative position to the gene (allow CNSs to move up/down stream to the gene).\n";
-
    
    print "\t--bam-dump\t\tGenerate bam files for the alignments.\n";
-   print "\t--skip-kaks\t\tSkip KaKs calculation (run faster)\n";
    print "\t--skip-missing-genomes\t\tIf genome information can't be found, skip and continue analysis (DEFAULT: Terminate with error message),\n";
    print "\t--tmp-dir\t\tSpecify the temporary directory (DEFAULT is alignments/<referenceName>/tmp).\n"; 
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the temporary directory.\n";
@@ -196,8 +191,10 @@ if($tmpDir eq "") {
 my $genomeDir ="$conservatoryDir/genomes";
 my $finalFASTAUpFileName = "$outputDir/$locus.up.fasta";
 my $finalFASTADownFileName = "$outputDir/$locus.down.fasta";
+
 my $finalCNSFileName = "$outputCNSDir/$locus.cns.csv";
-my $tmpCNSFileName = "$tmpDir/$locus.cns.csv";
+my $finalPhylopBedFileName = "$outputCNSDir/$locus.phylop.bed";
+
 my $finalMapFileName = "$outputCNSDir/$locus.map.csv";
 
 ### Alignment, orthologs and CNSs
@@ -206,6 +203,7 @@ my %fastaDownstreamAlignment;
 my %speciesDatabase;
 my %regulatoryRegionLengthDatabase;
 my %speciesClassification;
+my %genomeToFamily;
 
 my %mapAlignmentFamily;
 my %orthologs;
@@ -258,13 +256,14 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 	if(substr($curgenomeline,0,1) ne "#")  {
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;
 		$speciesDatabase{$curgenomeFamily}{$curgenomeSpecies}=0;
+		$genomeToFamily{$curgenomeName} = $curgenomeFamily;
 		$regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} = $upstreamLength * 1000;
 		$regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} = $downstreamLength * 1000;
 		$speciesClassification{$curgenomeSpecies} = $classification;
 		
 		if($curgenomeName eq $referenceGenome) {
 			$referenceGenomeFamily = $curgenomeFamily;
-			$referenceGenomeSpecies = $curgenomeSpecies;
+			$referenceSpecies = $curgenomeSpecies;
 			$locusFullName = "$curgenomeSpecies-$curgenomeName-$locus";
 
 			$upstreamLengthReference{$locusFullName} = $upstreamLength  * 1000;
@@ -275,7 +274,7 @@ while((my $curgenomeline = <$genomeDatabase>)) {
 seek ($genomeDatabase,0,SEEK_SET);
 
 die "ERROR: Cannot find reference genome $referenceGenome in the genome database file.\n" unless $referenceGenomeFamily ne "";
-@referenceClassification = split /-/ , $speciesClassification{$referenceGenomeSpecies};
+@referenceClassification = split /-/ , $speciesClassification{$referenceSpecies};
 
 ### Setup model and tree
 my $treeFileName = "$conservatoryDir/genomes/$referenceGenomeFamily.tree";
@@ -295,27 +294,19 @@ if (! -e $outputDir) { mkdir($outputDir); }
 if (! -e $tmpDir) { mkdir($tmpDir); }
 if (! -e $outputCNSDir) { mkdir($outputCNSDir); }	
 
-### Extract the absolute coordinates of the locus
-my $refFootprintFileName = "$conservatoryDir/genomes/$referenceGenomeFamily/$referenceGenome.footprint.gff3";
-my ($refGeneStart, $refGeneEnd, $refGeneChr, $refGeneDir) = ("","","","");
 
-open (my $refFootprintFile, "<", $refFootprintFileName);
-while ((my $line = <$refFootprintFile>) && $refGeneChr eq "" ){
-	chomp($line);
-	my @array = split /\t/, $line;
-	my %fields = split /[;=]/, $array[8];
-	
-	if($fields{'Name'} eq $locusFullName) {
-		$refGeneChr = $array[0];
-		$refGeneStart = $array[3];	
-		$refGeneEnd = $array[4];
-		$refGeneDir= $array[6];
-	}
-}
-close($refFootprintFile);
+### Extract the absolute coordinates of the locus
+
+my %referenceAbsoluteCoordiantes = getGeneCoordinates($conservatoryDir,$referenceGenomeFamily, $referenceGenome, $locusFullName);
+my $refGeneChr = $referenceAbsoluteCoordiantes{'Chromosome'};
+my $refGeneStart = $referenceAbsoluteCoordiantes{'Start'};
+my $refGeneEnd = $referenceAbsoluteCoordiantes{'End'};
+my $refGeneStrand= $referenceAbsoluteCoordiantes{'Strand'};
+
+
 die "ERROR: Cannot find locus $locusFullName in reference genome $referenceGenome.\n" unless ($refGeneChr ne "");
 
-if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd. Upstream sequence $upstreamLengthReference{$locusFullName} bp. Downstream sequence $downstreamLengthReference{$locusFullName} bp.\n"; }
+if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd:$refGeneStrand. Upstream sequence $upstreamLengthReference{$locusFullName} bp. Downstream sequence $downstreamLengthReference{$locusFullName} bp.\n"; }
 
 	
 #remember where we are
@@ -333,8 +324,8 @@ my $downstreamRefFastaName = "$tmpDir/$referenceGenome.$locus.down.fasta";
 
 #### Perform family alignments
 
-$fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".upstream.fasta.gz", $locusFullName, $upstreamRefFastaName);
-$fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".downstream.fasta.gz", $locusFullName, $downstreamRefFastaName);
+$fastaUpstreamAlignment{$locusFullName}{$referenceSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".upstream.fasta.gz", $locusFullName, $upstreamRefFastaName);
+$fastaDownstreamAlignment{$locusFullName}{$referenceSpecies} = extractFastaToFile("$genomeDir/$referenceGenomeFamily/$referenceGenome" . ".downstream.fasta.gz", $locusFullName, $downstreamRefFastaName);
 if($verbose) { print localtime() . ": Done extracting reference sequences.\n";}
 
 # set up CRE-orthology hashes
@@ -427,19 +418,19 @@ if(!$keep_tmp) {
 ##### Now we have assembled the list of putative CRE orthologs. Select the best genome for each species
 
 %orthologs = pickBestPutativeOrthologs(%orthologs);
-
-####################################################################################################################################
-##### At this point, we have selected our "CRE orthologs" (%orthologs) and have all the filtered upstream and downstream sequences in fasta files 
-##### Perform alignments to the reference genome
 my @species = keys %orthologs;
 my $numOfSpecies = scalar @species;
 
 if ($verbose) { print "PROGRESS: Done with CRE-ortholog selection. Collected $numOfSpecies CRE-orthologs.\n"; }
 
+####################################################################################################################################
+##### At this point, we have selected our "CRE orthologs" (%orthologs) and have all the filtered upstream and downstream sequences in fasta files 
+##### Perform alignments to the reference genome
+
 if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 	#### Now all alignments were performed, assemble MAF files to a single alignment. 
 	### First, move everything to an array. Dump a copy to the CRE-ortholog file
-	if($verbose) { print "PROGRESS: Multiple sequence assembly"; }
+	if($verbose) { print "PROGRESS: Multiple sequence assembly..."; }
 	
 	my $finalCREorthologFileName = "$outputDir/$locus.CREorthologs.txt";
 	open(my $finalCREorthologFile, ">$finalCREorthologFileName");
@@ -453,6 +444,7 @@ if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 			}
 		}
 	}
+	close($finalCREorthologFile);
 
 	if((scalar @orthologsToProcess) > 0) {
 		my @orthologsToProcessSorted = reverse sort { $a->{'UpQuality'} <=> $b->{'UpQuality'} } @orthologsToProcess;
@@ -461,8 +453,8 @@ if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 	
 		foreach my $curOrthologToMultipleAlignment (@orthologsToProcessSorted) {
 		
-			MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFUpFileName'}, \%upstreamLengthReference, $curOrthologToMultipleAlignment->{'upstreamLength'}, \%fastaUpstreamAlignment, \%mapAlignmentFamily, "U");
-			MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFDownFileName'}, \%downstreamLengthReference,$curOrthologToMultipleAlignment->{'downstreamLength'}, \%fastaDownstreamAlignment, \%mapAlignmentFamily, "D");
+			MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFUpFileName'}, \%upstreamLengthReference, $curOrthologToMultipleAlignment->{'upstreamLength'}, \%fastaUpstreamAlignment, \%mapAlignmentFamily, "U","U");
+			MAFtoFASTA($curOrthologToMultipleAlignment->{'MAFDownFileName'}, \%downstreamLengthReference,$curOrthologToMultipleAlignment->{'downstreamLength'}, \%fastaDownstreamAlignment, \%mapAlignmentFamily, "D","D");
 				
 			if(!$keep_tmp) {
 				unlink($curOrthologToMultipleAlignment->{'MAFUpFileName'});
@@ -475,13 +467,13 @@ if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 		open (my $finalFASTADownFile, ">$finalFASTADownFileName");
 
 		# replace 'X' with 'N' for phyloP and Dump fasta alignment
-		my $upOutSeq = $fastaUpstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
-		my $downOutSeq = $fastaDownstreamAlignment{$locusFullName}{$referenceGenomeSpecies};
+		my $upOutSeq = $fastaUpstreamAlignment{$locusFullName}{$referenceSpecies};
+		my $downOutSeq = $fastaDownstreamAlignment{$locusFullName}{$referenceSpecies};
 		$upOutSeq =~ s/X/N/g;
 		$downOutSeq =~ s/X/N/g;
 
-		print $finalFASTAUpFile ">$referenceGenomeSpecies\n$upOutSeq\n";
-		print $finalFASTADownFile ">$referenceGenomeSpecies\n$downOutSeq\n";
+		print $finalFASTAUpFile ">$referenceSpecies\n$upOutSeq\n";
+		print $finalFASTADownFile ">$referenceSpecies\n$downOutSeq\n";
 		
 		## output the fasta file in order - from most aligned to least aligned
 		my %alignedSeqPerSpecies;
@@ -493,7 +485,7 @@ if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 		}
 
 		for my $curspecies ( reverse sort { $alignedSeqPerSpecies{$a} <=> $alignedSeqPerSpecies{$b} } keys %alignedSeqPerSpecies ) {
-			if($curspecies ne $referenceGenomeSpecies) {
+			if($curspecies ne $referenceSpecies) {
 				print $finalFASTAUpFile ">$curspecies\n" . $fastaUpstreamAlignment{$locusFullName}{$curspecies} . "\n";
 			}
 		}
@@ -504,7 +496,7 @@ if ($numOfSpecies > $minOrthologsForConservationAnalysis ) {
 		}
 
 		for my $curspecies ( reverse sort { $alignedSeqPerSpecies{$a} <=> $alignedSeqPerSpecies{$b} } keys %alignedSeqPerSpecies ) {
-			if($curspecies ne $referenceGenomeSpecies) {
+			if($curspecies ne $referenceSpecies) {
 				print $finalFASTADownFile ">$curspecies\n" . $fastaDownstreamAlignment{$locusFullName}{$curspecies} . "\n";
 			}
 		}	
@@ -529,102 +521,50 @@ if (! -e $outputCNSDir) { mkdir($outputCNSDir); }
 
 if($verbose) { print "PROGRESS: Begin family conservation analysis for $locus. Model file: $modelFileName. Minimum phyloP score: $minPhyloPscore.\n"; }
 
-my $coordinateTranslateAwkUp;
-my $coordinateTranslateStrUp;
-my $coordinateTranslateAwkDown;
-my $coordinateTranslateStrDown;
-
-if($refGeneDir eq "+") {
-	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-$upstreamLengthReference{$locusFullName} + \$2,$refGeneStart-$upstreamLengthReference{$locusFullName} + \$3,\$5);}}'";
-	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneStart- $upstreamLengthReference{$locusFullName} + \$2, $refGeneStart - $upstreamLengthReference{$locusFullName} + \$3";
-	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd + 1 + \$2,$refGeneEnd + 1 + \$3,\$5);}}'"; 
-	$coordinateTranslateStrDown = " \"$refGeneChr\", $refGeneEnd + 1 + \$2, $refGeneEnd + 1 + \$3";	
-} else { 
-	$coordinateTranslateAwkUp = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneEnd + $upstreamLengthReference{$locusFullName}-\$3 + 1 ,$refGeneEnd+ $upstreamLengthReference{$locusFullName}-\$2 + 1,\$5);}}'";
-	$coordinateTranslateStrUp = " \"$refGeneChr\", $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$3 + 1 , $refGeneEnd+$upstreamLengthReference{$locusFullName}-\$2 + 1";
-	$coordinateTranslateAwkDown = "awk '{ if(\$5>$minPhyloPscore) {print(\"$refGeneChr\",$refGeneStart-\$3 - 1 ,$refGeneStart-\$2 - 1,\$5);}}'";
-	$coordinateTranslateStrDown = "\"$refGeneChr\",$refGeneStart-\$3 - 1,$refGeneStart-\$2 - 1";
-}
-	
-#### Run phyloP 
+########## Run phyloP 
 my $phyloPParameters = "--seed 123 --wig-scores --no-prune --method SCORE --mode CON";
 my $CNSFound=0;
 
+my @CNSCoordinates;
+my @rawUpstreamCoords;
+my @rawDownstreamCoords;
+
 if(-s $finalFASTAUpFileName > $EMPTY_FILE) {
 
-	system("phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed > $tmpDir/$locus.up.bed");
-	system("sort -k1,1 -k2,2n -o $tmpDir/$locus.up.bed $tmpDir/$locus.up.bed");
+	open(my $upstreamPhylopBedFile, "phyloP $phyloPParameters $modelFileName $finalFASTAUpFileName | wig2bed | sort -k1,1 -k2,2n |");
+	@rawUpstreamCoords = bedFileToCoordinateList($upstreamPhylopBedFile, -$upstreamLengthReference{$locusFullName});
+	close ($upstreamPhylopBedFile);
 
-	if((-s "$tmpDir/$locus.up.bed") > $EMPTY_FILE) { 
-		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.up.bed > $tmpDir/$locus.up.fil.bed");
-		if(-s "$tmpDir/$locus.up.fil.bed" > $EMPTY_FILE) {
-			$CNSFound=1;
-			if($verbose) { print "PROGRESS: Found possible family upstream CNS.\n"; }
-			system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.up.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", \$2-$upstreamLengthReference{$locusFullName}, \$3-$upstreamLengthReference{$locusFullName}, \$4,\"UP\",$coordinateTranslateStrUp); }' > $tmpCNSFileName");
-		} else {
-			if($verbose) { print "PROGRESS: No family upstream CNS.\n"; }
-		}
-		if(!$keep_tmp) {unlink("$tmpDir/$locus.up.fil.bed"); }
-	}
+	@phyloPconservationMapUp = coordinateListToMap(\@rawUpstreamCoords, $upstreamLengthReference{$locusFullName} , $upstreamLengthReference{$locusFullName});
+	push(@CNSCoordinates, mergeCoordinates(\@rawUpstreamCoords, $minPhyloPscore, $CNSMergeLength, $minCNSLength));
 }
-
 if(-s $finalFASTADownFileName > $EMPTY_FILE) {
-	system("phyloP $phyloPParameters $modelFileName $finalFASTADownFileName | wig2bed > $tmpDir/$locus.down.bed");
-	system("sort -k1,1 -k2,2n -o $tmpDir/$locus.down.bed $tmpDir/$locus.down.bed ");
+	open(my $downstreamPhylopBedFile, "phyloP $phyloPParameters $modelFileName $finalFASTADownFileName | wig2bed | sort -k1,1 -k2,2n |");
+	@rawDownstreamCoords = bedFileToCoordinateList($downstreamPhylopBedFile, 1);
+	close ($downstreamPhylopBedFile);
 
-	if(-s "$tmpDir/$locus.down.bed"> $EMPTY_FILE) { 
-		system("awk '{ if(\$5>$minPhyloPscore) {print;}}' $tmpDir/$locus.down.bed > $tmpDir/$locus.down.fil.bed");
-		if(-s "$tmpDir/$locus.down.fil.bed" > $EMPTY_FILE) {
-			$CNSFound=1;
-			if($verbose) { print "PROGRESS: Found possible family downstream CNS.\n"; }
-			system("bedtools merge -d $CNSMergeLength -c 5 -o mean -i $tmpDir/$locus.down.fil.bed | awk 'BEGIN{OFS=\",\"}{ if( (\$3 - \$2)>=$minCNSLength) print(\"$locus\", 1+ \$2, 1+ \$3, \$4 ,\"DOWN\",$coordinateTranslateStrDown); }' >> $tmpCNSFileName");
-		} else {
-			if($verbose) { print "PROGRESS: No family downstream CNS.\n"; }
-		}
-		if(!$keep_tmp) {unlink("$tmpDir/$locus.down.fil.bed"); }
-	}
-}
-	
-if( (-e $tmpCNSFileName) && ((-s $tmpCNSFileName) > $EMPTY_FILE )) {
-	### Now convert coordinates,dump a BEDGRAPH file for merging and load the phyloP scores for further filtering
-	@phyloPconservationMapUp = (0) x ( $upstreamLengthReference{$locusFullName} );
-	@phyloPconservationMapDown = (0) x ( $downstreamLengthReference{$locusFullName} );
-
-	if(-e "$tmpDir/$locus.up.bed") {
-		system("$coordinateTranslateAwkUp $tmpDir/$locus.up.bed > $tmpDir/$locus.phylop.bed");
-		open (my $upstreamPhylopFile, "<$tmpDir/$locus.up.bed");
-		while(<$upstreamPhylopFile>) {
-			my ($locus,$start,$end,$id,$pvalue) = split;
-			$phyloPconservationMapUp[$start] = ($pvalue + 0);
-		}
-		close($upstreamPhylopFile);
-	}
-	if(-e "$tmpDir/$locus.down.bed") {
-		system("$coordinateTranslateAwkDown $tmpDir/$locus.down.bed >> $tmpDir/$locus.phylop.bed");
-		open (my $downstreamPhylopFile, "<$tmpDir/$locus.down.bed");
-		while(<$downstreamPhylopFile>) {
-			my ($locus,$start,$end,$id,$pvalue) = split;
-			$phyloPconservationMapDown[$start] = ($pvalue + 0);
-		}
-		close($downstreamPhylopFile);		
-	}
-	if( (-e "$tmpDir/$locus.phylop.bed") && ( (-s "$tmpDir/$locus.phylop.bed") > $EMPTY_FILE) ) {
-		system("cp $tmpDir/$locus.phylop.bed $outputCNSDir");
-	}
-} else {
-	$CNSFound =0;
+	@phyloPconservationMapDown = coordinateListToMap(\@rawDownstreamCoords, $downstreamLengthReference{$locusFullName} ,0);
+	push(@CNSCoordinates, mergeCoordinates(\@rawDownstreamCoords, $minPhyloPscore, $CNSMergeLength, $minCNSLength));
 }
 
-if(!$keep_tmp) { 
-	unlink("$tmpDir/$locus.up.bed");
-	unlink("$tmpDir/$locus.down.bed");
-	unlink("$tmpDir/$locus.phylop.bed");
+##### translate the raw coordinates and output a bed file
+push(@rawUpstreamCoords, @rawDownstreamCoords);
+my @absRawCoords = translateRealtiveToAbsoluteCoordinates(\@rawUpstreamCoords, $refGeneStart, $refGeneEnd, $refGeneStrand);
+
+my @absoluteCoordinates = translateRealtiveToAbsoluteCoordinates(\@CNSCoordinates, $refGeneStart, $refGeneEnd, $refGeneStrand);
+
+### Now dump absolute coordinate
+
+open(my $finalPhylopBedFile, ">", $finalPhylopBedFileName);
+foreach my $coord (@absRawCoords) {
+	print $finalPhylopBedFile join("\t", ($refGeneChr, $coord->{'Start'}, ($coord->{'Start'} + $coord->{'Length'}+1),  $coord->{'pValue'}  )) . "\n";
 }
+close($finalPhylopBedFile);
+
 
 if($verbose) { print "PROGRESS: End conservation analysis for $locus.\n"; }
 
-if(!$CNSFound) {
-	unlink($tmpCNSFileName);
+if((scalar @CNSCoordinates) == 0) {
 	if($verbose) { print ("END: No CNS found for $locus.\n"); } 
 	exit();
 }
@@ -653,252 +593,95 @@ my %cnsReferenceLength;
 my %deepCNSFasta;
 my %mapAlignmentDeepCNS;
 
+
 my $ancesteralLocusCNSFileName = "$tmpDir/$locus.ancesteral.cns.fasta";
 open (my $ancesteralLocusCNSFasta, ">$ancesteralLocusCNSFileName");	
-open (my $CNSFile, $tmpCNSFileName) || die ("INTERNAL ERROR ($locusFullName).\n");
 
+foreach my $coord (@CNSCoordinates) {
 
-while(my $CNSLine = <$CNSFile>) {
-	chomp($CNSLine);
-	my ($cnsLocus,$cnsRelStart,$cnsRelEnd,$pval,$upOrDown,$chromosome,$absStart,$absEnd) = split /,/,$CNSLine;
+	my $cnsRelStart = $coord->{'Start'};
+	my $positionInReference = $cnsRelStart;
+
+	my $curCNSLength = $coord->{'Length'};
+	my $CNSName = "$locus.$cnsRelStart";
 	
-	if(($cnsRelEnd - $cnsRelStart)>= $minCNSLength) {
-		
-		my $curCNSLength = ($cnsRelEnd - $cnsRelStart);
-		my $shortestAlignment = $curCNSLength;
-		my $CNSName = "$locus.$cnsRelStart";
-		$CNSforLocus{$CNSName} = {
-				'Name' => $CNSName,
-				'Start' => $cnsRelStart,
-				'End' => $cnsRelEnd,
-				'Locus' => $cnsLocus,
-				'Chromosome' => $chromosome,
-				'absStart' => $absStart,
-				'absEnd' => $absEnd,
-				'Strand' => $refGeneDir,
-				'NumberOfSpecies' => 0,
-				'NumberOfFamilySpecies' => 0,				
-				'ConservationLevel' => $referenceGenomeFamily};
-				
-		my %cnsSeqs;
-				
-		$cnsReferenceLength{$CNSName} = $cnsRelEnd - $cnsRelStart;
-		
-		my $tmpCNSFastaFileName = "$tmpDir/$CNSName.cns.fasta";
-		open (my $tmpCNSFile, ">$tmpCNSFastaFileName");
+	if($verbose) { print("PROGRESS: Reconstructing $CNSName. Length: $curCNSLength.\n") }
 
-		my $cnsSeq;
-		my $referenceCNSSeq;
-		my $numOfSpeciesWithCNS=0;
-		if($cnsRelStart <= 0 ) { ## If this is upstream seqeunce
-			for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {
+	$CNSforLocus{$CNSName} = {
+			'Name' => $CNSName,
+			'Start' => $positionInReference,
+			'Length' => $curCNSLength,
+			'Locus' => $locus,
+			'Chromosome' => $refGeneChr,
+			'Strand' => $refGeneStrand,
+			'NumberOfSpecies' => 0,
+			'ConservationLevel' => $referenceGenomeFamily};
 				
-				if(defined $fastaUpstreamAlignment{$locusFullName}{$curSpecies}) {
-					$cnsSeq=substr($fastaUpstreamAlignment{$locusFullName}{$curSpecies}, $upstreamLengthReference{$locusFullName}+$cnsRelStart, $cnsRelEnd-$cnsRelStart);
-					$cnsSeqs{$curSpecies}=$cnsSeq;
-					$numOfSpeciesWithCNS++;
-				} else {		
-					$cnsSeq = ("-" x ($cnsRelEnd-$cnsRelStart));
-				}
-				
-				print $tmpCNSFile ">$curSpecies\n$cnsSeq\n";
+	my %cnsSeqs;	
+	$cnsReferenceLength{$CNSName} = $curCNSLength;
+		
+	my $tmpCNSFastaFileName = "$tmpDir/$CNSName.cns.fasta";
+	open (my $tmpCNSFile, ">$tmpCNSFastaFileName");
+
+	my $numOfSpeciesWithCNS=0;
+	if($cnsRelStart < 0 ) { ## If this is upstream seqeunce
+		for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {		
+			if(defined $fastaUpstreamAlignment{$locusFullName}{$curSpecies}) {
+				$cnsSeqs{$curSpecies}=substr($fastaUpstreamAlignment{$locusFullName}{$curSpecies}, $upstreamLengthReference{$locusFullName}+$cnsRelStart, $curCNSLength);
+				$numOfSpeciesWithCNS++;
+			} else {		
+				$cnsSeqs{$curSpecies} = ("-" x $curCNSLength);
 			}
-		} else {	
-			for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {
-				if(defined $fastaDownstreamAlignment{$locusFullName}{$curSpecies}) {
-					### Get the sequence for the CNS (with extra padding, to avoid problems with edge alignments)
-
-					$cnsSeq = substr(($fastaDownstreamAlignment{$locusFullName}{$curSpecies} . "--------") , $cnsRelStart-1, $cnsRelEnd-$cnsRelStart);
-					$cnsSeqs{$curSpecies}=$cnsSeq;
-					$numOfSpeciesWithCNS++;
-				} else {					
-					$cnsSeq = ("-" x ($cnsRelEnd-$cnsRelStart));
-				}				
-				print $tmpCNSFile ">$curSpecies\n$cnsSeq\n";
-			}	
+			print $tmpCNSFile ">$curSpecies\n" . $cnsSeqs{$curSpecies} . "\n";
 		}
-		close ($tmpCNSFile);
-				
-		#### Now invoke FASTML to reconstruct ancestral sequence
-		my $ancesteralCNSFileName = "$tmpDir/$locus.$cnsRelStart.ancesteral.fasta";
-		####
-
-		system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
-		if(!$keep_tmp) { unlink("$tmpCNSFastaFileName"); }
-		unlink("log.txt");
-		if($verbose) {
-			print("PROGRESS: Reconstructed $locus.$cnsRelStart. Length: " . ($cnsRelEnd-$cnsRelStart) . "\n")
-		}
-		my $ancesteralCNS;
-		open(my $ancesteralCNSFasta, $ancesteralCNSFileName) || die ("INTERNAL ERROR ($locusFullName).\n");
-		while((my $seqName = <$ancesteralCNSFasta>) && $ancesteralCNS eq "") {
-			my $seq = <$ancesteralCNSFasta>;
-			chomp($seqName);
-			chomp($seq);
-			if(substr($seqName,1) eq "N1") { $ancesteralCNS = $seq;}
-		}
-		close($ancesteralCNSFasta);
-		unlink($ancesteralCNSFileName);
-
-		###### Mask ancesteral sequence for homopolymers
-		my $ancesteralCNSMasked = $ancesteralCNS;
-
-		## First, lastz does not handle ambigious characters very well (basically assuming N)
-		# replace W with A. Not ideal, but better than alternative. Also, too many A's will be masked.
-		$ancesteralCNSMasked =~ s/W/A/g;
-
-		$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFilterLength,0);
-		$ancesteralCNSMasked = fuzzyFilterDimers($ancesteralCNSMasked, $dimerPolymerFilterLength,0);
-
-		$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFuzzyFilterLength,1);
-
-		$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
-		$CNSforLocus{$CNSName}{'referenceSequence'} = $cnsSeqs{$referenceGenomeSpecies};
-
-		print $ancesteralLocusCNSFasta ">$CNSName\n$ancesteralCNSMasked\n";
-		$totalCNSLength += $curCNSLength;
-		$CNSNum++;
-		
-
-		##### Check for ORF in reconstructed CNS
-		my ($ancesteralORFLength, $ancesteralORF, $ancesteralORFStand) = getLongestORF($ancesteralCNS);
-		my $randomORFLength;
-		if($minORFLength eq "auto") {
-			$randomORFLength = getRandomORFLength($ancesteralCNS);
-		} else {
-			$randomORFLength = $minORFLength;
-		}
-		my $ancesteralCNSORF = Bio::LocatableSeq->new(-seq => $ancesteralORF,
-						    	  					  -id => "Reconstructed",
-						    	  					  -start => 1,
-						    	  					  -end => $ancesteralORFLength);	
-		
-		if($ancesteralORFLength > $randomORFLength) {	### If there is a potential ORF, mark it and calc KaKs rate
-			if($verbose) { print "PROGRESS: $CNSName: Detected ORF ($ancesteralORFLength/$randomORFLength,$ancesteralORFStand):$ancesteralORF.\n"; }
-			$CNSforLocus{$CNSName}{'ORF'}= $ancesteralORFLength;
-			$CNSforLocus{$CNSName}{'ORFDir'}= $ancesteralORFStand;			
-			
-			### Determine KaKs
-			### First, assemble all ORFs
-			if(!$skipKaKs) {
-				my %cnsORFs;
-				my @cnsPeptides;
-				$cnsORFs{'Reconstructed'} = $ancesteralCNSORF;
-				my $peptide = dropAsterixFromProtein($ancesteralCNSORF->translate);
-				push @cnsPeptides, $peptide;
-
-				foreach my $curCNSSpecies (keys %cnsSeqs) {
-					$cnsSeqs{$curCNSSpecies} =~ s/-//g;
-					$cnsSeqs{$curCNSSpecies} =~ s/X/N/g;
-					if(length($cnsSeqs{$curCNSSpecies})>0) {
-						my ($curLongestORFLength, $curLongestORF, $curLongestORFStand) = getLongestORF($cnsSeqs{$curCNSSpecies},$ancesteralORFStand);
-						my $curCNSORF = Bio::LocatableSeq->new(-seq => $curLongestORF,
-												    	   	-id => $curCNSSpecies,
-												    	   	-start => 1,
-												    	   	-end => $curLongestORFLength);
-						$cnsORFs{$curCNSSpecies} = $curCNSORF;
-						$peptide = dropAsterixFromProtein($curCNSORF->translate);
-						push @cnsPeptides, $peptide;
-					}
-				}
-			
-				my $stats = Bio::Align::DNAStatistics->new();
-				my $cnsAlignmentPep = quietAlign(\@cnsPeptides);
-				### Filter low identity alignments
-				my @filteredCNSPeptides;		
-
-				my @seqCharAncesteral = split //, $cnsAlignmentPep->get_seq_by_id('Reconstructed')->seq();
-
-				foreach my $seq ($cnsAlignmentPep->each_seq) {
-					if($seq->id() ne "Reconstructed") {
-						my $pairwiseAln = $cnsAlignmentPep->select_noncont_by_name('Reconstructed', $seq->id());
-						my $nogappairwiseAln = $pairwiseAln->remove_gaps();
-
-						if($nogappairwiseAln->length > 4 && $pairwiseAln->percentage_identity > 60)  { ### If too divergent, do not include sequence
-							my $nogapSeq = $seq->seq();
-							$nogapSeq =~ s/-//g;
-							$seq->seq($nogapSeq);
-							push @filteredCNSPeptides, $seq;
-						}
-					}
-				}
-			
-				if(@filteredCNSPeptides >1) {
-			
-					my $filteredCNSAlignmentPep = quietAlign(\@filteredCNSPeptides);
-					my $cnsDNAAlignment = Bio::Align::Utilities::aa_to_dna_aln($filteredCNSAlignmentPep, \%cnsORFs);
-					### See that we have something to align, and its not too divergent or not divergent enough
-					my $nogapalignment = $cnsDNAAlignment->remove_gaps();
-					if($nogapalignment->length > 0) {
-						## Calculate KsKa
-						if($verbose) { printf "PROGRESS: $CNSName: Calculating KaKs..."; }
-
-						my $kaks_factory = Bio::Tools::Run::Phylo::PAML::Codeml->new(
-							-verbose => 0,
-							-tree => $tree,
-							-branchlengths => 1,
-							-params => { 'runmode' => -2,
-                      				'seqtype' => 1});
-
-                		$kaks_factory->alignment($cnsDNAAlignment);
-                		my ($rc, $parser) = $kaks_factory->run();
-                		$kaks_factory->cleanup();
-			
-                		if($rc>0) {
-                			my $results = $parser->next_result;
-                			my $MLmatrix = $results->get_MLmatrix();
-                			my @outseq = $results->get_seqs();
-                			my $ancesteralPos= -1;
-                			for(my $i=0; $i< @outseq; $i++) {
-	                			if($outseq[$i]->display_id eq "Reconstructed") {
-                					$ancesteralPos = $i;
-                				}
-                			}
-                			my $totalOmega=0;
-                			my $totaldN=0;
-                			my $totaldS=0;
-                			for(my $i =0; $i< @outseq; $i++) {
-	                			if($outseq[$i]->display_id() ne "Reconstructed") {
-                					$totalOmega = $totalOmega + $MLmatrix->[$ancesteralPos]->[$i]->{'omega'};
-									$totaldN = $totaldN + $MLmatrix->[$ancesteralPos]->[$i]->{'dN'};
-									$totaldS = $totaldS + $MLmatrix->[$ancesteralPos]->[$i]->{'dS'};
-                				}
-                			}
-							my $meanOmega = $totalOmega / (@outseq - 1);
-							my $meandS = $totaldS / (@outseq - 1);
-							my $meandN = $totaldN / (@outseq - 1);
-							### See if we have enough substitutions for omega to make sense
-							### dS > 0.01
-							if($meandS > 0.01) {
-	                			$CNSforLocus{$CNSName}{'omega'} = $meanOmega;
- 							} else {
-		          				$CNSforLocus{$CNSName}{'omega'} = -1;   ## dS is too low
-							}
-
-                			if($verbose) { printf("... Omega: %.2f (dS: %.2f;dN: %.2f)\n", $CNSforLocus{$CNSName}{'omega'}, $meandS, $meandN); }	
-                		} else {
-							if($verbose) { print "..cannot determine(" . $kaks_factory->error_string() .")\n";}
-                			$CNSforLocus{$CNSName}{'omega'} = -99;  ## Error
-                		}
-					} else {
-                		$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
-					}
-            	} else {
-            		$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
-            	} 
-			} else {
-				$CNSforLocus{$CNSName}{'omega'} = -4; ### No KaKs value calculated
+	} else {	
+		for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {
+			if(defined $fastaDownstreamAlignment{$locusFullName}{$curSpecies}) {
+				### Get the sequence for the CNS (with extra padding, to avoid problems with edge alignments)
+				$cnsSeqs{$curSpecies} = substr(($fastaDownstreamAlignment{$locusFullName}{$curSpecies} . "--------") , $cnsRelStart-1, $curCNSLength);
+				$numOfSpeciesWithCNS++;
+			} else {					
+				$cnsSeqs{$curSpecies} = ("-" x $curCNSLength);
 			}
-		} else {
-				$CNSforLocus{$CNSName}{'ORF'}=0;
-				$CNSforLocus{$CNSName}{'omega'} = -3;  ### There is no ORF
+			print $tmpCNSFile ">$curSpecies\n" . $cnsSeqs{$curSpecies} . "\n";
 		}
 	}
-	
+	close ($tmpCNSFile);
+				
+	#### Now invoke FASTML to reconstruct ancestral sequence
+	my $ancesteralCNSFileName = "$tmpDir/$locus.$cnsRelStart.ancesteral.fasta";
+	system("$conservatoryDir/scripts/fastml -s $tmpCNSFastaFileName -t $treeFileName -b -mh -qf -e /dev/null -x /dev/null -y /dev/null -k /dev/null -d /dev/null -e /dev/null -j $ancesteralCNSFileName >/dev/null");
+	if(!$keep_tmp) { unlink("$tmpCNSFastaFileName"); }
+	unlink("log.txt");
+
+	my $ancesteralCNS;
+	open(my $ancesteralCNSFasta, $ancesteralCNSFileName) || die ("INTERNAL ERROR ($locusFullName).\n");
+	while((my $seqName = <$ancesteralCNSFasta>) && $ancesteralCNS eq "") {
+		my $seq = <$ancesteralCNSFasta>;
+		chomp($seqName);
+		chomp($seq);
+		if(substr($seqName,1) eq "N1") { $ancesteralCNS = $seq;}
+	}
+	close($ancesteralCNSFasta);
+	unlink($ancesteralCNSFileName);
+
+	###### Mask ancesteral sequence for homopolymers
+	my $ancesteralCNSMasked = $ancesteralCNS;
+	## First, lastz does not handle ambigious characters very well (basically assuming N)
+	# replace W with A. Not ideal, but better than alternative. Also, too many A's will be masked.
+	$ancesteralCNSMasked =~ s/W/A/g;
+	$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFilterLength,0);
+	$ancesteralCNSMasked = fuzzyFilterDimers($ancesteralCNSMasked, $dimerPolymerFilterLength,0);
+	$ancesteralCNSMasked = fuzzyFilterHomopolymers($ancesteralCNSMasked,$homoPolymerFuzzyFilterLength,1);
+
+	$CNSforLocus{$CNSName}{'ancesteralSequence'} = $ancesteralCNS;
+	$CNSforLocus{$CNSName}{'referenceSequence'} = $cnsSeqs{$referenceSpecies};
+
+	print $ancesteralLocusCNSFasta ">$CNSName\n$ancesteralCNSMasked\n";
+	$totalCNSLength += $curCNSLength;
+	$CNSNum++;
 }
 close($ancesteralLocusCNSFasta);
-close($CNSFile);
-if(!$keep_tmp) { unlink("$tmpCNSFileName"); }
 
 if($verbose) { print "PROGRESS: End ancesteral sequence reconstruction for $locus. $CNSNum CNSs. Total Length $totalCNSLength.\n"; }
 
@@ -911,45 +694,40 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 		## Find the CNS that overlaps this alignment
 		my ($start,$end);
 		if($curHit->{'ReferenceUpDown'} eq "U") {
-			$start = $curHit->{'ReferenceRelativePosition'} - $upstreamLengthReference{$locusFullName};
-		} else {
 			$start = $curHit->{'ReferenceRelativePosition'};
+		} else {
+			$start = $curHit->{'ReferenceRelativePosition'} + 1;
 		}
 		$end = $start + $curHit->{'Length'};
 		
 		foreach my $curCNS (keys %CNSforLocus) {
-			my $CNSLength = $CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'};
+			my $CNSLength = $CNSforLocus{$curCNS}{'Length'};
 
-			if (overlap($CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'End'},$start, $end)) {
+			if (overlap($CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'Start'} + $CNSLength,$start, $end)) {
+
+				my $startCNSInAlignment = max(0, $CNSforLocus{$curCNS}{'Start'} - $start);
 
 				my $startInCNS = max(0, $start - $CNSforLocus{$curCNS}{'Start'});
 				my $endInCNS = min($CNSLength , $end - $CNSforLocus{$curCNS}{'Start'});
 
-				my $startCNSInAlignment = max(0, $CNSforLocus{$curCNS}{'Start'} - $start);
-
-				my $cnsHitSeq = substr($curHit->{'TargetSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS);
-
-				### Calculate insertsions
-				my $untrimmedSequence = substr($curHit->{'UntrimmedSequence'}, 0, $startCNSInAlignment);
-				my $insertions = $untrimmedSequence =~ tr/Z//;
-
-				# Change N back to gaps
-				$cnsHitSeq =~ s/N/-/g;
+				my $newTargetSeq = substr($curHit->{'TargetSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS);
+				my $newReferenceSeq = substr($curHit->{'ReferenceSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS);
+				my $newTargetPosition = shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS );
 
 				push @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} }, {
 						"ReferenceLocus" => $curCNS,
 						"ReferenceRelativePosition" => $startInCNS,
 						"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
-						"Length" => length($cnsHitSeq),
+						"Length" => length($newTargetSeq),
 						"TargetSpecies" => $curHit->{'TargetSpecies'},
 						"TargetLocus" => $curHit->{'TargetLocus'},
-						"TargetSequence" => $cnsHitSeq,
+						"TargetSequence" => $newTargetSeq,
 						"TargetStrand" => $curHit->{'TargetStrand'},
-						"TargetPosition" => $curHit->{'TargetPosition'} + $startCNSInAlignment + $insertions }; 
+						"TargetPosition" => $newTargetPosition,
+						"ReferenceSequence" => $newReferenceSeq }; 
+
 				if(! (defined $familySpeciesHittingCNS{$curCNS}{$curSpecies}) ) {
 					$CNSforLocus{$curCNS}{'NumberOfSpecies'}++;
-					$CNSforLocus{$curCNS}{'NumberOfFamilySpecies'}++;
-
 					$familySpeciesHittingCNS{$curCNS}{$curSpecies} = 1;
 				}
 			}
@@ -1002,8 +780,8 @@ while(<$genomeDatabase>) {
 						$deepAlignmentQualityForSpecies{$curgenomeSpecies}{$curgenomeName} += $upQuality + $downQuality;
 
 						### Log alignment to fasta, but only if long enough (covers more than minCNSCoverage of the CNS)							
-						MAFtoFASTA($MAFUpFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "U",$minCNSCoverageInitial);
-						MAFtoFASTA($MAFDownFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D",$minCNSCoverageInitial);
+						MAFtoFASTA($MAFUpFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'upstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D","U",$minCNSCoverageInitial);
+						MAFtoFASTA($MAFDownFileName,  \%cnsReferenceLength, $regulatoryRegionLengthDatabase{$curgenomeName}{'downstreamLength'} , \%deepCNSFasta, \%mapAlignmentDeepCNS, "D","D",$minCNSCoverageInitial);
 					}
 
 				if(!$keep_tmp) {
@@ -1050,8 +828,6 @@ for my $curSpecies (keys %deepAlignmentQualityForSpecies) {
 						for my $curAlignment (@alignmentsToCNS) {
 							if($curAlignment->{'TargetGenome'} ne $curAlignmentGenome) {
 								push (@newAlignmentsToCNS, $curAlignment);
-							} else {
-#								if($verbose) { print "DEBUG: Removing hit $curAlignmentGenome to $curCNS.\n"; }
 							}
 						}
 						$mapAlignmentDeepCNS{$curCNS}{$curSpecies} = \@newAlignmentsToCNS;
@@ -1076,6 +852,31 @@ for my $curCNS (keys %mapAlignmentDeepCNS) {
 	}
 }
 
+### Filter CNSs that switch position (up to downstream)
+
+if(!$noPositionFilter) {
+	my $spToDelete;
+	foreach my $curCNS (keys %mapAlignmentDeepCNS) {
+		foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
+			$spToDelete = "";
+			foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment} } ) {
+				if(($CNSforLocus{$curCNS}{'Start'}<0) && ($curAlignment->{'TargetPosition'} >=0)) {
+					$spToDelete = $curSpeciesAlignment;
+				}
+				if(($CNSforLocus{$curCNS}{'Start'}>=0) && ($curAlignment->{'TargetPosition'} <0)) {
+					$spToDelete = $curSpeciesAlignment;
+				}
+				if($spToDelete ne "") {
+					if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Target position: " . $curAlignment->{'TargetPosition'} . ".\n"; }
+				}
+			}
+			if($spToDelete ne "") {
+				delete $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment};
+			}
+		}
+	}
+}
+
 ############################################################################################################
 # Family CNS are not all deeply conserved. See if we can identify conserved regions within the CNS
 #  then split the CNS accordingly
@@ -1086,54 +887,34 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	my @CNShitsSpecies =  keys %{ $mapAlignmentDeepCNS{$curCNS} };
 	my @CNShits;
 
-
 	for my $curSp (@CNShitsSpecies) {
 		push @CNShits, @{ $mapAlignmentDeepCNS{$curCNS}{$curSp} };
 	}
 
-	my $CNSBreakpointsRef = getCNSbreakpoints($CNSLength, \@CNShits , $minCNSLength);
-	my @CNSBreakpoints = @$CNSBreakpointsRef;
+	my @CNSBreakpoints = getCNSbreakpoints($CNSLength, \@CNShits , $minCNSLength);
 
 	### If we have breakpoints, break the CNS, polish and reassign all hits
 	if(@CNSBreakpoints >2) {
 		if($verbose) { print "PROGRESS: Breaking CNS $curCNS. Length: $CNSLength. Breakpoints: " . join(",", @CNSBreakpoints) . "\n"; }
-		my $polishedAlignmentsRef = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSConservationAfterSplit, $minCNSLength);
-		my @polishedAlignments = @$polishedAlignmentsRef;
+		my @polishedAlignments = polishCNSAlignments(\@CNSBreakpoints, \@CNShits, $minCNSConservationAfterSplit, $minCNSLength);
 
 		for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
 			### Create a new sub-CNS
 			my $newSubCNSName = "$curCNS.$CNSBreakpoints[$curBreakpoint]";
 
-			## Build the CNS
-			my ($newAbsStart, $newAbsEnd);
-			if($CNSforLocus{$curCNS}{'Strand'} eq "+" ) {
-				$newAbsStart = $CNSforLocus{$curCNS}{'absStart'} + $CNSBreakpoints[$curBreakpoint];
-				$newAbsEnd = $CNSforLocus{$curCNS}{'absStart'} + $CNSBreakpoints[$curBreakpoint+1]-1;
-			} else {
-				$newAbsStart = $CNSforLocus{$curCNS}{'absEnd'} - $CNSBreakpoints[$curBreakpoint+1];
-				$newAbsEnd = $CNSforLocus{$curCNS}{'absEnd'} - $CNSBreakpoints[$curBreakpoint]-1;
-			}
-
 			$CNSforLocus{$newSubCNSName} = {
 				'Name' => $newSubCNSName,
 				'Start' => $CNSforLocus{$curCNS}{'Start'} + $CNSBreakpoints[$curBreakpoint],
-				'End' => $CNSforLocus{$curCNS}{'Start'} + $CNSBreakpoints[$curBreakpoint+1]-1,
-				'PositionInCompositeCNS' => $CNSBreakpoints[$curBreakpoint],				
+				'Length' => $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint] -1,
+				'PositionInCompositeCNS' => $CNSBreakpoints[$curBreakpoint],
 				'Locus' => $CNSforLocus{$curCNS}{'Locus'},
-				'Chromosome' => $CNSforLocus{$curCNS}{'Chromosome'},
-				'absStart' => $newAbsStart,
-				'absEnd' => $newAbsEnd,
 				'Strand' => $CNSforLocus{$curCNS}{'Strand'},
 				'NumberOfSpecies' => 0,
-				'NumberOfFamilySpecies' => 0,
 				'ConservationLevel' => $CNSforLocus{$curCNS}{'ConservationLevel'},
-				'ORF' => $CNSforLocus{$curCNS}{'ORF'},
-				'ORFDir' => $CNSforLocus{$curCNS}{'ORFDir'},
-				'omega' => $CNSforLocus{$curCNS}{'omega'},
 				'ancesteralSequence' => substr($CNSforLocus{$curCNS}{'ancesteralSequence'}, $CNSBreakpoints[$curBreakpoint], $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint]),
 				'referenceSequence' => substr($CNSforLocus{$curCNS}{'referenceSequence'}, $CNSBreakpoints[$curBreakpoint], $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint])
 			};
-			$cnsReferenceLength{$newSubCNSName} = $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint] ;
+			$cnsReferenceLength{$newSubCNSName} = $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint];
 
 			my $numberOfHitsReassigned=0;
 			## Reassign deep alignments
@@ -1150,10 +931,11 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 					my $startInTargetSequence = max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'});
 
 					my $newSubCNSTargetSequence = substr($curHit->{'TargetSequence'}, $startInTargetSequence,  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName}));
+
 					my $choppedSequence = substr($curHit->{'TargetSequence'},0, $startInTargetSequence);
 					my $numberOfGaps = $choppedSequence =~ tr/-//;
 
-					my $newTargetPosition = $curHit->{'TargetPosition'} + $startInTargetSequence - $numberOfGaps;
+					my $newTargetPosition = shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $startInTargetSequence, length($newSubCNSTargetSequence) );
 					
 					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } }, {
 							"ReferenceLocus" => $newSubCNSName,
@@ -1171,7 +953,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 			if($verbose) { print "PROGRESS: Sub CNS $newSubCNSName (Length:$cnsReferenceLength{$newSubCNSName}) has $numberOfHitsReassigned deep alignments.\n"; }
 			### If the new split CNS has little support, delete it
 			my $numberOfConservedBasesInCNS=0;
-			my $CNSLength = $CNSforLocus{$newSubCNSName}{'End'} - $CNSforLocus{$newSubCNSName}{'Start'};
+			my $CNSLength = $CNSforLocus{$newSubCNSName}{'Length'};
 			if($CNSforLocus{ $newSubCNSName}{'Start'} < 0) {   ### If it's upstream
 				my $startInPhyloPMap = $CNSforLocus{$newSubCNSName}{'Start'} + $upstreamLengthReference{$locusFullName};
 				foreach my $curBase ( @phyloPconservationMapUp[ ($startInPhyloPMap)..($startInPhyloPMap+ $CNSLength) ] )  { if($curBase>= $minPhyloPscore) { $numberOfConservedBasesInCNS++; } }
@@ -1203,10 +985,10 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
 		my @filteredAlignmentsForCNS;
 		foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment}}) {
-			if( $curAlignment->{'Length'} / ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'})  > $minCNSCoverageFinal) {
+			if( $curAlignment->{'Length'} / $CNSforLocus{$curCNS}{'Length'}  > $minCNSCoverageFinal) {
 				push @filteredAlignmentsForCNS, $curAlignment;
 			} else {
-				if($verbose) { print "PROGRESS: Removing hit of $curAlignment->{'TargetLocus'} to $curCNS because overlap is too low.\n"; }
+				if($verbose) { print "PROGRESS: Removing hit of $curAlignment->{'TargetLocus'} to $curCNS because overlap is too low ( Alignment: " . $curAlignment->{'Length'} . ". CNS: " . $CNSforLocus{$curCNS}{'Length'} . ").\n"; }
 			}
 		}
 		if(scalar @filteredAlignmentsForCNS > 0) {
@@ -1217,38 +999,17 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	}
 }
 
-### Filter CNSs that switch position (up to downstream)
 
-if(!$noPositionFilter) {
-	my $spToDelete;
-	foreach my $curCNS (keys %mapAlignmentDeepCNS) {
-		foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
-			$spToDelete = "";
-			foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment} } ) {
-				if(($CNSforLocus{$curCNS}{'Start'}<0) && ($curAlignment->{'TargetPosition'} >0)) {
-					$spToDelete = $curSpeciesAlignment;
-				}
-				if(($CNSforLocus{$curCNS}{'Start'}>0) && ($curAlignment->{'TargetPosition'} <0)) {
-					$spToDelete = $curSpeciesAlignment;
-				}
-				if($spToDelete ne "") {
-					if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Target position: " . $curAlignment->{'TargetPosition'} . ".\n"; }
-				}
-			}
-			if($spToDelete ne "") {
-				delete $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment};
-			}
-		}
-	}
-}
-
-##### Filter CNS that are too distant evolutionary without sufficient support
+##### Filter CNS that are too distant without sufficient support
 
 foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
-  my $numberOfDeepSpecies = scalar (keys %{ $mapAlignmentDeepCNS{$curCNS} });
-  my $numberOfSpecies = $numberOfDeepSpecies + $CNSforLocus{$curCNS}{'NumberOfFamilySpecies'};
+  my $numberOfSpecies = scalar (keys %{ $mapAlignmentDeepCNS{$curCNS} });
+
   $CNSforLocus{$curCNS}{'NumberOfSpecies'} = $numberOfSpecies;
+  
+  ### Handle paralogs
+  $speciesClassification{"Paralogs"} = $speciesClassification{$referenceSpecies};
 
   #### Now calculate conservation levels
   foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
@@ -1259,17 +1020,17 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
     	 	}
     	}
   }
-  if($verbose) { print "PROGRESS: Testing CNS $curCNS. $numberOfDeepSpecies species have the CNS. Conservation levels are (" . join(",",@CNSConservationLevel) .").\n"; }
+  if($verbose) { print "PROGRESS: Testing CNS $curCNS. $numberOfSpecies species have the CNS. Conservation levels are (" . join(",",@CNSConservationLevel) .").\n"; }
   	  
   # check for possible misalignments by making sure we are not skipping levels.
   	  
   foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-1)) {
    	  if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1)
-	  	  || $numberOfDeepSpecies < $minSpeciesPerConservationLevel[$levelToCheck]
+	  	  || $numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck]
 		  || $CNSConservationLevel[$levelToCheck] < $minSpeciesAtConservationLevel[$levelToCheck]) {
    	  	  if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for $curCNS at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
 
-  	  	  if($verbose && ($numberOfDeepSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) {
+  	  	  if($verbose && ($numberOfSpecies < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) {
 			print "PROGRESS: Number of species too low to support alignments at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n";
 		}
   	  	  ### Remove the misalignment
@@ -1278,7 +1039,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 		  	  if($classification[$levelToCheck] ne $referenceClassification[$levelToCheck]) {
   	  	  	  	if($verbose) { print "PROGRESS: Removing alignment of $curSpecies for $curCNS.\n"; }
 				delete ($mapAlignmentDeepCNS{$curCNS}{$curSpecies});
-				$numberOfDeepSpecies--;
+				$numberOfSpecies--;
 			  }
 		  }
   	  }
@@ -1316,8 +1077,8 @@ if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writin
 open(my $finalCNSFile, ">$finalCNSFileName");
 open (my $finalMapFile, ">$finalMapFileName");
 foreach my $curCNS (keys %CNSforLocus) {
-	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Chromosome'},$CNSforLocus{$curCNS}{'Strand'},$CNSforLocus{$curCNS}{'absStart'},$CNSforLocus{$curCNS}{'absEnd'},$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'End'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ORF'},$CNSforLocus{$curCNS}{'ORFDir'},$CNSforLocus{$curCNS}{'omega'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
-  	print $finalMapFile "$curCNS,$referenceGenomeSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},+,0," . ($CNSforLocus{$curCNS}{'End'} - $CNSforLocus{$curCNS}{'Start'}) . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
+	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Length'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
+  	print $finalMapFile "$curCNS,$referenceSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'}," . $CNSforLocus{$curCNS}{'Strand'} . ",0," . $CNSforLocus{$curCNS}{'Length'} . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
 } 
 close($finalCNSFile);
  
@@ -1325,6 +1086,9 @@ close($finalCNSFile);
 foreach my $curCNS (keys %CNSforLocus) {
 	foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {	  	   	  	  
 		foreach my $curHit ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} } ) {
+			my $hitSpecies = $curSpecies;
+			if($curSpecies eq "Paralogs") { $curSpecies = $referenceSpecies; }
+			
 			print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetPosition'},$curHit->{'TargetStrand'},$curHit->{'ReferenceRelativePosition'},$curHit->{'Length'},$curHit->{'TargetSequence'}\n";
 		}
     }
@@ -1527,36 +1291,86 @@ sub getMAFQuality {
 	return $quality;
 }
 
-#####################################################################
-### Run the sequence alignment without terminal output
-sub quietAlign {
-	my ($toalign) = @_;
-	######### Muscle alignment
-	my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1, 'max_iter' => 2, 'diags' => 1));
-	my $alignment = $aligner->align($toalign);
 
-	return $alignment;
+###########################################################################################
+################### Coordinate manipulation routines
+
+######### Load bed file into a coordiante array
+
+sub bedFileToCoordinateList {
+	my ($bedFile, $coordinateShift) = @_;
+	my @coordinateList;
+
+	while(<$bedFile>) {
+		my ($locus,$start,$end,$id,$pvalue) = split;
+		push(@coordinateList, { 'Start' => $start + $coordinateShift,
+								'Length' => $end - $start,
+								'pValue' => $pvalue})
+	}
+	return @coordinateList;
 }
 
+########################################
+###### Merge coordinates
+###### Accepts a reference to an array of sorted coordiantes, pvalue cutoff, the window to merge coordiantes, minimum region length and a constant number to add to the coordinate
 
-################### Load MAF file and return a FASTA array in reference coordinates
+sub mergeCoordinates {
+	my ($coordianteListRef, $pvalueCutoff, $mergeLength, $minRegionLength) = @_;
+	
+	my @coordinateList = @$coordianteListRef;
+	my @mergedCoordinates;
+	my $currentRegionStart= $coordinateList[0]->{'Start'};
+	my $currentRegionLength= $coordinateList[0]->{'Length'};
+	my $currentRegionPvalue= $coordinateList[0]->{'pValue'};
+
+	foreach my $coord (@coordinateList) {
+
+		if($coord->{'pValue'}>=$pvalueCutoff) {
+			if($currentRegionLength + $currentRegionStart + $mergeLength >= $coord->{'Start'}) {  ## if this is closer than mergeLength to the current region, merge it
+				$currentRegionLength = $coord->{'Start'} - $currentRegionStart +1;
+				$currentRegionPvalue += $coord->{'pValue'};
+			} else { ## if not, start a new region
+				if($currentRegionLength >= $minRegionLength) {  ### if it is long enough, log it
+					push(@mergedCoordinates, { 'Start' => $currentRegionStart,
+											'Length' => $currentRegionLength,
+											'pValue' => $currentRegionPvalue/$currentRegionLength})
+				}
+				$currentRegionStart = $coord->{'Start'};
+				$currentRegionLength=1;
+				$currentRegionPvalue= $coord->{'pValue'};
+			}
+		}
+	}
+	return (@mergedCoordinates);
+}
+
+#################################################################################################################
+#
+# Convert a list of coordiantes with pvalues (from bed file) to an map array of pvalues
+#
+
+sub coordinateListToMap {
+	my ($coordianteListRef, $mapLength, $coordinateShift) = @_;
+	my @coordianteList = @$coordianteListRef;
+	my @map = (0) x $mapLength;
+	foreach my $coord (@coordianteList) {
+		$map[$coord->{'Start'} + $coordinateShift] = ($coord->{'pValue'} + 0);
+	}
+	return @map;
+}
+#################################################################################################################
+# Load MAF file and return a FASTA array in reference coordinates
 # alignmentLengthFilter is a number 0-1 indicating what is the minimum overlap (in percent) of the alignment to the reference species
-#  to consider as a real alignment.
+#  to be consider as a real alignment.
 #
 
 sub MAFtoFASTA {
-	(my $mafFileName, my $seqLengthRef, my $targetSeqLength, my $inFASTARef,my $mapRef, my $dir, my $alignmentLengthFilter) = @_;
+	(my $mafFileName, my $maxReferenceSequenceLengthHash, my $maxTargetSequenceLength, my $inFASTARef,my $mapRef, my $upOrDownStreamReference, my $upOrDownStreamTarget, my $alignmentLengthFilter) = @_;
 	
-	my $refseqname;
-	my $reflocus;
-	my $refstart = -1;
-	my $reflen;
-	my @insertions;
 	my @cleanAlignments;
 
 	my $maffile = Bio::AlignIO->new(-file => $mafFileName,
 					-format => "maf") || die ("");
-
 
 	# First clean up the MAF file. If we have multiple alignments to the same place, pick just the best one
 	my $overlappingSource;
@@ -1584,124 +1398,115 @@ sub MAFtoFASTA {
 	}
 
 	for my $aln (@cleanAlignments) {
-	   $reflocus="";
-	   $refseqname="";
-	   foreach my $alignseq ($aln->each_seq() ) {
-	   	   my $locus = $alignseq->id();
-	   	   my $species = geneToSpecies($locus);
-		   my $genome = geneToGenome($locus);
-	   	   my $newspseq = $alignseq->seq();
-		   my $originalspseq = $newspseq;
+		my @individualAlignments = $aln->each_seq();
+		my $referenceAlignment = $individualAlignments[0];
+		my $targetAlignment = $individualAlignments[1];
 
-#		   $originalspseq =~ tr/-//;  ## remove any gaps from the original seq
+		my $referenceLocus = $referenceAlignment->id();
+		my $referenceSequence = $referenceAlignment->seq();
+		my $referenceRelativePosition = $referenceAlignment->start()-1;
+	    my $referenceSpecies;
+	   	if(isGeneName($referenceLocus)) { $referenceSpecies = geneToSpecies($referenceLocus); }
 
-		   my $strand = $alignseq->strand();
-		   ## Translate strand codes
-		   if($strand == -1) {
-		   		$strand = "-";
-		   } else {
-			    $strand = "+";
-		   }
-	   	   
-		   if($refseqname eq "") {
-			 $refseqname = $species;
-			 $reflocus=$locus;
-		   }
+		my $targetLocus = $targetAlignment->id();
+		my $targetSequence = $targetAlignment->seq();
+		my $targetRelativePosition = $targetAlignment->start();		
+		my $targetSpecies = geneToSpecies($targetLocus);
+		my $targetGenome = geneToGenome($targetLocus);
+		my $targetFamily = $genomeToFamily{$targetGenome};
+		my %targetAbsCoordinates = getGeneCoordinates($conservatoryDir,$targetFamily, $targetGenome, $targetLocus);
+		my $targetStrand = $targetAbsCoordinates{'Strand'};
+		
+		my $targetAlignmentStrand = $targetAlignment->strand();
+		if($targetAlignmentStrand == -1 ) { $targetAlignmentStrand = "-"; } else {$targetAlignmentStrand = "+"; }
 
-		   if(not defined $inFASTARef->{$reflocus}{$species}) {
-		       $inFASTARef->{$reflocus}{$species} = "N" x $seqLengthRef->{$reflocus};
-		   }
+		my $referenceSequenceLength = length($referenceSequence);
+		my $targetSequenceNoGaps = $targetSequence;
+		$targetSequenceNoGaps =~ s/-//g;
+		my $targetSequenceInReferenceCoordinates = $targetSequence;
+		my @insertionInReference = findAll($referenceSequence, "-");
+	   	foreach ( @insertionInReference ) { substr($targetSequenceInReferenceCoordinates, $_,1) = "Z"; }
+		$targetSequenceInReferenceCoordinates =~ s/Z//g;   ## Remove the insertions from the target and reference sequences to keep the frame of reference as the reference sequence only
 
-		   if($locus eq $reflocus) {
-	   		 # Identify all insertions from the sequence to keep the seq in reference coordinates		 
-		   	 @insertions = findAll($newspseq, "-");
-		   }
-
-   		   #now remove the insertions
-   		   foreach ( @insertions ) {
-   		   	   substr($newspseq, $_,1) = "Z";
-   		   }
-   		   
-		   my $untrimmedSequence = $newspseq;
-		   $newspseq =~ s/Z//g;
-		   
-		   if($refstart == -1) {
-		   		$refstart = $alignseq->start()-1;
-				$reflen = length($newspseq);
-		   } else {
-
-			
-			#### Log the alignment, if it is at the right length
-			if($verbose && $alignmentLengthFilter >0 &&  $reflen < $alignmentLengthFilter*$seqLengthRef->{$reflocus} && $reflen < $minAlignmentLengthToTestOverlap) {
-				print "PROGRESS: Rejected alignment to $reflocus because length is too short ($reflen). CNS length: " . $seqLengthRef->{$reflocus} . "\n";
-			} 
-			if($alignmentLengthFilter==0 || $reflen >= $alignmentLengthFilter*$seqLengthRef->{$reflocus} ) {
-				my $refRelative, my $targetRelative;
-				$refRelative = $refstart;
-				if($dir eq "U") {
-					$targetRelative = $alignseq->start() -1 - $targetSeqLength;
-				} else {
-					$targetRelative = $alignseq->start() - 1;
-				}
-				if(not defined $mapRef->{$reflocus}{$species}) {
-					$mapRef->{$reflocus}{$species} = [];
-				}
-				my $targetSequence = $newspseq;
-				$targetSequence =~ s/N//g;
-
-				push @{ $mapRef->{$reflocus}{$species} }, {
-					"ReferenceLocus" => $reflocus,
-					"ReferenceRelativePosition" => $refRelative,
-					"ReferenceUpDown" => $dir,
-					"Length" => $reflen,
-					"TargetGenome" => $genome,
-					"TargetStrand" => $strand,
-					"TargetSpecies" => $species,
-					"TargetLocus" => $locus,
-					"TargetPosition" => $targetRelative,
-					"TargetSequence" => $originalspseq,
-					"UntrimmedSequence" => $untrimmedSequence}; 
-				}
-		   		# Check if we are overriding sequences
-		   		my $curspseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
-		   		if( $curspseq eq  "N" x length($curspseq)) {
-			   		my $tmpseq = $inFASTARef->{$reflocus}{$species};
-		   	   		substr($tmpseq, $refstart, $reflen) = $newspseq;
-			   		$inFASTARef->{$reflocus}{$species} = $tmpseq;
-		   		} else {
-				# if there was something there, merge the sequences
-				if(substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen) ne $newspseq) {
-					
-					my $curseq = substr($inFASTARef->{$reflocus}{$species}, $refstart, $reflen);
-					my $refseq = substr($inFASTARef->{$reflocus}{$refseqname}, $refstart, $reflen);
-					my $conseq;
-					for my $curchr (0 .. $reflen) {
-						my $selectedMergedNuc;
-						# if one is a gap, pick the nucleotide
-						if(substr($curseq, $curchr,1) eq "N") {
-							$selectedMergedNuc = substr($newspseq,$curchr,1);
-						} elsif (substr($newspseq, $curchr,1) eq "N") {
-							$selectedMergedNuc = substr($curseq,$curchr,1);
-						} else { #if we have a conflict - pick the one that is similar to the reference (### Pick the first one)
-							if((substr($curseq,$curchr,1) eq substr($refseq,$curchr,1)) || (substr($curseq,$curchr,1) eq substr($refseq,$curchr,1))) {
-								$selectedMergedNuc = substr($curseq,$curchr,1);
-							} else {
-								$selectedMergedNuc = substr($curseq,$curchr,1); # or if not, the default is the first one.
-							}
-						}
-						$conseq .= $selectedMergedNuc;
-					}
-					my $tmpseq = $inFASTARef->{$reflocus}{$species};
-					substr($tmpseq, $refstart, $reflen) = $conseq;
-			   		$inFASTARef->{$reflocus}{$species} = $tmpseq;
-				}
-			}
+		if($targetAlignmentStrand eq "-") {
+			$targetRelativePosition += length($targetSequenceNoGaps) -1; 
 		}
-	   }
-	   $refstart = -1;
+
+		if( $upOrDownStreamTarget eq "U") {
+			$targetRelativePosition -= $maxTargetSequenceLength +1;
+		}
+		if($upOrDownStreamReference eq "U") {
+			$referenceRelativePosition -= $maxReferenceSequenceLengthHash->{$referenceLocus} +1 ;
+		}
+
+
+		## Now log the strand on which the alignment is located.
+		
+		if($targetAlignmentStrand eq $targetStrand && $targetStrand eq "-" ) {  ## If the alignment is on the - strand and the gene is on the -, than it should be on the +
+			$targetStrand = "+";
+		} elsif($targetAlignmentStrand ne $targetStrand) {  ## If it is on different - ie - the gene is on the - and alignment on the plus, or vice versa, it is on the - strand
+			$targetStrand = "-";
+		}
+		if($targetSpecies eq $referenceSpecies) { $targetSpecies = "Paralogs"; }
+
+	   	if(not defined $inFASTARef->{$referenceLocus}{$referenceSpecies}) {
+	    	$inFASTARef->{$referenceLocus}{$referenceSpecies} = 'N' x $maxReferenceSequenceLengthHash->{$referenceLocus};
+	   	}
+	   	if(not defined $inFASTARef->{$referenceLocus}{$targetSpecies}) {
+		   	$inFASTARef->{$referenceLocus}{$targetSpecies} = 'N' x $maxReferenceSequenceLengthHash->{$referenceLocus};
+	   	}
+
+		if($verbose && $alignmentLengthFilter >0 &&  $referenceSequenceLength < $alignmentLengthFilter*$maxReferenceSequenceLengthHash->{$referenceLocus} && $referenceSequenceLength < $minAlignmentLengthToTestOverlap) {
+			print "PROGRESS: Rejected alignment to $referenceLocus because length is too short ($referenceSequenceLength). CNS length: " . $maxReferenceSequenceLengthHash->{$referenceLocus} . "\n";
+		} 
+		#### Log the alignment, if it is at the right length
+
+		if($alignmentLengthFilter==0 || $referenceSequenceLength >= $alignmentLengthFilter*$maxReferenceSequenceLengthHash->{$referenceLocus} ) {
+
+			if(not defined $mapRef->{$referenceLocus}{$targetSpecies}) {
+				$mapRef->{$referenceLocus}{$targetSpecies} = [];
+			}
+
+			push @{ $mapRef->{$referenceLocus}{$targetSpecies} }, {
+				'ReferenceLocus' => $referenceLocus,
+				'ReferenceRelativePosition' => $referenceRelativePosition,
+				'ReferenceUpDown' => $upOrDownStreamReference,
+				'Length' => length($targetSequenceNoGaps),
+				'TargetGenome' => $targetGenome,
+				'TargetStrand' => $targetStrand,
+				'TargetSpecies' => $targetSpecies,
+				'TargetLocus' => $targetLocus,
+				'TargetPosition' => $targetRelativePosition,
+				'TargetSequence' => $targetSequence,
+				'ReferenceSequence' => $referenceSequence
+			};
+		}
+
+	   	# Merge the aligned sequences
+		$inFASTARef->{$referenceLocus}{$targetSpecies} = mergeFastaSequences($inFASTARef->{$referenceLocus}{$targetSpecies}, $targetSequenceInReferenceCoordinates, $referenceAlignment->start()-1);
 	}
 }
 
+sub mergeFastaSequences {
+	my ($originalSequence, $sequenceToAdd, $startCoordinate) = @_;
+
+	$sequenceToAdd =~ s/-/N/g;
+
+	my $mergedSequence = $originalSequence;
+
+	# If we are not overriding anything, just place the sequence in the right place
+
+	if(substr($originalSequence, $startCoordinate, length($sequenceToAdd)) eq ('N' x length($sequenceToAdd) ) ) {
+		substr($mergedSequence, $startCoordinate, length($sequenceToAdd)) = $sequenceToAdd;
+	} elsif( substr($originalSequence, $startCoordinate, length($sequenceToAdd)) ne $sequenceToAdd ) { ### if there is already sequence there (that is different than the one we want to add), merge the sequences
+		for my $curNucleotidePos ($startCoordinate .. ($startCoordinate + length($sequenceToAdd)-1)) {
+			if(substr($mergedSequence, $curNucleotidePos, 1) eq "N") { ## If we have no data, put the merged one
+				substr($mergedSequence, $curNucleotidePos,1) = substr($sequenceToAdd, $curNucleotidePos - $startCoordinate,1);
+			}
+		}
+	}
+	return $mergedSequence;
+}
 #####################################################################
 ##### Pick best ortholog
 

@@ -1,0 +1,144 @@
+#################33
+##### Check for ORF in reconstructed CNS
+#		my ($ancesteralORFLength, $ancesteralORF, $ancesteralORFStand) = getLongestORF($ancesteralCNS);
+#		my $randomORFLength;
+#		if($minORFLength eq "auto") {
+#			$randomORFLength = getRandomORFLength($ancesteralCNS);
+#		} else {
+#			$randomORFLength = $minORFLength;
+#		}
+#		my $ancesteralCNSORF = Bio::LocatableSeq->new(-seq => $ancesteralORF,
+#						    	  					  -id => "Reconstructed",
+#						    	  					  -start => 1,
+#						    	  					  -end => $ancesteralORFLength);	
+#		
+#		if($ancesteralORFLength > $randomORFLength) {	### If there is a potential ORF, mark it and calc KaKs rate
+#			if($verbose) { print "PROGRESS: $CNSName: Detected ORF ($ancesteralORFLength/$randomORFLength,$ancesteralORFStand):$ancesteralORF.\n"; }
+#			$CNSforLocus{$CNSName}{'ORF'}= $ancesteralORFLength;
+#			$CNSforLocus{$CNSName}{'ORFDir'}= $ancesteralORFStand;			
+#			
+#			### Determine KaKs
+#			### First, assemble all ORFs
+#			if(!$skipKaKs) {
+#				my %cnsORFs;
+#				my @cnsPeptides;
+#				$cnsORFs{'Reconstructed'} = $ancesteralCNSORF;
+#				my $peptide = dropAsterixFromProtein($ancesteralCNSORF->translate);
+#				push @cnsPeptides, $peptide;
+#
+#				foreach my $curCNSSpecies (keys %cnsSeqs) {
+#					$cnsSeqs{$curCNSSpecies} =~ s/-//g;
+#					$cnsSeqs{$curCNSSpecies} =~ s/X/N/g;
+#					if(length($cnsSeqs{$curCNSSpecies})>0) {
+#						my ($curLongestORFLength, $curLongestORF, $curLongestORFStand) = getLongestORF($cnsSeqs{$curCNSSpecies},$ancesteralORFStand);
+#						my $curCNSORF = Bio::LocatableSeq->new(-seq => $curLongestORF,
+#												    	   	-id => $curCNSSpecies,
+#												    	   	-start => 1,
+#												    	   	-end => $curLongestORFLength);
+#						$cnsORFs{$curCNSSpecies} = $curCNSORF;
+#						$peptide = dropAsterixFromProtein($curCNSORF->translate);
+#						push @cnsPeptides, $peptide;
+#					}
+#				}
+			
+#				my $stats = Bio::Align::DNAStatistics->new();
+#				my $cnsAlignmentPep = quietAlign(\@cnsPeptides);
+#				### Filter low identity alignments
+#				my @filteredCNSPeptides;		
+#
+#				my @seqCharAncesteral = split //, $cnsAlignmentPep->get_seq_by_id('Reconstructed')->seq();
+#
+#				foreach my $seq ($cnsAlignmentPep->each_seq) {
+#					if($seq->id() ne "Reconstructed") {
+#						my $pairwiseAln = $cnsAlignmentPep->select_noncont_by_name('Reconstructed', $seq->id());
+#						my $nogappairwiseAln = $pairwiseAln->remove_gaps();
+#
+#						if($nogappairwiseAln->length > 4 && $pairwiseAln->percentage_identity > 60)  { ### If too divergent, do not include sequence
+#							my $nogapSeq = $seq->seq();
+#							$nogapSeq =~ s/-//g;
+#							$seq->seq($nogapSeq);
+#							push @filteredCNSPeptides, $seq;
+#						}
+#					}
+#				}
+			
+#				if(@filteredCNSPeptides >1) {
+			
+#					my $filteredCNSAlignmentPep = quietAlign(\@filteredCNSPeptides);
+#					my $cnsDNAAlignment = Bio::Align::Utilities::aa_to_dna_aln($filteredCNSAlignmentPep, \%cnsORFs);
+#					### See that we have something to align, and its not too divergent or not divergent enough
+#					my $nogapalignment = $cnsDNAAlignment->remove_gaps();
+#					if($nogapalignment->length > 0) {
+#						## Calculate KsKa
+#						if($verbose) { printf "PROGRESS: $CNSName: Calculating KaKs..."; }
+
+#						my $kaks_factory = Bio::Tools::Run::Phylo::PAML::Codeml->new(
+#							-verbose => 0,
+#							-tree => $tree,
+#							-branchlengths => 1,
+#							-params => { 'runmode' => -2,
+#                      				'seqtype' => 1});
+
+#                		$kaks_factory->alignment($cnsDNAAlignment);
+#                		my ($rc, $parser) = $kaks_factory->run();
+#                		$kaks_factory->cleanup();
+#			
+#                		if($rc>0) {
+#                			my $results = $parser->next_result;
+#                			my $MLmatrix = $results->get_MLmatrix();
+#                			my @outseq = $results->get_seqs();
+#                			my $ancesteralPos= -1;
+#                			for(my $i=0; $i< @outseq; $i++) {
+#	                			if($outseq[$i]->display_id eq "Reconstructed") {
+#                					$ancesteralPos = $i;
+#                				}
+#                			}
+#                			my $totalOmega=0;
+#                			my $totaldN=0;
+#                			my $totaldS=0;
+#                			for(my $i =0; $i< @outseq; $i++) {
+#	                			if($outseq[$i]->display_id() ne "Reconstructed") {
+#                					$totalOmega = $totalOmega + $MLmatrix->[$ancesteralPos]->[$i]->{'omega'};
+#									$totaldN = $totaldN + $MLmatrix->[$ancesteralPos]->[$i]->{'dN'};
+#									$totaldS = $totaldS + $MLmatrix->[$ancesteralPos]->[$i]->{'dS'};
+#                				}
+ #               			}
+#							my $meanOmega = $totalOmega / (@outseq - 1);
+#							my $meandS = $totaldS / (@outseq - 1);
+#							my $meandN = $totaldN / (@outseq - 1);
+#							### See if we have enough substitutions for omega to make sense
+#							### dS > 0.01
+#							if($meandS > 0.01) {
+#	                			$CNSforLocus{$CNSName}{'omega'} = $meanOmega;
+ #							} else {
+#		          				$CNSforLocus{$CNSName}{'omega'} = -1;   ## dS is too low
+#							}
+#
+#                			if($verbose) { printf("... Omega: %.2f (dS: %.2f;dN: %.2f)\n", $CNSforLocus{$CNSName}{'omega'}, $meandS, $meandN); }	
+#                		} else {
+#							if($verbose) { print "..cannot determine(" . $kaks_factory->error_string() .")\n";}
+#                			$CNSforLocus{$CNSName}{'omega'} = -99;  ## Error
+#                		}
+#					} else {
+#                		$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
+#					}
+#            	} else {
+#            		$CNSforLocus{$CNSName}{'omega'} = -2; ### Cannot find consistent ORF
+#            	} 
+#			} else {
+#				$CNSforLocus{$CNSName}{'omega'} = -4; ### No KaKs value calculated
+#			}
+#		} else {
+#				$CNSforLocus{$CNSName}{'ORF'}=0;
+#				$CNSforLocus{$CNSName}{'omega'} = -3;  ### There is no ORF
+#		}
+
+#####################################################################
+### Run the sequence alignment without terminal output
+#sub quietAlign {
+#	my ($toalign) = @_;
+#	########## Muscle alignment
+#	my $aligner = Bio::Tools::Run::Alignment::Muscle->new(('quiet' => 1, 'max_iter' => 2, 'diags' => 1));
+#	my $alignment = $aligner->align($toalign);
+#	return $alignment;
+#}

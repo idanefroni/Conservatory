@@ -383,7 +383,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
 						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
 						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
-						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
+#						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
 					}
 				}
 			}
@@ -511,6 +511,7 @@ foreach my $anchorCNS (keys %superGroups) {
 	}
 	### Merge overlapping position
 	my @mergedPositions = mergeOverlappingTargetsForCNS(\@positionConcats);
+#	my @mergedPositions = @positionConcats;
 
 	## Assemble sequences
 
@@ -834,8 +835,10 @@ sub mergeOverlappingTargetsForCNS {
 	my @positionMapMerged;
 
 	my @positionMapSortedByGene = sort { $a->{'TargetLocus'} cmp $b->{'TargetLocus'} } @positionMap;
+	push @positionMapSortedByGene, { ' TargetLocus' => 'EndPosition' };
 	my $curLocus = $positionMapSortedByGene[0]->{'TargetLocus'};
 	my @positionMapForLocus=();
+	print "Curlocus: $curLocus.\n";
 
 	foreach my $curPositionForGene (@positionMapSortedByGene) {
 		if($curPositionForGene->{'TargetLocus'} eq $curLocus) {
@@ -846,7 +849,7 @@ sub mergeOverlappingTargetsForCNS {
 
 			my $curPosition = $positionMapSorted[0];
 			foreach my $nextPosition (@positionMapSorted) {
-				#print $curPosition->{'TargetLocus'} . ":" . $curPosition->{'TargetPosition'} . ":" . $curPosition->{'Length'} . " with " . $nextPosition->{'TargetPosition'} . ":" . $nextPosition->{'Length'} . "\n";
+				print $curPosition->{'TargetLocus'} . ":" . $curPosition->{'TargetPosition'} . ":" . $curPosition->{'Length'} . " with " . $nextPosition->{'TargetPosition'} . ":" . $nextPosition->{'Length'} . "\n";
 				if(overlap($curPosition->{'TargetPosition'},$curPosition->{'TargetPosition'} + $curPosition->{'Length'},
 					   	$nextPosition->{'TargetPosition'}, $nextPosition->{'TargetPosition'} + $nextPosition->{'Length'})) {
 					### merge the two positions
@@ -867,6 +870,7 @@ sub mergeOverlappingTargetsForCNS {
 			push @positionMapMerged, $curPosition;
 			$curLocus = $curPositionForGene->{'TargetLocus'};
 			@positionMapForLocus = ($curPositionForGene);
+			print "Curlocus: $curLocus. $curPositionForGene\n";
 		}
 	}
 

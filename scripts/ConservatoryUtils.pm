@@ -10,7 +10,7 @@ use Bio::SimpleAlign;
 use Exporter;
 
 our @ISA= qw( Exporter );
-our @EXPORT = qw (overlap geneToSpecies geneToGenome fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness);
+our @EXPORT = qw (overlap geneToSpecies geneToGenome isGeneName fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates);
 
 
 ##############################################################################
@@ -23,6 +23,8 @@ my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported b
 my $minIdentityToKeepBreakpoint	=50;
 my $minSpeciesToKeepBreakpoint	= 5;
 my $minSequenceContentInAlignment = 0.5; 
+
+my %footprintDatabase;   ### Database of foot prints for the getGeneCoordiantes function
 
 
 #############################################################################
@@ -45,6 +47,15 @@ sub overlap {
 ##################################################################################
 # Returns species or genome name from the name of a gene
 
+sub isGeneName { 
+	my ($geneNameToCheck) = @_;
+	if($geneNameToCheck =~ /^.+-.+-.+$/) {
+		return 1;
+	} else {
+#		print " --------- $geneNameToCheck is not a gene name.\n";
+		return 0;
+	}
+}
 sub geneToSpecies {
 	(my $geneName) = @_;
 	my @geneNameComponents = split '-', $geneName;
@@ -233,6 +244,7 @@ sub getRandomORFLength {
 
 sub getCNSbreakpoints {
 	my ($CNSLength, $hitsRef, $minCNSLength) = @_;
+
 	my @hits = @$hitsRef;
 	my @CNSCoverage = (0) x $CNSLength;
 	my @CNSCoverageSmooth = (0) x $CNSLength;
@@ -259,7 +271,7 @@ sub getCNSbreakpoints {
 
 	### Change point detection. Our data is generally well behaved with few outliers (if any)
 	### we do a simple change detection algorithm. 
-	#####  1. Calculate delta between points. 2. Find the stdev of the delta. 3. Identify places where delta is high (3xstdev),
+	#####  1. Calculate delta between points. 2. Find the stdev of the delta. 3. Identify places where delta is high 
 	#####    Don't break if creating too small of a fragment (<$minCNSLength)
 
 	#### Calculate the dX
@@ -286,14 +298,14 @@ sub getCNSbreakpoints {
 	}
 	# Add start and end points
 	@breakpoints = (0, @breakpoints , $CNSLength);
-	return \@breakpoints;
+	return @breakpoints;
 }
 
 
 ########################################################################################################################################
 ########
 ########  Given a set of hits and breakpoints, split the hits so they will be aligned to the breakpoints as closely as possible
-########   filter out cuts that have very low identity
+########   filter out leftover hits that have low identity
 ########
 ########
 
@@ -318,11 +330,13 @@ sub polishCNSAlignments {
 
 			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'} )) {
 
+
 				### distance from breakpoint start
 				my $positionInCNS = max($breakpoints[$curBreakpoint], $curHit->{'ReferenceRelativePosition'});
-
 				my $subCNSSeqStart = max(0,$breakpoints[$curBreakpoint] - $start);
 				my $subCNSTargetSeq = substr($curHit->{'TargetSequence'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'ReferenceRelativePosition'}, $curHit->{'Length'} - $breakpoints[$curBreakpoint]+$start ));
+				my $newReferenceSeq = substr($curHit->{'ReferenceSequence'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'ReferenceRelativePosition'}, $curHit->{'Length'} - $breakpoints[$curBreakpoint]+$start ));
+
 				### remove trailing and leading gaps
 				$subCNSTargetSeq =~ s/(-+)$//;
  			    my $numOfTrailingGaps = length($1);
@@ -333,26 +347,22 @@ sub polishCNSAlignments {
 				if(!defined $numOfLeadingGaps) { $numOfLeadingGaps = 0; }
 				if(!defined $numOfTrailingGaps) { $numOfTrailingGaps = 0; }
 
-				my $numOfInternalGaps = $subCNSTargetSeq =~ tr/-//;
-				if($numOfInternalGaps eq "") { $numOfInternalGaps = 0; }
+				my $numOfInternalGaps = ($subCNSTargetSeq =~ tr/-//) + 0;
 
 				### Only include the hit of the coverage is sufficient and if its not too gappy
 				if((length($subCNSTargetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSConservationAfterSplit && length($subCNSTargetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subCNSTargetSeq)) < $minSequenceContentInAlignment ) {
-					my $newTargetPosition;  ## update the target coordinates - byt that depends if the hit is on the plus or minus strand
-
-#					if($curHit->{'TargetStrand'} eq "+" ) {
-#						$newTargetPosition = $curHit->{'TargetPosition'} + $breakpoints[$curBreakpoint] + $numOfLeadingGaps;
-#					} else {
-#						$newTargetPosition = $curHit->{'TargetPosition'} + $curHit->{'Length'} - length($subCNSTargetSeq) - $subCNSSeqStart;
-#					}
-					if($curHit->{'TargetStrand'} eq "+" ) {
-						$newTargetPosition = $curHit->{'TargetPosition'} + $subCNSSeqStart + $numOfLeadingGaps;
-					} else {
-						$newTargetPosition = $curHit->{'TargetPosition'} + $curHit->{'Length'} - length($subCNSTargetSeq) - $subCNSSeqStart;
+					
+					## update the target coordinates
+					my $newTargetPosition= shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $subCNSSeqStart, length($subCNSTargetSeq));
+					if($curHit->{'TargetSpecies'} eq "Slycopersicum") {
+						print "DEBUG: " . $curHit->{'TargetLocus'} . ":" . $curHit->{'TargetPosition'} . ":" . $curHit->{'Length'} . ":" . $curHit->{'TargetSequence'} . "\n";
+						print "DEBUG: " . $breakpoints[$curBreakpoint] . ":" . $curHit->{'ReferenceRelativePosition'} . ":" . $curHit->{'ReferenceSequence'} . "\n";
+						print "DEBUG: positionInCNS: $positionInCNS subCNSSeqStart: $subCNSSeqStart newsubCNSTargetSet $subCNSTargetSeq\n";
+						print "DEBUG: newTarget: $newTargetPosition.\n";
 					}
 
 
-					my $alignedSeq = ('-' x ($positionInCNS-$breakpoints[$curBreakpoint]+$numOfLeadingGaps)) . $ subCNSTargetSeq;
+					my $alignedSeq = ('-' x ($positionInCNS-$breakpoints[$curBreakpoint]+$numOfLeadingGaps)) . $subCNSTargetSeq;
           			### pad end of alignments with gaps to make it equal length
 		          	$alignedSeq = $alignedSeq . ('-' x ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] - length($alignedSeq)));
           
@@ -372,6 +382,7 @@ sub polishCNSAlignments {
 							"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
 							"ReferenceLocus" => $curHit->{'ReferenceLocus'},
 							"TargetSequence" => $subCNSTargetSeq,
+							"ReferenceSequence" => $newReferenceSeq,
 							"ReferenceRelativePosition" => $positionInCNS+$numOfLeadingGaps,
 							"TargetPosition" => $newTargetPosition,
 							"Breakpoint" => $curBreakpoint
@@ -396,5 +407,114 @@ sub polishCNSAlignments {
 		}
 	}
 
-	return \@splitAndPolishedAlignmentsFiltered;
+	return @splitAndPolishedAlignmentsFiltered;
 }
+
+###################################################################################
+####
+#### returns the absolute coordinates for a gene in conservatory
+####  accepts the conservatorydirectory (to find the footprint files), family name, genome name and full gene name
+####
+####   returns a hash of values {Chromosome, Strand, Start, End}
+####
+
+### The function extract the values from the footprint file which it maintains in memory. The first time a gene is requested
+###  from a genome, the whole foot print file is read for that genome. This is to speed up access.
+
+sub getGeneCoordinates {
+	my ($conservatoryDir, $family, $genome, $gene) = @_;
+	
+	if(!defined $footprintDatabase{$genome}) { ### If we didn't see this genome before, load it to memory
+		my $footprintFileName = "$conservatoryDir/genomes/$family/$genome.footprint.gff3";
+		open (my $footprintFile, "<", $footprintFileName) || die ("ERROR: Cannot open footprint file $footprintFileName.\n");
+		while (my $line = <$footprintFile>){
+			chomp($line);
+			my @array = split /\t/, $line;
+			my %fields = split /[;=]/, $array[8];
+			my $footprintGeneName = $fields{'Name'};
+			$footprintDatabase{$genome}{$footprintGeneName}{'Strand'} = $array[6];
+			$footprintDatabase{$genome}{$footprintGeneName}{'Chromosome'} = $array[0];
+			$footprintDatabase{$genome}{$footprintGeneName}{'Start'} = $array[3];
+			$footprintDatabase{$genome}{$footprintGeneName}{'End'} = $array[4];			
+		}
+		close($footprintFile);
+	}
+
+	return %{ $footprintDatabase{$genome}{$gene} };
+}
+
+
+#######################################
+##### Translate a coordiante list of segments to from relative to absolute coordinates.
+##### Accepts a hash with "Start" value having the coordiante and "Length" having the length of the segment or an array of such hashes.
+
+sub translateRealtiveToAbsoluteCoordinates {
+	my ($CNSCoordinatesRef, $absGeneStart, $absGeneEnd, $strand) = @_;
+	my @absCoordinates;
+	my @relCoordiantes;
+	if(ref($CNSCoordinatesRef) eq "ARRAY") {
+		@relCoordiantes = @$CNSCoordinatesRef;
+	} elsif(ref($CNSCoordinatesRef) eq "HASH") {
+		@relCoordiantes = (%$CNSCoordinatesRef);
+	} else {
+		die "ERROR: translateRelativeToAbsoluteCoordiante accepts either a HASH or an array of HASHES.\n";
+	}
+
+	foreach my $coord (@relCoordiantes) {
+		my $absStart;
+		if($strand eq "+") {
+			if($coord->{'Start'} <0) { ## if it is upstream
+				$absStart = $absGeneStart + $coord->{'Start'};
+			} else {
+				$absStart = $absGeneEnd + $coord->{'Start'} -1;
+			}
+		} else {
+			if($coord->{'Start'} <0) { ## if it is upstream
+				$absStart = $absGeneEnd - $coord->{'Start'} - $coord->{'Length'} + 1 ;
+			} else {
+				$absStart = $absGeneStart - $coord->{'Start'} - $coord->{'Length'} + 1;
+			}
+		}
+		### Now copy the hash
+		my %absCoordiantesHash;
+		foreach my $curKey (keys %$coord) {
+			if($curKey eq "Start") { $absCoordiantesHash{'Start'} = $absStart; }
+			elsif ($curKey eq "Length") { $absCoordiantesHash{'Length'} = $coord->{'Length'} -1; }
+			else { $absCoordiantesHash{$curKey} = $coord->{$curKey}; }
+
+		}
+		push(@absCoordinates, \%absCoordiantesHash);
+	}
+	if(ref($CNSCoordinatesRef) eq "ARRAY") {
+		return @absCoordinates;
+	} elsif(ref($CNSCoordinatesRef) eq "HASH") {
+		return %{ $relCoordiantes[0] };
+	}
+}
+########################################################################
+##### Shift coordiantes
+
+sub shiftTargetCoordinate {
+	my ($currentCoordiante, $strand, $targetSequence, $referenceSequence, $shiftBy, $length) = @_;
+
+	my $untrimmedUpSequence = substr($referenceSequence, 0, $shiftBy);
+	my $untrimmedDownSequence = substr($referenceSequence, $shiftBy + $length);
+	my $hitUpstream = substr($targetSequence, 0, $shiftBy);
+	my $hitDownstream = substr($targetSequence, $shiftBy + $length);
+
+	my $upstreamInsertions = ($untrimmedUpSequence =~ tr/Z//) + 0;
+	my $downstreamInsertions = ($untrimmedDownSequence =~ tr/Z//) + 0;
+	my $upstreamGaps = ($hitUpstream =~ tr/-//) + 0;
+	my $downstreamGaps = ($hitDownstream =~ tr/-//) + 0;
+
+	my $newTargetPosition;
+
+	if($strand eq "+") {
+		$newTargetPosition = $currentCoordiante + $shiftBy + $upstreamInsertions - $upstreamGaps;
+	} else {
+		$newTargetPosition = $currentCoordiante - $shiftBy + $downstreamInsertions - $downstreamGaps;
+	}
+	return $newTargetPosition;	
+}
+
+1;
