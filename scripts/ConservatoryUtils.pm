@@ -10,7 +10,7 @@ use Bio::SimpleAlign;
 use Exporter;
 
 our @ISA= qw( Exporter );
-our @EXPORT = qw (overlap geneToSpecies geneToGenome isGeneName fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates);
+our @EXPORT = qw (overlap isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase);
 
 
 ##############################################################################
@@ -24,7 +24,7 @@ my $minIdentityToKeepBreakpoint	=50;
 my $minSpeciesToKeepBreakpoint	= 5;
 my $minSequenceContentInAlignment = 0.5; 
 
-my %footprintDatabase;   ### Database of foot prints for the getGeneCoordiantes function
+my %footprintDatabase;   ### Database of footprints for the getGeneCoordiantes function
 
 
 #############################################################################
@@ -52,10 +52,10 @@ sub isGeneName {
 	if($geneNameToCheck =~ /^.+-.+-.+$/) {
 		return 1;
 	} else {
-#		print " --------- $geneNameToCheck is not a gene name.\n";
 		return 0;
 	}
 }
+
 sub geneToSpecies {
 	(my $geneName) = @_;
 	my @geneNameComponents = split '-', $geneName;
@@ -66,6 +66,12 @@ sub geneToGenome {
 	(my $geneName) = @_;
 	my @geneNameComponents = split '-', $geneName;
 	return $geneNameComponents[1];
+}
+
+sub geneToLocus { ### accepts full gene name. returns just the locus
+	(my $geneName) = @_;
+	my @geneNameComponents = split '-', $geneName;
+	return $geneNameComponents[2];
 }
 
 ###################################################################################
@@ -354,13 +360,6 @@ sub polishCNSAlignments {
 					
 					## update the target coordinates
 					my $newTargetPosition= shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $subCNSSeqStart, length($subCNSTargetSeq));
-					if($curHit->{'TargetSpecies'} eq "Slycopersicum") {
-						print "DEBUG: " . $curHit->{'TargetLocus'} . ":" . $curHit->{'TargetPosition'} . ":" . $curHit->{'Length'} . ":" . $curHit->{'TargetSequence'} . "\n";
-						print "DEBUG: " . $breakpoints[$curBreakpoint] . ":" . $curHit->{'ReferenceRelativePosition'} . ":" . $curHit->{'ReferenceSequence'} . "\n";
-						print "DEBUG: positionInCNS: $positionInCNS subCNSSeqStart: $subCNSSeqStart newsubCNSTargetSet $subCNSTargetSeq\n";
-						print "DEBUG: newTarget: $newTargetPosition.\n";
-					}
-
 
 					my $alignedSeq = ('-' x ($positionInCNS-$breakpoints[$curBreakpoint]+$numOfLeadingGaps)) . $subCNSTargetSeq;
           			### pad end of alignments with gaps to make it equal length
@@ -439,30 +438,38 @@ sub getGeneCoordinates {
 		}
 		close($footprintFile);
 	}
-
+	if(! defined $footprintDatabase{$genome}{$gene} ) { die "ERROR: Cannot find gene $gene in genome $genome.\n"; }
 	return %{ $footprintDatabase{$genome}{$gene} };
 }
 
+###################################################################################
+#### clearGeneCooordinateDatabase
+#####
+#### The gene coordinate (footprint) cache can get quite big. This function removes it from memory.
+####
+sub clearGeneCooordinateDatabase {
+	undef %footprintDatabase;
+}
 
 #######################################
 ##### Translate a coordiante list of segments to from relative to absolute coordinates.
 ##### Accepts a hash with "Start" value having the coordiante and "Length" having the length of the segment or an array of such hashes.
 
 sub translateRealtiveToAbsoluteCoordinates {
-	my ($CNSCoordinatesRef, $absGeneStart, $absGeneEnd, $strand) = @_;
+	my ($CNSCoordinatesRef, $absGeneStart, $absGeneEnd, $geneStrand, $segementStrand) = @_;
 	my @absCoordinates;
 	my @relCoordiantes;
 	if(ref($CNSCoordinatesRef) eq "ARRAY") {
 		@relCoordiantes = @$CNSCoordinatesRef;
 	} elsif(ref($CNSCoordinatesRef) eq "HASH") {
-		@relCoordiantes = (%$CNSCoordinatesRef);
+		@relCoordiantes = ($CNSCoordinatesRef);
 	} else {
 		die "ERROR: translateRelativeToAbsoluteCoordiante accepts either a HASH or an array of HASHES.\n";
 	}
 
 	foreach my $coord (@relCoordiantes) {
 		my $absStart;
-		if($strand eq "+") {
+		if($geneStrand eq "+") {
 			if($coord->{'Start'} <0) { ## if it is upstream
 				$absStart = $absGeneStart + $coord->{'Start'};
 			} else {
@@ -473,6 +480,14 @@ sub translateRealtiveToAbsoluteCoordinates {
 				$absStart = $absGeneEnd - $coord->{'Start'} - $coord->{'Length'} + 1 ;
 			} else {
 				$absStart = $absGeneStart - $coord->{'Start'} - $coord->{'Length'} + 1;
+			}
+		}
+		
+		if($segementStrand eq "-") {
+			if($geneStrand eq "+") {
+				$absStart -= $coord->{'Length'};
+			} else {
+				$absStart += $coord->{'Length'};
 			}
 		}
 		### Now copy the hash
@@ -488,7 +503,7 @@ sub translateRealtiveToAbsoluteCoordinates {
 	if(ref($CNSCoordinatesRef) eq "ARRAY") {
 		return @absCoordinates;
 	} elsif(ref($CNSCoordinatesRef) eq "HASH") {
-		return %{ $relCoordiantes[0] };
+		return %{ $absCoordinates[0] };
 	}
 }
 ########################################################################

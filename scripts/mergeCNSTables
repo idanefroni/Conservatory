@@ -115,6 +115,7 @@ if ($verbose) { print "END: Loading genome database.\n"; }
 
 my $positionLineCount = (qx(wc -l $mapFileName))[0];
 chomp ($positionLineCount);
+$positionLineCount =~ s/ .*//;
 my $curPos=1;
 
 ########## Load position table to memory
@@ -126,40 +127,50 @@ while(<$CNSPositionFile>) {
 	
 	## Only if non-filtered CNS
 	if(!defined $positionTable{$CNSID}) {
-		$positionTable{$CNSID} = {
-					'CNSID' => $CNSID,
-					'Positions' => () };
+		$positionTable{$CNSID} = ();
 	}
 
-	push( @{ $positionTable{$CNSID}{'Positions'} } , {
+	### Get absolute coordiantes for gene
+	my %geneCoordinates = getGeneCoordinates($conservatoryDir, $speciesToFamily{$targetSpecies},  geneToGenome($targetLocus), $targetLocus);
+	my %relativeCoordinate = ('Start' => $targetRelativePosition, 'Length' => $length);
+	my %absGeneCoord = translateRealtiveToAbsoluteCoordinates( \%relativeCoordinate, $geneCoordinates{'Start'}, $geneCoordinates{'End'}, $geneCoordinates{'Strand'}, $targetStrand );
+
+	push( @{ $positionTable{$CNSID} } , {
+				'CNSID' => $CNSID,
 				'TargetSpecies' => $targetSpecies,
 				'TargetLocus' => $targetLocus,
 				'TargetPosition' => $targetRelativePosition,
 				'TargetStrand' => $targetStrand,
 				'ReferenceRelativePosition' => $referenceRelativePosition,
 				'Length' => $length,
-				'TargetSequence' => $targetSequence} );		
+				'TargetSequence' => $targetSequence,
+				'AbsChromosome' => $geneCoordinates{'Chromosome'},
+				'GeneStrand' => $geneCoordinates{'Strand'},
+				'AbsStart' => $absGeneCoord{'Start'} } );
 }
 close($CNSPositionFile);
 if($verbose) { print "\n"; };
 
-### Start merging CNSs. First read and merge all CNSs in the family
+### We don't need the gene coordinate cache anymore
+clearGeneCooordinateDatabase();
 
-open (my $CNSInputFile,"sort -t',' -k1,1 -k3,3 -k5,5n $CNSFileName |") ||  die "ERROR: Cannot find CNS file $CNSFileName.\n";
+### Start merging CNSs. First read all CNSs
+
+open (my $CNSInputFile,"<",$CNSFileName) ||  die "ERROR: Cannot find CNS file $CNSFileName.\n";
 $curPos=1;
 my $CNSLineCount= (qx(wc -l $CNSFileName))[0];
 chomp($CNSLineCount);
-my $lastCNS ="";
-my %CNSTable;
+$CNSLineCount =~ s/ .*//;
+
 while(<$CNSInputFile>) {
-	if($verbose) { print "PROGRESS: Merging family CNS... " . $curPos++ . "/$CNSLineCount. Merged $CNSMerged.\r" };
+	if($verbose) { print "PROGRESS: Reading CNS... " . $curPos++ . "/$CNSLineCount.\r" };
 	chomp;
-	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/;
+	my ($referenceGenome, $CNSID, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/;
 
 	if(!defined $positionTable{$CNSID} ) { next; }
 	
 	my $regulatorySeqPart;
-	if($relStart<0) {
+	if($start<0) {
 		$regulatorySeqPart = "Upstream";
 	} else {
 		$regulatorySeqPart = "Downstream";
@@ -167,166 +178,180 @@ while(<$CNSInputFile>) {
 	$CNSTable{$CNSID} = {
 				'ReferenceGenome' => $referenceGenome,
 				'CNSID' => $CNSID,
-				'Chromosome' => $chromosome,
-				'Strand' => $strand,
-				'Start' => $start,	
-				'End' => $end,
 				'Locus' => $locus,
-				'RelStart' => $relStart,
-				'RelEnd' => $relEnd,
+				'Start' => $start,
+				'Length' => $length,
+				'End' => $start + $length,
 				'Level' => $level,
 				'SupportingSpecies' => $supportingSpecies,
-				'ORFLength' => $orfLength,
-				'ORFDir' => $orfDir,
-				'Omega' => $omega,
 				'AncesteralSeq' => $ancesteralSeq,
 				'RegulatorySeqPart' => $regulatorySeqPart
 	};
-	
-	if($lastCNS eq "") {
-		$lastCNS = $CNSID;
-	} else {
-		### If this CNS overlap with last, pick one gene to associate it with (or merge)
-		###
-		my $CNSToDelete= "";
-		if($CNSTable{$lastCNS}{'ReferenceGenome'} eq $referenceGenome && 
-			$CNSTable{$lastCNS}{'Chromosome'} eq $chromosome && 
-			overlap($CNSTable{$lastCNS}{'Start'},$CNSTable{$lastCNS}{'End'}, $start, $end)) {
 
-				## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
-				if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
+	### Fill in the absolute coordiantes for the CNS
+	for my $curHit (@ { $positionTable{$CNSID} }) {
+		if($curHit->{'TargetSpecies'} eq $genomeToSpecies{$referenceGenome} && geneToLocus($curHit->{'TargetLocus'}) eq $locus) {
+			$CNSTable{$CNSID}{'Chromosome'} = $curHit->{'AbsChromosome'};
+			$CNSTable{$CNSID}{'AbsStart'} = $curHit->{'AbsStart'};
+			$CNSTable{$CNSID}{'AbsEnd'} = $curHit->{'AbsStart'} + $curHit->{'Length'};
+			$CNSTable{$CNSID}{'Strand'} = $curHit->{'TargetStrand'};
+			$CNSTable{$CNSID}{'GeneStrand'} = $curHit->{'GeneStrand'};				
+		}
+	}
+#	print "CNS: $CNSID: " . $CNSTable{$CNSID}{'Chromosome'} . ":" . $CNSTable{$CNSID}{'Strand'} . ":" . $CNSTable{$CNSID}{'AbsStart'} . "\n";
+}
+
+if($verbose) { print "\n";}
+close($CNSInputFile);
+
+### Sort the CNS table
+if($verbose) { print "PROGRESS: Sorting CNS Table...";}
+my @CNSList = keys %CNSTable;
+@CNSList = sort { $CNSTable{$a}{'ReferenceGenome'} cmp  $CNSTable{$b}{'ReferenceGenome'} ||
+				  $CNSTable{$a}{'Chromosome'} cmp  $CNSTable{$b}{'Chromosome'} ||
+				  $CNSTable{$a}{'AbsStart'} <=>  $CNSTable{$b}{'AbsStart'} } @CNSList;
+
+if($verbose) { print "Done\n";}
+
+my $lastCNS = $CNSList[0];
+my $curPos =1;
+
+foreach my $CNSID (@CNSList[1..(scalar @CNSList)]) {
+	if($verbose) { print "PROGRESS: Merging family CNS... " . $curPos++ . "/" . (scalar @CNSList) . ". Merged $CNSMerged. Deleted $CNSDeleted.\r" };
+	if(!defined $CNSTable{$CNSID}) { next; }
+	### If this CNS overlap with last, pick one gene to associate it with (or merge)
+	###
+	my $CNSToDelete= "";
+
+	if($CNSTable{$lastCNS}{'ReferenceGenome'} eq $CNSTable{$CNSID}{'ReferenceGenome'} && 
+		$CNSTable{$lastCNS}{'Chromosome'} eq $CNSTable{$CNSID}{'Chromosome'} && 
+		overlap($CNSTable{$lastCNS}{'AbsStart'},$CNSTable{$lastCNS}{'AbsEnd'}, $CNSTable{$CNSID}{'AbsStart'},$CNSTable{$CNSID}{'AbsEnd'})) {
+
+			## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
+			if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
+				$CNSToDelete = $CNSID;
+				$CNSDeleted++;
+			} elsif($CNSTable{$CNSID}{'SupportingSpecies'} > $CNSTable{$lastCNS}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
+				$CNSToDelete = $lastCNS;
+				$CNSDeleted++;
+			} else {   ### If both CNSs have a similar number of supporting species, we have to decide:
+				### If the genes are same orientation and the CNS is in the same part of the regulatory sequence (Up/downstream)
+				###  then associate with the closest gene.
+				if( ($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $CNSTable{$CNSID}{'RegulatorySeqPart'}) && ($CNSTable{$CNSID}{'RegulatorySeqPart'} eq "Upstream") &&
+					($CNSTable{$lastCNS}{'GeneStrand'} eq $CNSTable{$CNSID}{'GeneStrand'})) {    #### If both upstream. delete the one further away
+					if($CNSTable{$CNSID}{'End'} > $CNSTable{$lastCNS}{'End'}) {
+						$CNSToDelete = $lastCNS;
+					}
+					else {
+						$CNSToDelete = $CNSID;
+					}
+					$CNSDeleted++;
+				} elsif(($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $CNSTable{$CNSID}{'RegulatorySeqPart'}) && ($CNSTable{$CNSID}{'RegulatorySeqPart'} eq "Downstream") &&
+						($CNSTable{$lastCNS}{'GeneStrand'} ne $CNSTable{$CNSID}{'GeneStrand'} )) {  ### If both downstream, delete the one further away
+						if($CNSTable{$CNSID}{'Start'} < $CNSTable{$lastCNS}{'Start'}) {
+							$CNSToDelete = $lastCNS;
+						} else {
+							$CNSToDelete = $CNSID;
+						}
+						$CNSDeleted++;
+				} elsif(($CNSTable{$lastCNS}{'RegulatorySeqPart'} ne $CNSTable{$CNSID}{'RegulatorySeqPart'})  &&
+						($CNSTable{$lastCNS}{'GeneStrand'} ne $CNSTable{$CNSID}{'GeneStrand'} )) {   ### If one is upsteam, one downstream on opposite strands, delete the downstream (we assume upstream more likely)
+						if($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq "Downstream") {
+							$CNSToDelete = $lastCNS;
+						} else {
+							$CNSToDelete = $CNSID;
+						}
+						$CNSDeleted++;
+				} elsif( $CNSTable{$lastCNS}{'RegulatorySeqPart'} eq "Merged" ) {   #### If CNS hits a CNS that was already merged, just delete it
 					$CNSToDelete = $CNSID;
 					$CNSDeleted++;
-				} elsif($CNSTable{$CNSID}{'SupportingSpecies'} > $CNSTable{$lastCNS}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
-					$CNSToDelete = $lastCNS;
-					$CNSDeleted++;
-				} else {   ### If both CNSs have a similar number of supporting species, we have to decide:
-						### If the genes are same orientation and the CNS is in the same part of the regulatory sequence (Up/downstream)
-						###  then associate with the closest gene.
-						if( ($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart) && ($regulatorySeqPart eq "Upstream") &&
-							($CNSTable{$lastCNS}{'Strand'} eq $strand)) {    #### If both upstream. delete the one further away
-							if($relEnd > $CNSTable{$lastCNS}{'RelEnd'}) {
-								$CNSToDelete = $lastCNS;
-							}
-							else {
-								$CNSToDelete = $CNSID;
-							}
-							$CNSDeleted++;
-					} elsif(($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $regulatorySeqPart) && ($regulatorySeqPart eq "Downstream") &&
-							($CNSTable{$lastCNS}{'Strand'} ne $strand)) {  ### If both downstream, delete the one further away
-							if($relStart < $CNSTable{$lastCNS}{'RelStart'}) {
-								$CNSToDelete = $lastCNS;
-							} else {
-								$CNSToDelete = $CNSID;
-							}
-							$CNSDeleted++;
-					} elsif(($CNSTable{$lastCNS}{'RegulatorySeqPart'} ne $regulatorySeqPart)  &&
-							($CNSTable{$lastCNS}{'Strand'} ne $strand)) {   ### If one is upsteam, one downstream on opposite strands, delete the downstream (we assume upstream more likely)
-							if($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq "Downstream") {
-								$CNSToDelete = $lastCNS;
-							} else {
-								$CNSToDelete = $CNSID;
-							}
-							$CNSDeleted++;
-					} elsif( $CNSTable{$lastCNS}{'RegulatorySeqPart'} eq "Merged" ) {   #### If CNS hits a CNS that was already merged, just delete it
-						$CNSToDelete = $CNSID;
-						$CNSDeleted++;
-					} else { ### If orientation is different then merge into one CNS.
-						my $diffInCNSPos = $start-$CNSTable{$lastCNS}{'Start'};
+				} else { ### If orientation is different then merge into one CNS.
+					my $diffInCNSPos = $CNSTable{$CNSID}{'Start'} -$CNSTable{$lastCNS}{'Start'};
+					### Pick the longest one
+					my $longestSeq;
+					my $longestSeqCNS;
+					if( ($CNSTable{$CNSID}{'End'} - $CNSTable{$CNSID}{'Start'}) > ($CNSTable{$lastCNS}{'End'} - $CNSTable{$lastCNS}{'Start'}) ) {
+					$longestSeq = $CNSTable{$CNSID}{'AncesteralSeq'};
+						$longestSeqCNS = $CNSID;
+					} else {
+						$longestSeq = $CNSTable{$lastCNS}{'AncesteralSeq'};
+						$longestSeqCNS = $lastCNS;
+					}
+					## Update all the positions
 
-						### Pick the longest one
-						my $longestSeq;
-						my $longestSeqCNS;
-						if( ($CNSTable{$CNSID}{'End'} - $CNSTable{$CNSID}{'Start'}) > ($CNSTable{$lastCNS}{'End'} - $CNSTable{$lastCNS}{'Start'}) ) {
-							$longestSeq = $CNSTable{$CNSID}{'AncesteralSeq'};
-							$longestSeqCNS = $CNSID;
-						} else {
-							$longestSeq = $CNSTable{$lastCNS}{'AncesteralSeq'};
-							$longestSeqCNS = $lastCNS;
-						}
-						## Update all the positions
-
-						### If there is a difference of the stands between the merged CNS, reverse complement the mismatched one
-						if($CNSTable{$CNSID}{'Strand'} ne $CNSTable{$lastCNS}{'Strand'} && $longestSeqCNS eq $CNSID) {
-
-							my @lastCNSMappings = @{ $positionTable{$lastCNS}{'Positions'} };
-							$positionTable{$lastCNS}{'Positions'} = ();
-
+					### If there is a difference of the stands between the merged CNS, reverse complement the mismatched one
+					if($CNSTable{$CNSID}{'GeneStrand'} ne $CNSTable{$lastCNS}{'GeneStrand'} && $longestSeqCNS eq $CNSID) {
+							my @lastCNSMappings = @{ $positionTable{$lastCNS} };
+						$positionTable{$lastCNS} = ();
 							foreach my $mapping (@lastCNSMappings) {
-								my $seq = $mapping->{'TargetSequence'};
-								$seq = reverse $seq;
-                                $seq =~ tr/ACGT/TGCA/;
-								$mapping->{'TargetSequence'} = $seq;
-								my %newmapping = %$mapping;
-								push( @{ $positionTable{$lastCNS}{'Positions'} }, \%newmapping);
-							}
-						}
-						
-						my @CNSMappings = @{ $positionTable{$CNSID}{'Positions'} };
-
-						foreach my $mapping (@CNSMappings) {
-
-							$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
-							# If we changed the direction, we should reverse the sequence
-							if($CNSTable{$CNSID}{'Strand'} ne $CNSTable{$lastCNS}{'Strand'} && $longestSeqCNS eq $lastCNS) {
-								my $seq = $mapping->{'TargetSequence'};
-								$seq = reverse $seq;
-                                $seq =~ tr/ACGT/TGCA/;
-								$mapping->{'TargetSequence'} = $seq;
-							}
+							my $seq = $mapping->{'TargetSequence'};
+							$seq = reverse $seq;
+                               $seq =~ tr/ACGT/TGCA/;
+							$mapping->{'TargetSequence'} = $seq;
 							my %newmapping = %$mapping;
-							push( @{ $positionTable{$lastCNS}{'Positions'} } , \%newmapping);
+							push( @{ $positionTable{$lastCNS} }, \%newmapping);
 						}
-
+					}
+					
+					my @CNSMappings = @{ $positionTable{$CNSID} };
+						foreach my $mapping (@CNSMappings) {
+							$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
+						# If we changed the direction, we should reverse the sequence
+						if($CNSTable{$CNSID}{'GeneStrand'} ne $CNSTable{$lastCNS}{'GeneStrand'} && $longestSeqCNS eq $lastCNS) {
+							my $seq = $mapping->{'TargetSequence'};
+							$seq = reverse $seq;
+                               $seq =~ tr/ACGT/TGCA/;
+							$mapping->{'TargetSequence'} = $seq;
+						}
+						my %newmapping = %$mapping;
+						push( @{ $positionTable{$lastCNS} } , \%newmapping);
+					}
 						### Merge CNS rel position
-						$CNSTable{$lastCNS}{'RegulatorySeqPart'}="Merged";
-						$CNSTable{$lastCNS}{'AncesteralSeq'} = $longestSeq;
-
+					$CNSTable{$lastCNS}{'RegulatorySeqPart'}="Merged";
+					$CNSTable{$lastCNS}{'AncesteralSeq'} = $longestSeq;
 						# and remove the old CNS
-						$CNSToDelete = $CNSID;
-						$CNSMerged++;
-				}
+					$CNSToDelete = $CNSID;
+					$CNSMerged++;
 			}
-		} else {
-			$lastCNS = $CNSID;
 		}
+	} else {
+		$lastCNS = $CNSID;
+	}
 
-		if($CNSToDelete ne "") {
-			### Delete the CNS. 
-			### One exception. If this is a deeply conserved CNS, maintain a link to the other genes.
-			if($CNSTable{$CNSToDelete}{'SupportingSpecies'} > $minSupportingSpeciesToKeepMultipleCNS) {
-				$CNSDeletedButMappingKept++;
-				my $CNSToCopyTo = $lastCNS;
-				if($CNSToDelete eq $lastCNS) { $CNSToCopyTo = $CNSID; }
-			
-				my @CNSMappingsToCopy = @{ $positionTable{$CNSToDelete}{'Positions'} };
-				my @CNSMappingsInTargetCNS = @{ $positionTable{$CNSToCopyTo}{'Positions'} };
-
+	if($CNSToDelete ne "") {
+		### Delete the CNS. 
+		### One exception. If this is a deeply conserved CNS, maintain a link to the other genes.
+		if($CNSTable{$CNSToDelete}{'SupportingSpecies'} > $minSupportingSpeciesToKeepMultipleCNS) {
+			$CNSDeletedButMappingKept++;
+			my $CNSToCopyTo = $lastCNS;
+			if($CNSToDelete eq $lastCNS) { $CNSToCopyTo = $CNSID; }
+		
+			my @CNSMappingsToCopy = @{ $positionTable{$CNSToDelete} };
+			my @CNSMappingsInTargetCNS = @{ $positionTable{$CNSToCopyTo} };
 				foreach my $mapping (@CNSMappingsToCopy) {
-					my %newmapping = %$mapping;
-					my $mappingAlreadyExists=0;
-					## Search to see that we don't already if we already have that mapping
-					foreach my $mappingInCNS (@CNSMappingsInTargetCNS) {
-						if($newmapping{'TargetLocus'} eq $mappingInCNS->{'TargetLocus'} && $newmapping{'TargetPosition'} eq $mappingInCNS->{'TargetPosition'}) {
-							$mappingAlreadyExists=1;
-							next;
-						}
-					}
-					if($mappingAlreadyExists) {
-						push( @{ $positionTable{$CNSToCopyTo}{'Positions'} } , \%newmapping );
+				my %newmapping = %$mapping;
+				my $mappingAlreadyExists=0;
+				## Search to see that we don't already if we already have that mapping
+				foreach my $mappingInCNS (@CNSMappingsInTargetCNS) {
+					if($newmapping{'TargetLocus'} eq $mappingInCNS->{'TargetLocus'} && $newmapping{'TargetPosition'} eq $mappingInCNS->{'TargetPosition'}) {
+						$mappingAlreadyExists=1;
+						next;
 					}
 				}
+				if($mappingAlreadyExists) {
+					push( @{ $positionTable{$CNSToCopyTo} } , \%newmapping );
+				}
 			}
-
-			delete $positionTable{$CNSToDelete};
-			delete $CNSTable{$CNSToDelete};
-			if($CNSToDelete eq $lastCNS) { $lastCNS=$CNSID; }
 		}
+		delete $positionTable{$CNSToDelete};
+		delete $CNSTable{$CNSToDelete};
+		if($CNSToDelete eq $lastCNS) { $lastCNS=$CNSID; }
 	}
 }
 
 close($CNSInputFile);
 if($verbose) { print "\n"; }
+
 
 #######################################################################################
 ###### Go to the deeper merge - merge across different references
@@ -339,20 +364,11 @@ $curPos=1;
 
 foreach my $curCNS (keys %positionTable) {
 	if($verbose) { print "PROGRESS: Building CNS Map..." . $curPos++. "/$totalToScreen\r"; };
-	foreach my $curHit (@{ $positionTable{$curCNS}{'Positions'} }) {
+	foreach my $curHit (@{ $positionTable{$curCNS} }) {
 		if(!defined $positionLocusMap{ $curHit->{'TargetLocus'} }) {
-			$positionLocusMap{ $curHit->{'TargetLocus'} } = {
-					'Positions' => () };
+			$positionLocusMap{ $curHit->{'TargetLocus'} } = ();
 		 }
-		 push( @{ $positionLocusMap{ $curHit->{'TargetLocus'} }{'Positions'} } , {
-				'TargetSpecies' => $curHit->{'TargetSpecies'},
-				'TargetLocus' => $curHit->{'TargetLocus'},
-				'TargetStrand' => $curHit->{'TargetStrand'},
-				'CNSID' => $curCNS,
-				'TargetPosition' => $curHit->{'TargetPosition'} ,
-				'ReferenceRelativePosition' => $curHit->{'ReferenceRelativePosition'},
-				'Length' => $curHit->{'Length'},
-				'TargetSequence' => $curHit->{'TargetSequence'} } );			
+		 push( @{ $positionLocusMap{ $curHit->{'TargetLocus'} } } , $curHit );			
 		}	
 }
 
@@ -371,8 +387,8 @@ foreach my $curLocus (keys %positionLocusMap) {
 	
 	if($verbose) { print "PROGRESS: Identifying deep CNS to merge..." . ($curPos++) . "/$totalToScreen.\r"; }
 	
-	foreach my $firstHit ( @{ $positionLocusMap{$curLocus}{'Positions'} } ) {
-		foreach my $secondHit ( @{ $positionLocusMap{$curLocus}{'Positions'} } ) {
+	foreach my $firstHit ( @{ $positionLocusMap{$curLocus} } ) {
+		foreach my $secondHit ( @{ $positionLocusMap{$curLocus} } ) {
 
 			if(($firstHit->{'CNSID'} ne $secondHit->{'CNSID'}) && ($CNSTable{ $firstHit->{'CNSID'} }{'ReferenceGenome'} ne $CNSTable{ $secondHit->{'CNSID'} }{'ReferenceGenome'}) &&
 			   ($CNSTable{ $firstHit->{'CNSID'} }{'RegulatorySeqPart'} eq $CNSTable{ $secondHit->{'CNSID'} }{'RegulatorySeqPart'}) ) {
@@ -383,7 +399,7 @@ foreach my $curLocus (keys %positionLocusMap) {
 					if(!defined $CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } ) {
 						$CNSToMergeMap{ $firstHit->{'CNSID'} }{ $secondHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
 						$CNSToMergeMap{ $secondHit->{'CNSID'} }{ $firstHit->{'CNSID'} }{ $firstHit->{'TargetSpecies'} } =1;
-#						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
+						print "Merge " . $firstHit->{'CNSID'} . " and " . $secondHit->{'CNSID'} . " because of " .  $firstHit->{'TargetSpecies'} . "\n";
 					}
 				}
 			}
@@ -391,6 +407,8 @@ foreach my $curLocus (keys %positionLocusMap) {
 	}
 }
 if($verbose) {print "\n";}
+
+
 
 my $deletedForLowSupport=0;
 
@@ -415,6 +433,7 @@ if($verbose) { print "PROGRESS: Removed $deletedForLowSupport CNS merge events f
 if($verbose) { print("PROGRESS: Releasing memory...\n");  }
 
 undef (%positionLocusMap);
+
 
 ### Convert Merge table to number of supporting species. Filter out CNS hits that have low identity scores following alignment to avoid merger of CNS that have diverged too far
 $totalToScreen = scalar keys %CNSToMergeMap;
@@ -504,14 +523,13 @@ foreach my $anchorCNS (keys %superGroups) {
 	my @positionConcats;
 
 	for my $curCNS (keys %CNSsInGroup) {
-		my @positions = @{ $positionTable{$curCNS}{'Positions'} };
+		my @positions = @{ $positionTable{$curCNS} };
 		for my $curPos (@positions) {
 			push @positionConcats, $curPos;
 		}
 	}
 	### Merge overlapping position
 	my @mergedPositions = mergeOverlappingTargetsForCNS(\@positionConcats);
-#	my @mergedPositions = @positionConcats;
 
 	## Assemble sequences
 
@@ -528,6 +546,7 @@ foreach my $anchorCNS (keys %superGroups) {
 		close($tmpOutputSuperCNSFastaFile);
 	}
 }
+
 
 ### Now align all the position files
 if(scalar (keys %superGroups) >0) {
@@ -593,22 +612,15 @@ foreach my $anchorCNS (keys %superGroups) {
 
 		$CNSTable{$CNSGroupName} = {
 				'ReferenceGenome' => "SuperCNS",
-				'CNSID' => $CNSGroupName,
 				'Chromosome' => "",
 				'Strand' => "",
-				'Start' => 0,	
-				'End' => $superCNSAlignment->length,
-				'Locus' => "",
-				'RelStart' => "",
-				'RelEnd' => "",
+				'AbsStart' => 0,	
+				'Length' => $superCNSAlignment->length,
 				'Level' => "",
 				'SupportingSpecies' => 0,
-				'ORFLength' => "",
-				'ORFDir' => "",
-				'Omega' => "",
 				'AncesteralSeq' => $superCNSAlignment->consensus_string(50),
 				'RegulatorySeqPart' => ""};
-		$positionTable{$CNSGroupName}{'Positions'} = ();
+		$positionTable{$CNSGroupName} = ();
 
 		### Map the alignments to the super CNS
 		foreach my $curCNSposition ($superCNSAlignment->each_seq) {
@@ -623,7 +635,9 @@ foreach my $anchorCNS (keys %superGroups) {
 			$sequence =~ s/^(-+)//;
 			$sequence =~ s/(-+)$//;
 
-			push ( @{ $positionTable{$CNSGroupName}{'Positions'} } , {
+			#### SIC!!! Calculate Absolute coordinates
+
+			push ( @{ $positionTable{$CNSGroupName} } , {
 				'TargetSpecies' => $targetSpecies,
 				'TargetLocus' => $targetLocus,
 				'TargetPosition' => $targetPosition,
@@ -660,7 +674,7 @@ my $overlappingPositionMerged=0;
 
 foreach my $curCNS (keys %CNSGroups) {
 	### See if we can split it
-	my @CNShits = @{ $positionTable{$curCNS}{'Positions'}};
+	my @CNShits = @{ $positionTable{$curCNS}};
 
 	my $CNSBreakpointsRef = getCNSbreakpoints($CNSTable{$curCNS}{'End'}, \@CNShits , $minCNSLength);
 	my @CNSBreakpoints = @$CNSBreakpointsRef;
@@ -679,22 +693,15 @@ foreach my $curCNS (keys %CNSGroups) {
 			$CNSTable{$newSubCNSName} = {
 				'ReferenceGenome' => "SuperCNS",
 				'CNSID' => $newSubCNSName,
-				'Chromosome' => "",
-				'Strand' => "",
 				'Start' => $CNSBreakpoints[$curBreakpoint],
-				'End' => $CNSBreakpoints[$curBreakpoint+1]-1,			
+				'Length' => $CNSBreakpoints[$curBreakpoint+1]- $CNSBreakpoints[$curBreakpoint],
 				'Locus' => $curCNS,
-				'RelStart' => "",
-				'RelEnd' => "",
 				'Level' => "",
 				'SupportingSpecies' => 0,
-				'ORFLength' => "",
-				'ORFDir' => "",
-				'Omega' => "",
 				'AncesteralSeq' =>"",
 				'RegulatorySeqPart' => ""};
 			
-			$positionTable{$newSubCNSName}{'Positions'} = ();
+			$positionTable{$newSubCNSName} = ();
 			$CNSGroups{$newSubCNSName} =1;
 
 			## Reassign deep alignments
@@ -703,7 +710,7 @@ foreach my $curCNS (keys %CNSGroups) {
 				if(overlap($CNSTable{$newSubCNSName}{'Start'}, $CNSTable{$newSubCNSName}{'End'},
 						   $curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'})>$minCNSCoverageAfterSplit) {
 
-					push @{ $positionTable{$newSubCNSName}{ 'Positions' } }, {
+					push @{ $positionTable{$newSubCNSName} }, {
 							'ReferenceLocus' => $newSubCNSName,
 							'ReferenceRelativePosition' => $curHit->{'ReferenceRelativePosition'} - $CNSTable{$newSubCNSName}{'Start'} ,
 							'ReferenceUpDown' => $curHit->{'ReferenceUpDown'},
@@ -725,10 +732,7 @@ foreach my $curCNS (keys %CNSGroups) {
 }
 
 
-### Reconstruct sequences of Super CNS and determine conservation level
-
-my $origConservatoryTree = $conservatoryTree->clone();
-
+#my $origConservatoryTree = $conservatoryTree->clone();
 ### Annotated Internal nodes
 #my $curNodeNumber=1;
 #my @nodes = $conservatoryTree->get_nodes();
@@ -738,7 +742,6 @@ my $origConservatoryTree = $conservatoryTree->clone();
 #		$curNodeNumber++;
 #	}
 #}
-
 #my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -format => 'newick');
 #$conservatoryTreeOutput->write_tree($conservatoryTree);
 
@@ -753,27 +756,20 @@ open (my $outputMapFile, ">$outputMapFileName") || die ("INTERNAL ERROR.\n");
 
 foreach my $curCNS (sort keys %CNSTable) {
 
-	if(defined $positionTable{$curCNS}{'Positions'} && $CNSTable{$curCNS}{'CNSID'} eq $curCNS) {  ### The second conditions is to verify that all the CNS in the position file are found in the CNS file.
+	if((defined $positionTable{$curCNS}) && defined ($CNSTable{$curCNS})) {  ### The second conditions is to verify that all the CNS in the position file are found in the CNS file.
 																								  ### This only occurs if we partial files in our input
-		if((scalar @{ $positionTable{$curCNS}{'Positions'} }) >0 ) {
+		if((scalar @{ $positionTable{$curCNS} }) >0 ) {
 			print $outputCNSFile join(",",
 					$CNSTable{$curCNS}{'ReferenceGenome'},
-					$CNSTable{$curCNS}{'CNSID'},
-					$CNSTable{$curCNS}{'Chromosome'},
-					$CNSTable{$curCNS}{'Strand'},
-					$CNSTable{$curCNS}{'Start'},	
-					$CNSTable{$curCNS}{'End'},
+					$curCNS,
 					$CNSTable{$curCNS}{'Locus'},
-					$CNSTable{$curCNS}{'RelStart'},
-					$CNSTable{$curCNS}{'RelEnd'},
+					$CNSTable{$curCNS}{'Start'},
+					$CNSTable{$curCNS}{'Length'},
 					$CNSTable{$curCNS}{'Level'},
 					$CNSTable{$curCNS}{'SupportingSpecies'},
-					$CNSTable{$curCNS}{'ORFLength'},
-					$CNSTable{$curCNS}{'ORFDir'},
-					$CNSTable{$curCNS}{'Omega'},
 					$CNSTable{$curCNS}{'AncesteralSeq'}) ."\n";
 	
-			foreach my $mapping (@{ $positionTable{$curCNS}{'Positions'} }) {
+			foreach my $mapping (@{ $positionTable{$curCNS}}) {
 				print $outputMapFile join(",",
 					$curCNS,
 					$mapping->{'TargetSpecies'},
@@ -782,7 +778,9 @@ foreach my $curCNS (sort keys %CNSTable) {
 					$mapping->{'TargetStrand'},					
 					$mapping->{'ReferenceRelativePosition'},
 					$mapping->{'Length'},
-					$mapping->{'TargetSequence'}) ."\n";		
+					$mapping->{'TargetSequence'},
+					$mapping->{'AbsChromosome'},
+					$mapping->{'AbsStart'} ) ."\n";		
 			}
 		}
 	}
@@ -838,7 +836,6 @@ sub mergeOverlappingTargetsForCNS {
 	push @positionMapSortedByGene, { ' TargetLocus' => 'EndPosition' };
 	my $curLocus = $positionMapSortedByGene[0]->{'TargetLocus'};
 	my @positionMapForLocus=();
-	print "Curlocus: $curLocus.\n";
 
 	foreach my $curPositionForGene (@positionMapSortedByGene) {
 		if($curPositionForGene->{'TargetLocus'} eq $curLocus) {
@@ -849,7 +846,7 @@ sub mergeOverlappingTargetsForCNS {
 
 			my $curPosition = $positionMapSorted[0];
 			foreach my $nextPosition (@positionMapSorted) {
-				print $curPosition->{'TargetLocus'} . ":" . $curPosition->{'TargetPosition'} . ":" . $curPosition->{'Length'} . " with " . $nextPosition->{'TargetPosition'} . ":" . $nextPosition->{'Length'} . "\n";
+#				print $curPosition->{'TargetLocus'} . ":" . $curPosition->{'TargetPosition'} . ":" . $curPosition->{'Length'} . " with " . $nextPosition->{'TargetPosition'} . ":" . $nextPosition->{'Length'} . "\n";
 				if(overlap($curPosition->{'TargetPosition'},$curPosition->{'TargetPosition'} + $curPosition->{'Length'},
 					   	$nextPosition->{'TargetPosition'}, $nextPosition->{'TargetPosition'} + $nextPosition->{'Length'})) {
 					### merge the two positions
@@ -870,7 +867,7 @@ sub mergeOverlappingTargetsForCNS {
 			push @positionMapMerged, $curPosition;
 			$curLocus = $curPositionForGene->{'TargetLocus'};
 			@positionMapForLocus = ($curPositionForGene);
-			print "Curlocus: $curLocus. $curPositionForGene\n";
+#			print "Curlocus: $curLocus. $curPositionForGene\n";
 		}
 	}
 

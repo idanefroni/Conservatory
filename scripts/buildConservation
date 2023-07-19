@@ -549,9 +549,9 @@ if(-s $finalFASTADownFileName > $EMPTY_FILE) {
 
 ##### translate the raw coordinates and output a bed file
 push(@rawUpstreamCoords, @rawDownstreamCoords);
-my @absRawCoords = translateRealtiveToAbsoluteCoordinates(\@rawUpstreamCoords, $refGeneStart, $refGeneEnd, $refGeneStrand);
+my @absRawCoords = translateRealtiveToAbsoluteCoordinates(\@rawUpstreamCoords, $refGeneStart, $refGeneEnd, $refGeneStrand,"+");
 
-my @absoluteCoordinates = translateRealtiveToAbsoluteCoordinates(\@CNSCoordinates, $refGeneStart, $refGeneEnd, $refGeneStrand);
+my @absoluteCoordinates = translateRealtiveToAbsoluteCoordinates(\@CNSCoordinates, $refGeneStart, $refGeneEnd, $refGeneStrand,"+");
 
 ### Now dump absolute coordinate
 
@@ -560,7 +560,6 @@ foreach my $coord (@absRawCoords) {
 	print $finalPhylopBedFile join("\t", ($refGeneChr, $coord->{'Start'}, ($coord->{'Start'} + $coord->{'Length'}+1),  $coord->{'pValue'}  )) . "\n";
 }
 close($finalPhylopBedFile);
-
 
 if($verbose) { print "PROGRESS: End conservation analysis for $locus.\n"; }
 
@@ -613,7 +612,7 @@ foreach my $coord (@CNSCoordinates) {
 			'Length' => $curCNSLength,
 			'Locus' => $locus,
 			'Chromosome' => $refGeneChr,
-			'Strand' => $refGeneStrand,
+			'Strand' => "+",
 			'NumberOfSpecies' => 0,
 			'ConservationLevel' => $referenceGenomeFamily};
 				
@@ -934,9 +933,8 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 
 					my $choppedSequence = substr($curHit->{'TargetSequence'},0, $startInTargetSequence);
 					my $numberOfGaps = $choppedSequence =~ tr/-//;
-
 					my $newTargetPosition = shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $startInTargetSequence, length($newSubCNSTargetSequence) );
-					
+				
 					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } }, {
 							"ReferenceLocus" => $newSubCNSName,
 							"ReferenceRelativePosition" => max( 0, $curHit->{'ReferenceRelativePosition'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
@@ -1078,7 +1076,7 @@ open(my $finalCNSFile, ">$finalCNSFileName");
 open (my $finalMapFile, ">$finalMapFileName");
 foreach my $curCNS (keys %CNSforLocus) {
 	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Length'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
-  	print $finalMapFile "$curCNS,$referenceSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'}," . $CNSforLocus{$curCNS}{'Strand'} . ",0," . $CNSforLocus{$curCNS}{'Length'} . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
+  	print $finalMapFile "$curCNS,$referenceSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},+,0," . $CNSforLocus{$curCNS}{'Length'} . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
 } 
 close($finalCNSFile);
  
@@ -1312,12 +1310,14 @@ sub bedFileToCoordinateList {
 
 ########################################
 ###### Merge coordinates
-###### Accepts a reference to an array of sorted coordiantes, pvalue cutoff, the window to merge coordiantes, minimum region length and a constant number to add to the coordinate
+###### Accepts a reference to an array of coordiantes, pvalue cutoff, the window to merge coordiantes, minimum region length and a constant number to add to the coordinate
 
 sub mergeCoordinates {
 	my ($coordianteListRef, $pvalueCutoff, $mergeLength, $minRegionLength) = @_;
 	
-	my @coordinateList = @$coordianteListRef;
+	### Sort the coordinate array
+	my @coordinateList = sort { $a->{'Start'} <=> $b->{'Start'} } @$coordianteListRef;
+
 	my @mergedCoordinates;
 	my $currentRegionStart= $coordinateList[0]->{'Start'};
 	my $currentRegionLength= $coordinateList[0]->{'Length'};
@@ -1341,6 +1341,13 @@ sub mergeCoordinates {
 			}
 		}
 	}
+
+	if($currentRegionLength >= $minRegionLength) {  ### if it is long enough, log it
+		push(@mergedCoordinates, { 'Start' => $currentRegionStart,
+ 								   'Length' => $currentRegionLength,
+									'pValue' => $currentRegionPvalue/$currentRegionLength})
+	}
+
 	return (@mergedCoordinates);
 }
 
@@ -1410,12 +1417,9 @@ sub MAFtoFASTA {
 
 		my $targetLocus = $targetAlignment->id();
 		my $targetSequence = $targetAlignment->seq();
-		my $targetRelativePosition = $targetAlignment->start();		
+		my $targetRelativePosition = $targetAlignment->start();	
 		my $targetSpecies = geneToSpecies($targetLocus);
 		my $targetGenome = geneToGenome($targetLocus);
-		my $targetFamily = $genomeToFamily{$targetGenome};
-		my %targetAbsCoordinates = getGeneCoordinates($conservatoryDir,$targetFamily, $targetGenome, $targetLocus);
-		my $targetStrand = $targetAbsCoordinates{'Strand'};
 		
 		my $targetAlignmentStrand = $targetAlignment->strand();
 		if($targetAlignmentStrand == -1 ) { $targetAlignmentStrand = "-"; } else {$targetAlignmentStrand = "+"; }
@@ -1428,7 +1432,7 @@ sub MAFtoFASTA {
 	   	foreach ( @insertionInReference ) { substr($targetSequenceInReferenceCoordinates, $_,1) = "Z"; }
 		$targetSequenceInReferenceCoordinates =~ s/Z//g;   ## Remove the insertions from the target and reference sequences to keep the frame of reference as the reference sequence only
 
-		if($targetAlignmentStrand eq "-") {
+		if($targetAlignmentStrand eq "-") {  ### Start coordinate should always be the start of the sequence
 			$targetRelativePosition += length($targetSequenceNoGaps) -1; 
 		}
 
@@ -1438,15 +1442,7 @@ sub MAFtoFASTA {
 		if($upOrDownStreamReference eq "U") {
 			$referenceRelativePosition -= $maxReferenceSequenceLengthHash->{$referenceLocus} +1 ;
 		}
-
-
-		## Now log the strand on which the alignment is located.
-		
-		if($targetAlignmentStrand eq $targetStrand && $targetStrand eq "-" ) {  ## If the alignment is on the - strand and the gene is on the -, than it should be on the +
-			$targetStrand = "+";
-		} elsif($targetAlignmentStrand ne $targetStrand) {  ## If it is on different - ie - the gene is on the - and alignment on the plus, or vice versa, it is on the - strand
-			$targetStrand = "-";
-		}
+	
 		if($targetSpecies eq $referenceSpecies) { $targetSpecies = "Paralogs"; }
 
 	   	if(not defined $inFASTARef->{$referenceLocus}{$referenceSpecies}) {
@@ -1473,7 +1469,7 @@ sub MAFtoFASTA {
 				'ReferenceUpDown' => $upOrDownStreamReference,
 				'Length' => length($targetSequenceNoGaps),
 				'TargetGenome' => $targetGenome,
-				'TargetStrand' => $targetStrand,
+				'TargetStrand' => $targetAlignmentStrand,
 				'TargetSpecies' => $targetSpecies,
 				'TargetLocus' => $targetLocus,
 				'TargetPosition' => $targetRelativePosition,
