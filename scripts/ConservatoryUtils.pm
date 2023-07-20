@@ -473,13 +473,15 @@ sub translateRealtiveToAbsoluteCoordinates {
 			if($coord->{'Start'} <0) { ## if it is upstream
 				$absStart = $absGeneStart + $coord->{'Start'};
 			} else {
-				$absStart = $absGeneEnd + $coord->{'Start'} -1;
+#				$absStart = $absGeneEnd + $coord->{'Start'} -1;
+				$absStart = $absGeneEnd + $coord->{'Start'};
 			}
 		} else {
 			if($coord->{'Start'} <0) { ## if it is upstream
 				$absStart = $absGeneEnd - $coord->{'Start'} - $coord->{'Length'} + 1 ;
 			} else {
-				$absStart = $absGeneStart - $coord->{'Start'} - $coord->{'Length'} + 1;
+#				$absStart = $absGeneStart - $coord->{'Start'} - $coord->{'Length'} + 1;
+				$absStart = $absGeneStart - $coord->{'Start'} - $coord->{'Length'};
 			}
 		}
 		
