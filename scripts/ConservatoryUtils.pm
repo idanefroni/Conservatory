@@ -3,7 +3,8 @@ package ConservatoryUtils;
 use POSIX;
 use strict;
 use warnings;
-use List::Util qw(min max uniq);
+use List::Util qw(min max);
+
 use Statistics::Basic qw(:all nofill);
 use Bio::SimpleAlign;
 
@@ -256,11 +257,11 @@ sub getCNSbreakpoints {
 	my @CNSCoverageSmooth = (0) x $CNSLength;
 
 	foreach my $curHit (@hits) {
-		my $start = $curHit->{'ReferenceRelativePosition'};
-		my $end = $start + $curHit->{'Length'};
+		my $start = $curHit->{'RRP'};
+		my $end = $start + $curHit->{'Len'};
 
 		foreach my $pos ($start..$end) {
-			my $curNucleotide = substr($curHit->{'TargetSequence'}, ($pos-$start),1);
+			my $curNucleotide = substr($curHit->{'Seq'}, ($pos-$start),1);
 			if($curNucleotide ne "-" && $curNucleotide ne "N") {
 				$CNSCoverage[$pos]++;
 			}
@@ -304,6 +305,7 @@ sub getCNSbreakpoints {
 	}
 	# Add start and end points
 	@breakpoints = (0, @breakpoints , $CNSLength);
+
 	return @breakpoints;
 }
 
@@ -328,20 +330,26 @@ sub polishCNSAlignments {
 	}
 
 	foreach my $curHit (@alignmentMap) {
-		my $start =  $curHit->{'ReferenceRelativePosition'};
-		my $end = $start + $curHit->{'Length'};
+		my $start =  $curHit->{'RRP'};
+		my $end = $start + $curHit->{'Len'};
 
 		for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
 			### if the hit overlaps the sub CNS
 
-			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'} )) {
+			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $curHit->{'RRP'}, $curHit->{'RRP'} + $curHit->{'Len'} )) {
 
 
 				### distance from breakpoint start
-				my $positionInCNS = max($breakpoints[$curBreakpoint], $curHit->{'ReferenceRelativePosition'});
+				my $positionInCNS = max($breakpoints[$curBreakpoint], $curHit->{'RRP'});
 				my $subCNSSeqStart = max(0,$breakpoints[$curBreakpoint] - $start);
-				my $subCNSTargetSeq = substr($curHit->{'TargetSequence'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'ReferenceRelativePosition'}, $curHit->{'Length'} - $breakpoints[$curBreakpoint]+$start ));
-				my $newReferenceSeq = substr($curHit->{'ReferenceSequence'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'ReferenceRelativePosition'}, $curHit->{'Length'} - $breakpoints[$curBreakpoint]+$start ));
+				my $subCNSTargetSeq = substr($curHit->{'Seq'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'RRP'}, $curHit->{'Len'} - $breakpoints[$curBreakpoint]+$start ));
+
+				my $referenceSequence = $curHit->{'Seq'}; 
+				my $newReferenceSeq = $subCNSTargetSeq;  ## Default value for reference sequence is the current sequence
+				if(defined $curHit->{'RefSeq'}) {
+					$referenceSequence = $curHit->{'RefSeq'};
+					$newReferenceSeq = substr($curHit->{'RefSeq'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'RRP'}, $curHit->{'Len'} - $breakpoints[$curBreakpoint]+$start ));
+				}
 
 				### remove trailing and leading gaps
 				$subCNSTargetSeq =~ s/(-+)$//;
@@ -359,7 +367,8 @@ sub polishCNSAlignments {
 				if((length($subCNSTargetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSConservationAfterSplit && length($subCNSTargetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subCNSTargetSeq)) < $minSequenceContentInAlignment ) {
 					
 					## update the target coordinates
-					my $newTargetPosition= shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $subCNSSeqStart, length($subCNSTargetSeq));
+					my $newTargetPosition= shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart, length($subCNSTargetSeq));
+					my $newAbsolutePosition = shiftTargetCoordinate($curHit->{'AbsPos'}, $curHit->{'GeneStrand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart, length($subCNSTargetSeq));
 
 					my $alignedSeq = ('-' x ($positionInCNS-$breakpoints[$curBreakpoint]+$numOfLeadingGaps)) . $subCNSTargetSeq;
           			### pad end of alignments with gaps to make it equal length
@@ -370,21 +379,25 @@ sub polishCNSAlignments {
 					my $seq = Bio::LocatableSeq->new(-seq => $alignedSeq,
 													 -start => 1,
 													 -end => length($alignedSeq),
-												     -id => $curHit->{'TargetLocus'}. $curHit->{'TargetPosition'});
+												     -id => $curHit->{'Locus'}. $curHit->{'Pos'});
 					$alignmentsForBreakpoints{$curBreakpoint}->add_seq($seq);
 
 					push (@splitAndPolishedAlignments, {
-							"TargetSpecies" => $curHit->{'TargetSpecies'},
-							"TargetLocus" => $curHit->{'TargetLocus'},
-							"TargetStrand" => $curHit->{'TargetStrand'},
-							"Length" => length($subCNSTargetSeq),
-							"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
-							"ReferenceLocus" => $curHit->{'ReferenceLocus'},
-							"TargetSequence" => $subCNSTargetSeq,
-							"ReferenceSequence" => $newReferenceSeq,
-							"ReferenceRelativePosition" => $positionInCNS+$numOfLeadingGaps,
-							"TargetPosition" => $newTargetPosition,
-							"Breakpoint" => $curBreakpoint
+							'Species' => $curHit->{'Species'},
+							'Locus' => $curHit->{'Locus'},
+							'Strand' => $curHit->{'Strand'},
+							'Len' => length($subCNSTargetSeq),
+							'RefUpDown' => $curHit->{'RefUpDown'},
+							'RefLocus' => $curHit->{'RefLocus'},
+							'Seq' => $subCNSTargetSeq,
+							'RefSeq' => $newReferenceSeq,
+							'RRP' => $positionInCNS+$numOfLeadingGaps,
+							'Pos' => $newTargetPosition,
+							'AbsChr' => $curHit->{'AbsChr'},
+							'AbsPos' => $newAbsolutePosition,
+							'GeneStrand' => $curHit->{'GeneStrand'},
+							'Name' => $curHit->{'Name'},
+							'Breakpoint' => $curBreakpoint
 					});
 				}
 			}
@@ -396,7 +409,6 @@ sub polishCNSAlignments {
 		if( $alignmentsForBreakpoints{$curBreakpoint}->percentage_identity() < $minIdentityToKeepBreakpoint ||  $alignmentsForBreakpoints{$curBreakpoint}->num_sequences < $minSpeciesToKeepBreakpoint ) {
 			$breakpointsToDelete{$curBreakpoint}=1;
 		}
-
 	}
 
 	my @splitAndPolishedAlignmentsFiltered;
@@ -432,7 +444,7 @@ sub getGeneCoordinates {
 			my %fields = split /[;=]/, $array[8];
 			my $footprintGeneName = $fields{'Name'};
 			$footprintDatabase{$genome}{$footprintGeneName}{'Strand'} = $array[6];
-			$footprintDatabase{$genome}{$footprintGeneName}{'Chromosome'} = $array[0];
+			$footprintDatabase{$genome}{$footprintGeneName}{'Chr'} = $array[0];
 			$footprintDatabase{$genome}{$footprintGeneName}{'Start'} = $array[3];
 			$footprintDatabase{$genome}{$footprintGeneName}{'End'} = $array[4];			
 		}
@@ -469,34 +481,39 @@ sub translateRealtiveToAbsoluteCoordinates {
 
 	foreach my $coord (@relCoordiantes) {
 		my $absStart;
+		my $start;
+		if(defined $coord->{'Pos'}) { $start = $coord->{'Pos'} }
+		elsif(defined $coord->{'Start'}) { $start = $coord->{'Start'}} 
+		else {
+			die "ERROR: No start or pos key in coordinate hash.\n";
+		}
+
 		if($geneStrand eq "+") {
-			if($coord->{'Start'} <0) { ## if it is upstream
-				$absStart = $absGeneStart + $coord->{'Start'};
+			if($start <0) { ## if it is upstream
+				$absStart = $absGeneStart + $start;
 			} else {
-#				$absStart = $absGeneEnd + $coord->{'Start'} -1;
-				$absStart = $absGeneEnd + $coord->{'Start'};
+				$absStart = $absGeneEnd + $start;
 			}
 		} else {
-			if($coord->{'Start'} <0) { ## if it is upstream
-				$absStart = $absGeneEnd - $coord->{'Start'} - $coord->{'Length'} + 1 ;
+			if($start <0) { ## if it is upstream
+				$absStart = $absGeneEnd - $start - $coord->{'Len'} + 1 ;
 			} else {
-#				$absStart = $absGeneStart - $coord->{'Start'} - $coord->{'Length'} + 1;
-				$absStart = $absGeneStart - $coord->{'Start'} - $coord->{'Length'};
+				$absStart = $absGeneStart - $start - $coord->{'Len'};
 			}
 		}
 		
 		if($segementStrand eq "-") {
 			if($geneStrand eq "+") {
-				$absStart -= $coord->{'Length'};
+				$absStart -= $coord->{'Len'};
 			} else {
-				$absStart += $coord->{'Length'};
+				$absStart += $coord->{'Len'};
 			}
 		}
 		### Now copy the hash
 		my %absCoordiantesHash;
 		foreach my $curKey (keys %$coord) {
 			if($curKey eq "Start") { $absCoordiantesHash{'Start'} = $absStart; }
-			elsif ($curKey eq "Length") { $absCoordiantesHash{'Length'} = $coord->{'Length'} -1; }
+			elsif ($curKey eq "Len") { $absCoordiantesHash{'Len'} = $coord->{'Len'} -1; }
 			else { $absCoordiantesHash{$curKey} = $coord->{$curKey}; }
 
 		}
@@ -512,25 +529,22 @@ sub translateRealtiveToAbsoluteCoordinates {
 ##### Shift coordiantes
 
 sub shiftTargetCoordinate {
-	my ($currentCoordiante, $strand, $targetSequence, $referenceSequence, $shiftBy, $length) = @_;
+	my ($currentCoordinate, $strand, $targetSequence, $referenceSequence, $shiftBy, $length) = @_;
 
 	my $untrimmedUpSequence = substr($referenceSequence, 0, $shiftBy);
-	my $untrimmedDownSequence = substr($referenceSequence, $shiftBy + $length);
 	my $hitUpstream = substr($targetSequence, 0, $shiftBy);
-	my $hitDownstream = substr($targetSequence, $shiftBy + $length);
 
 	my $upstreamInsertions = ($untrimmedUpSequence =~ tr/Z//) + 0;
-	my $downstreamInsertions = ($untrimmedDownSequence =~ tr/Z//) + 0;
 	my $upstreamGaps = ($hitUpstream =~ tr/-//) + 0;
-	my $downstreamGaps = ($hitDownstream =~ tr/-//) + 0;
 
 	my $newTargetPosition;
 
 	if($strand eq "+") {
-		$newTargetPosition = $currentCoordiante + $shiftBy + $upstreamInsertions - $upstreamGaps;
+		$newTargetPosition = $currentCoordinate + $shiftBy + $upstreamInsertions - $upstreamGaps;
 	} else {
-		$newTargetPosition = $currentCoordiante - $shiftBy + $downstreamInsertions - $downstreamGaps;
+		$newTargetPosition = $currentCoordinate - $shiftBy - $upstreamInsertions + $upstreamGaps;
 	}
+
 	return $newTargetPosition;	
 }
 

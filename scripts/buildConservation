@@ -3,7 +3,7 @@
 use POSIX;
 use strict;
 
-use Text::CSV;
+#use Text::CSV;
 use Data::Dumper qw(Dumper);
 use List::Util qw(min max sum);
 use List::MoreUtils qw(uniq firstidx);
@@ -298,7 +298,7 @@ if (! -e $outputCNSDir) { mkdir($outputCNSDir); }
 ### Extract the absolute coordinates of the locus
 
 my %referenceAbsoluteCoordiantes = getGeneCoordinates($conservatoryDir,$referenceGenomeFamily, $referenceGenome, $locusFullName);
-my $refGeneChr = $referenceAbsoluteCoordiantes{'Chromosome'};
+my $refGeneChr = $referenceAbsoluteCoordiantes{'Chr'};
 my $refGeneStart = $referenceAbsoluteCoordiantes{'Start'};
 my $refGeneEnd = $referenceAbsoluteCoordiantes{'End'};
 my $refGeneStrand= $referenceAbsoluteCoordiantes{'Strand'};
@@ -557,7 +557,7 @@ my @absoluteCoordinates = translateRealtiveToAbsoluteCoordinates(\@CNSCoordinate
 
 open(my $finalPhylopBedFile, ">", $finalPhylopBedFileName);
 foreach my $coord (@absRawCoords) {
-	print $finalPhylopBedFile join("\t", ($refGeneChr, $coord->{'Start'}, ($coord->{'Start'} + $coord->{'Length'}+1),  $coord->{'pValue'}  )) . "\n";
+	print $finalPhylopBedFile join("\t", ($refGeneChr, $coord->{'Start'}, ($coord->{'Start'} + $coord->{'Len'}+1),  $coord->{'pValue'}  )) . "\n";
 }
 close($finalPhylopBedFile);
 
@@ -601,7 +601,7 @@ foreach my $coord (@CNSCoordinates) {
 	my $cnsRelStart = $coord->{'Start'};
 	my $positionInReference = $cnsRelStart;
 
-	my $curCNSLength = $coord->{'Length'};
+	my $curCNSLength = $coord->{'Len'};
 	my $CNSName = "$locus.$cnsRelStart";
 	
 	if($verbose) { print("PROGRESS: Reconstructing $CNSName. Length: $curCNSLength.\n") }
@@ -609,9 +609,9 @@ foreach my $coord (@CNSCoordinates) {
 	$CNSforLocus{$CNSName} = {
 			'Name' => $CNSName,
 			'Start' => $positionInReference,
-			'Length' => $curCNSLength,
+			'Len' => $curCNSLength,
 			'Locus' => $locus,
-			'Chromosome' => $refGeneChr,
+			'Chr' => $refGeneChr,
 			'Strand' => "+",
 			'NumberOfSpecies' => 0,
 			'ConservationLevel' => $referenceGenomeFamily};
@@ -692,15 +692,15 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 	foreach my $curHit ( @{ $mapAlignmentFamily{$locusFullName}{$curSpecies} } ) {
 		## Find the CNS that overlaps this alignment
 		my ($start,$end);
-		if($curHit->{'ReferenceUpDown'} eq "U") {
-			$start = $curHit->{'ReferenceRelativePosition'};
+		if($curHit->{'RefUpDown'} eq "U") {
+			$start = $curHit->{'RRP'};
 		} else {
-			$start = $curHit->{'ReferenceRelativePosition'} + 1;
+			$start = $curHit->{'RRP'} + 1;
 		}
-		$end = $start + $curHit->{'Length'};
+		$end = $start + $curHit->{'Len'};
 		
 		foreach my $curCNS (keys %CNSforLocus) {
-			my $CNSLength = $CNSforLocus{$curCNS}{'Length'};
+			my $CNSLength = $CNSforLocus{$curCNS}{'Len'};
 
 			if (overlap($CNSforLocus{$curCNS}{'Start'}, $CNSforLocus{$curCNS}{'Start'} + $CNSLength,$start, $end)) {
 
@@ -709,21 +709,21 @@ foreach my $curSpecies (keys %{ $mapAlignmentFamily{$locusFullName} }) {
 				my $startInCNS = max(0, $start - $CNSforLocus{$curCNS}{'Start'});
 				my $endInCNS = min($CNSLength , $end - $CNSforLocus{$curCNS}{'Start'});
 
-				my $newTargetSeq = substr($curHit->{'TargetSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS);
-				my $newReferenceSeq = substr($curHit->{'ReferenceSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS);
-				my $newTargetPosition = shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $startCNSInAlignment, $endInCNS - $startInCNS );
+				my $newTargetSeq = substr($curHit->{'Seq'}, $startCNSInAlignment, $endInCNS - $startInCNS);
+				my $newReferenceSeq = substr($curHit->{'RefSeq'}, $startCNSInAlignment, $endInCNS - $startInCNS);
+				my $newTargetPosition = shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $curHit->{'RefSeq'}, $startCNSInAlignment, $endInCNS - $startInCNS );
+
 
 				push @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} }, {
-						"ReferenceLocus" => $curCNS,
-						"ReferenceRelativePosition" => $startInCNS,
-						"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
-						"Length" => length($newTargetSeq),
-						"TargetSpecies" => $curHit->{'TargetSpecies'},
-						"TargetLocus" => $curHit->{'TargetLocus'},
-						"TargetSequence" => $newTargetSeq,
-						"TargetStrand" => $curHit->{'TargetStrand'},
-						"TargetPosition" => $newTargetPosition,
-						"ReferenceSequence" => $newReferenceSeq }; 
+						'RRP' => $startInCNS,
+						'RefUpDown' => $curHit->{'RefUpDown'},
+						'Len' => length($newTargetSeq),
+						'Species' => $curHit->{'Species'},
+						'Locus' => $curHit->{'Locus'},
+						'Seq' => $newTargetSeq,
+						'Strand' => $curHit->{'Strand'},
+						'Pos' => $newTargetPosition,
+						'RefSeq' => $newReferenceSeq }; 
 
 				if(! (defined $familySpeciesHittingCNS{$curCNS}{$curSpecies}) ) {
 					$CNSforLocus{$curCNS}{'NumberOfSpecies'}++;
@@ -825,7 +825,7 @@ for my $curSpecies (keys %deepAlignmentQualityForSpecies) {
 						my @alignmentsToCNS = @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies}};
 						my @newAlignmentsToCNS;
 						for my $curAlignment (@alignmentsToCNS) {
-							if($curAlignment->{'TargetGenome'} ne $curAlignmentGenome) {
+							if($curAlignment->{'Genome'} ne $curAlignmentGenome) {
 								push (@newAlignmentsToCNS, $curAlignment);
 							}
 						}
@@ -859,14 +859,14 @@ if(!$noPositionFilter) {
 		foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
 			$spToDelete = "";
 			foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment} } ) {
-				if(($CNSforLocus{$curCNS}{'Start'}<0) && ($curAlignment->{'TargetPosition'} >=0)) {
+				if(($CNSforLocus{$curCNS}{'Start'}<0) && ($curAlignment->{'Pos'} >=0)) {
 					$spToDelete = $curSpeciesAlignment;
 				}
-				if(($CNSforLocus{$curCNS}{'Start'}>=0) && ($curAlignment->{'TargetPosition'} <0)) {
+				if(($CNSforLocus{$curCNS}{'Start'}>=0) && ($curAlignment->{'Pos'} <0)) {
 					$spToDelete = $curSpeciesAlignment;
 				}
 				if($spToDelete ne "") {
-					if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Target position: " . $curAlignment->{'TargetPosition'} . ".\n"; }
+					if($verbose) { print "PROGRESS: Deleting alignment of $curSpeciesAlignment to $curCNS because of mismatched positions. Target position: " . $curAlignment->{'Pos'} . ".\n"; }
 				}
 			}
 			if($spToDelete ne "") {
@@ -904,7 +904,7 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 			$CNSforLocus{$newSubCNSName} = {
 				'Name' => $newSubCNSName,
 				'Start' => $CNSforLocus{$curCNS}{'Start'} + $CNSBreakpoints[$curBreakpoint],
-				'Length' => $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint] -1,
+				'Len' => $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint] -1,
 				'PositionInCompositeCNS' => $CNSBreakpoints[$curBreakpoint],
 				'Locus' => $CNSforLocus{$curCNS}{'Locus'},
 				'Strand' => $CNSforLocus{$curCNS}{'Strand'},
@@ -922,36 +922,35 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 
 				if($cnsReferenceLength{$newSubCNSName} ==0) { print "ERROR: $newSubCNSName has length 0.\n"; }
 				if(overlap($CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} + $cnsReferenceLength{$newSubCNSName},
-						   $curHit->{'ReferenceRelativePosition'}, $curHit->{'ReferenceRelativePosition'} + $curHit->{'Length'})>$minCNSCoverageAfterSplit) {
+						   $curHit->{'RRP'}, $curHit->{'RRP'} + $curHit->{'Len'})>$minCNSCoverageAfterSplit) {
 
-					if(not defined $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} }) {
-						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } = [];
+					if(not defined $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'Species'} }) {
+						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'Species'} } = [];
 					}
-					my $startInTargetSequence = max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'ReferenceRelativePosition'});
+					my $startInTargetSequence = max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'RRP'});
 
-					my $newSubCNSTargetSequence = substr($curHit->{'TargetSequence'}, $startInTargetSequence,  min($curHit->{'Length'}, $cnsReferenceLength{$newSubCNSName}));
+					my $newSubCNSTargetSequence = substr($curHit->{'Seq'}, $startInTargetSequence,  min($curHit->{'Len'}, $cnsReferenceLength{$newSubCNSName}));
 
-					my $choppedSequence = substr($curHit->{'TargetSequence'},0, $startInTargetSequence);
+					my $choppedSequence = substr($curHit->{'Seq'},0, $startInTargetSequence);
 					my $numberOfGaps = $choppedSequence =~ tr/-//;
-					my $newTargetPosition = shiftTargetCoordinate($curHit->{'TargetPosition'}, $curHit->{'TargetStrand'}, $curHit->{'TargetSequence'}, $curHit->{'ReferenceSequence'}, $startInTargetSequence, length($newSubCNSTargetSequence) );
+					my $newTargetPosition = shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $curHit->{'RefSeq'}, $startInTargetSequence, length($newSubCNSTargetSequence) );
 				
-					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'TargetSpecies'} } }, {
-							"ReferenceLocus" => $newSubCNSName,
-							"ReferenceRelativePosition" => max( 0, $curHit->{'ReferenceRelativePosition'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
-							"ReferenceUpDown" => $curHit->{'ReferenceUpDown'},
-							"Length" => length($newSubCNSTargetSequence),
-							"TargetSpecies" => $curHit->{'TargetSpecies'},
-							"TargetLocus" => $curHit->{'TargetLocus'},
-							"TargetSequence" => $newSubCNSTargetSequence,
-							"TargetStrand" => $curHit->{'TargetStrand'},							
-							"TargetPosition" => $newTargetPosition }; 
+					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'Species'} } }, {
+							'RRP' => max( 0, $curHit->{'RRP'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
+							'RefUpDown' => $curHit->{'RefUpDown'},
+							'Len' => length($newSubCNSTargetSequence),
+							'Species' => $curHit->{'Species'},
+							'Locus' => $curHit->{'Locus'},
+							'Seq' => $newSubCNSTargetSequence,
+							'Strand' => $curHit->{'Strand'},							
+							'Pos' => $newTargetPosition }; 
 					$numberOfHitsReassigned++;
 				}
 			}
 			if($verbose) { print "PROGRESS: Sub CNS $newSubCNSName (Length:$cnsReferenceLength{$newSubCNSName}) has $numberOfHitsReassigned deep alignments.\n"; }
 			### If the new split CNS has little support, delete it
 			my $numberOfConservedBasesInCNS=0;
-			my $CNSLength = $CNSforLocus{$newSubCNSName}{'Length'};
+			my $CNSLength = $CNSforLocus{$newSubCNSName}{'Len'};
 			if($CNSforLocus{ $newSubCNSName}{'Start'} < 0) {   ### If it's upstream
 				my $startInPhyloPMap = $CNSforLocus{$newSubCNSName}{'Start'} + $upstreamLengthReference{$locusFullName};
 				foreach my $curBase ( @phyloPconservationMapUp[ ($startInPhyloPMap)..($startInPhyloPMap+ $CNSLength) ] )  { if($curBase>= $minPhyloPscore) { $numberOfConservedBasesInCNS++; } }
@@ -983,10 +982,10 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 	foreach my $curSpeciesAlignment (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
 		my @filteredAlignmentsForCNS;
 		foreach my $curAlignment ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpeciesAlignment}}) {
-			if( $curAlignment->{'Length'} / $CNSforLocus{$curCNS}{'Length'}  > $minCNSCoverageFinal) {
+			if( $curAlignment->{'Len'} / $CNSforLocus{$curCNS}{'Len'}  > $minCNSCoverageFinal) {
 				push @filteredAlignmentsForCNS, $curAlignment;
 			} else {
-				if($verbose) { print "PROGRESS: Removing hit of $curAlignment->{'TargetLocus'} to $curCNS because overlap is too low ( Alignment: " . $curAlignment->{'Length'} . ". CNS: " . $CNSforLocus{$curCNS}{'Length'} . ").\n"; }
+				if($verbose) { print "PROGRESS: Removing hit of $curAlignment->{'Locus'} to $curCNS because overlap is too low ( Alignment: " . $curAlignment->{'Len'} . ". CNS: " . $CNSforLocus{$curCNS}{'Len'} . ").\n"; }
 			}
 		}
 		if(scalar @filteredAlignmentsForCNS > 0) {
@@ -1075,8 +1074,8 @@ if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writin
 open(my $finalCNSFile, ">$finalCNSFileName");
 open (my $finalMapFile, ">$finalMapFileName");
 foreach my $curCNS (keys %CNSforLocus) {
-	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Length'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
-  	print $finalMapFile "$curCNS,$referenceSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},+,0," . $CNSforLocus{$curCNS}{'Length'} . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
+	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Len'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
+  	print $finalMapFile "$curCNS,$referenceSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},+,0," . $CNSforLocus{$curCNS}{'Len'} . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
 } 
 close($finalCNSFile);
  
@@ -1087,7 +1086,7 @@ foreach my $curCNS (keys %CNSforLocus) {
 			my $hitSpecies = $curSpecies;
 			if($curSpecies eq "Paralogs") { $curSpecies = $referenceSpecies; }
 			
-			print $finalMapFile "$curCNS,$curSpecies,$curHit->{'TargetLocus'},$curHit->{'TargetPosition'},$curHit->{'TargetStrand'},$curHit->{'ReferenceRelativePosition'},$curHit->{'Length'},$curHit->{'TargetSequence'}\n";
+			print $finalMapFile "$curCNS,$curSpecies,$curHit->{'Locus'},$curHit->{'Pos'},$curHit->{'Strand'},$curHit->{'RRP'},$curHit->{'Len'},$curHit->{'Seq'}\n";
 		}
     }
 }
@@ -1302,7 +1301,7 @@ sub bedFileToCoordinateList {
 	while(<$bedFile>) {
 		my ($locus,$start,$end,$id,$pvalue) = split;
 		push(@coordinateList, { 'Start' => $start + $coordinateShift,
-								'Length' => $end - $start,
+								'Len' => $end - $start,
 								'pValue' => $pvalue})
 	}
 	return @coordinateList;
@@ -1320,7 +1319,7 @@ sub mergeCoordinates {
 
 	my @mergedCoordinates;
 	my $currentRegionStart= $coordinateList[0]->{'Start'};
-	my $currentRegionLength= $coordinateList[0]->{'Length'};
+	my $currentRegionLength= $coordinateList[0]->{'Len'};
 	my $currentRegionPvalue= $coordinateList[0]->{'pValue'};
 
 	foreach my $coord (@coordinateList) {
@@ -1332,7 +1331,7 @@ sub mergeCoordinates {
 			} else { ## if not, start a new region
 				if($currentRegionLength >= $minRegionLength) {  ### if it is long enough, log it
 					push(@mergedCoordinates, { 'Start' => $currentRegionStart,
-											'Length' => $currentRegionLength,
+											'Len' => $currentRegionLength,
 											'pValue' => $currentRegionPvalue/$currentRegionLength})
 				}
 				$currentRegionStart = $coord->{'Start'};
@@ -1344,7 +1343,7 @@ sub mergeCoordinates {
 
 	if($currentRegionLength >= $minRegionLength) {  ### if it is long enough, log it
 		push(@mergedCoordinates, { 'Start' => $currentRegionStart,
- 								   'Length' => $currentRegionLength,
+ 								   'Len' => $currentRegionLength,
 									'pValue' => $currentRegionPvalue/$currentRegionLength})
 	}
 
@@ -1464,17 +1463,16 @@ sub MAFtoFASTA {
 			}
 
 			push @{ $mapRef->{$referenceLocus}{$targetSpecies} }, {
-				'ReferenceLocus' => $referenceLocus,
-				'ReferenceRelativePosition' => $referenceRelativePosition,
-				'ReferenceUpDown' => $upOrDownStreamReference,
-				'Length' => length($targetSequenceNoGaps),
-				'TargetGenome' => $targetGenome,
-				'TargetStrand' => $targetAlignmentStrand,
-				'TargetSpecies' => $targetSpecies,
-				'TargetLocus' => $targetLocus,
-				'TargetPosition' => $targetRelativePosition,
-				'TargetSequence' => $targetSequence,
-				'ReferenceSequence' => $referenceSequence
+				'RRP' => $referenceRelativePosition,
+				'RefUpDown' => $upOrDownStreamReference,
+				'Len' => length($targetSequenceNoGaps),
+				'Genome' => $targetGenome,
+				'Strand' => $targetAlignmentStrand,
+				'Species' => $targetSpecies,
+				'Locus' => $targetLocus,
+				'Pos' => $targetRelativePosition,
+				'Seq' => $targetSequence,
+				'RefSeq' => $referenceSequence
 			};
 		}
 

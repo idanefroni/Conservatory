@@ -3,6 +3,7 @@ use strict;
 use POSIX;
 use Cwd 'abs_path';
 use File::Basename;
+use List::Util qw(min max);
 
 use lib './scripts';
 use ConservatoryUtils;
@@ -34,7 +35,7 @@ my $start = floor(($numFiles / $outof) * ($part -1));
 my $end = ceil(($numFiles/$outof) * ($part));
 print "PROGRESS: Found " . $numFiles . " files. Processing $start to $end.\n";
 my @filesToProcess = @files[$start..$end];
-
+my $curPos=1;
 
 foreach my $file (@filesToProcess) {
 	#### build FASTA file for alignment
@@ -43,7 +44,7 @@ foreach my $file (@filesToProcess) {
 		my $outFile = $inFile;
 		$outFile =~ s/\.fasta$/.aligned.fasta/;
 
-		print "PROGRESS: Aligning $inFile to $outFile\n";
+		print "PROGRESS: (" . ($curPos++) . "/$numFiles) Aligning $inFile.\n";
 		system("mafft --quiet --thread -1 --auto $inFile > $outFile");
 	}
 }
