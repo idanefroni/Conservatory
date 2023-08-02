@@ -55,26 +55,20 @@ my $totalCNSNum = ( split(" ",qx(wc -l $inCNSFileName)  ) )[0];
 while(<$inCNSFile>) {
 	if($verbose) { print "PROGRESS: Loading CNS table.. " . $curPos++ . "/$totalCNSNum.\r" };
 	chomp;
-	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/;
+	my ($referenceGenome, $CNSID, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/;
+
     my $multiRefCNS=0;
-    if(substr($CNSID,0,5) eq "Super") {
+    if($referenceGenome eq "Super") {
         $multiRefCNS=1;
     }
 	$CNSTable{$CNSID} = {
-				'ReferenceGenome' => $referenceGenome,
+				'RefGenome' => $referenceGenome,
 				'CNSID' => $CNSID,
-				'Chromosome' => $chromosome,
-				'Strand' => $strand,
-				'Start' => $start,	
-				'End' => $end,
 				'Locus' => $locus,
-				'RelStart' => $relStart,
-				'RelEnd' => $relEnd,
+				'Start' => $start,
+				'Len' => $length,
 				'Level' => $level,
 				'SupportingSpecies' => $supportingSpecies,
-				'ORFLength' => $orfLength,
-				'ORFDir' => $orfDir,
-				'Omega' => $omega,
 				'AncesteralSeq' => $ancesteralSeq,
 				'multiRefCNS' => $multiRefCNS,
                 'Plastid' => 0,
@@ -91,17 +85,23 @@ my $totalPosCount = ( split(" ",qx(wc -l $inMapFileName)  ) )[0];
 while(<$inMapFile>) {
 	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "/$totalPosCount\r" };
 	chomp;
-	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence) = split /,/;
+my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence, $absChromosome, $absStart, $geneStrand, $name) = split /,/;
 	
     if(defined $CNSTable{$CNSID }) {
     	push( @{ $CNSTable{$CNSID}{'Positions'} } , {
-				'TargetSpecies' => $targetSpecies,
-				'TargetLocus' => $targetLocus,
-				'TargetPosition' => $targetRelativePosition,
-				'TargetStrand' => $targetStrand,
-				'ReferenceRelativePosition' => $referenceRelativePosition,
-				'Length' => $length,
-				'TargetSequence' => $targetSequence} );	
+				'Species' => $targetSpecies,
+					'Locus' => $targetLocus,
+					'Pos' => $targetRelativePosition,
+					'Strand' => $targetStrand,
+					'RRP' => $referenceRelativePosition,   # ReferenceRelativePosition
+					'Len' => $length,
+					'AbsLen' => $length - ($targetSequence =~ tr/-//),
+					'Seq' => $targetSequence,
+					'AbsChr' => $absChromosome,
+					'AbsPos' => $absStart,
+					'GeneStrand' => $geneStrand,				
+					'Name' => $name} );	
+
         if($targetSpecies eq "Athaliana" || $targetSpecies eq "MtrunA17r5" || $targetSpecies eq "pgrisea") {
             my $geneName = $targetLocus;
             $geneName =~ s/.*-//;
@@ -161,7 +161,7 @@ if($filterRepetitive) {
             $repetitiveFiltered++;
         }
     }
-    if($verbose) { print "Filtering repetitive CNS (CNS with more than $filterValue positions). Removed $repetitiveFiltered of $totalCNSNum\n"; }
+    if($verbose) { print "Filtering highly repetitive CNS (CNS with more than $filterValue positions). Removed $repetitiveFiltered of $totalCNSNum\n"; }
     $totalCNSNum -= $repetitiveFiltered;    
 }
 
@@ -172,33 +172,30 @@ open(my $outMapFile, ">" , $outMapFileName) || die ("ERROR: Cannot open output m
 
 foreach my $curCNS (keys %CNSTable) {
     if(!$CNSTable{$curCNS}{'Filtered'}) {
-		print $outCNSFile join(",",
-				$CNSTable{$curCNS}{'ReferenceGenome'},
-				$CNSTable{$curCNS}{'CNSID'},
-				$CNSTable{$curCNS}{'Chromosome'},
-				$CNSTable{$curCNS}{'Strand'},
-				$CNSTable{$curCNS}{'Start'},	
-				$CNSTable{$curCNS}{'End'},
-				$CNSTable{$curCNS}{'Locus'},
-				$CNSTable{$curCNS}{'RelStart'},
-				$CNSTable{$curCNS}{'RelEnd'},
-				$CNSTable{$curCNS}{'Level'},
-				$CNSTable{$curCNS}{'SupportingSpecies'},
-				$CNSTable{$curCNS}{'ORFLength'},
-				$CNSTable{$curCNS}{'ORFDir'},
-				$CNSTable{$curCNS}{'Omega'},
-				$CNSTable{$curCNS}{'AncesteralSeq'}) ."\n";
+			print $outCNSFile join(",",
+					$CNSTable{$curCNS}{'RefGenome'},
+					$curCNS,
+					$CNSTable{$curCNS}{'Locus'},
+					$CNSTable{$curCNS}{'Start'},
+					$CNSTable{$curCNS}{'Len'},
+					$CNSTable{$curCNS}{'Level'},
+					$CNSTable{$curCNS}{'SupportingSpecies'},
+					$CNSTable{$curCNS}{'AncesteralSeq'}) ."\n";
 
         foreach my $curMapping (@{ $CNSTable{$curCNS}{'Positions'} }) {
 			print $outMapFile join(",",
 					$curCNS,
-					$curMapping->{'TargetSpecies'},
-					$curMapping->{'TargetLocus'},
-					$curMapping->{'TargetPosition'},
-					$curMapping->{'TargetStrand'},					
-					$curMapping->{'ReferenceRelativePosition'},
-					$curMapping->{'Length'},
-					$curMapping->{'TargetSequence'}) ."\n";
+					$curMapping->{'Species'},
+					$curMapping->{'Locus'},
+					$curMapping->{'Pos'},
+					$curMapping->{'Strand'},					
+					$curMapping->{'RRP'},
+					$curMapping->{'Len'},
+					$curMapping->{'Seq'},
+					$curMapping->{'AbsChr'},
+					$curMapping->{'AbsPos'},
+					$curMapping->{'GeneStrand'},
+					$curMapping->{'Name'} ) . "\n";	
 		}
     }
 }

@@ -17,16 +17,19 @@ if($outof ==0) { $part =1; $outof = 1;}
 
 ### Filenames
 
-my $conservatoryDir=abs_path(".");
-my $tmpDir= "$conservatoryDir/tmp/";
+my $tmpDir= $ARGV[2];
 
 #opendir(my $dh, $tmpDir) or die "Cannot open directory: $!";
 #my @files = grep { /^tmp_.*\.fasta$/i && -f "$tmpDir/$_" && $_ !~ /aligned/} readdir($dh);
 #closedir($dh);
 
+my @files;
 open(my $inFileList, "$tmpDir/tmp_filestoalign.txt") || die ("Cannot file list of files to align: $tmpDir/tmp_filestoalign.txt");
-my @files = <$inFileList>;
-chomp(@files);
+while(<$inFileList>) {
+	chomp;
+	my ($filename,$anchorCNS)= split /,/;
+	push @files, $filename;
+}
 
 if((scalar @files) ==0) { die "Cannot file files to align\n"; }
 
@@ -37,10 +40,9 @@ print "PROGRESS: Found " . $numFiles . " files. Processing $start to $end.\n";
 my @filesToProcess = @files[$start..$end];
 my $curPos=1;
 
-foreach my $file (@filesToProcess) {
+foreach my $inFile (@filesToProcess) {
 	#### build FASTA file for alignment
-	if($file ne "") {
-		my $inFile = "$tmpDir/$file";
+	if($inFile ne "") {
 		my $outFile = $inFile;
 		$outFile =~ s/\.fasta$/.aligned.fasta/;
 

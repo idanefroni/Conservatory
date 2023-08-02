@@ -26,7 +26,7 @@ $|=1;
 
 ### Filenames
 my $conservatoryDir=abs_path(".");
-my $tmpDir= "$conservatoryDir/tmp/";
+my $tmpDir= "$conservatoryDir/tmp/";   ## Default temporary directory
 my $CNSFileName="";
 my $mapFileName="";
 my $outputCNSFileName="";
@@ -47,7 +47,8 @@ my $minCNSLength=8;
 my $minSpeciesForCNS=5; ### The minimum number of species aligned to a CNS to keep the CNS
 my $minCNSCoverageAfterSplit=0.3;
 my $minCNSIdentityToMerge=70;
-my $minCNSOverlapToMerge=0.5;
+my $minCNSOverlapToMerge=0.2;
+my $mergeDeep=0;
 
 my $keep_tmp=0;
 my $outputAnnotatedTree=0;
@@ -81,8 +82,10 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-keep-multiple" => \$minSupportingSpeciesToKeepMultipleCNS,
 			"remove-original-CNS" => \$removeOriginalCNS,
 			"align-CNS-process" =>\$alignCNSProcess,
+			"merge-deep" => \$mergeDeep,
 			"keep-tmp" => \$keep_tmp,
 			"annotated-tree" => \$outputAnnotatedTree,
+			"tmp-dir=s" => \$tmpDir,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
@@ -274,11 +277,14 @@ foreach my $CNSID (@CNSList[1..(scalar @CNSList)]) {
 	###
 	my $CNSToDelete= "";
 
-	if($CNSTable{$lastCNS}{'RefGenome'} eq $CNSTable{$CNSID}{'RefGenome'} && 
+	if(defined $CNSTable{$lastCNS}{'AbsStart'} && defined $CNSTable{$CNSID}{'AbsStart'} &&  ### Short-circut if the CNS has no absolute coordinates (meaning it is a merged CNS)
+		$CNSTable{$lastCNS}{'RefGenome'} eq $CNSTable{$CNSID}{'RefGenome'} && 
+		$CNSTable{$lastCNS}{'Locus'} ne $CNSTable{$CNSID}{'Locus'} && 
 		$CNSTable{$lastCNS}{'Chr'} eq $CNSTable{$CNSID}{'Chr'} && 
 		overlap($CNSTable{$lastCNS}{'AbsStart'},$CNSTable{$lastCNS}{'AbsEnd'}, $CNSTable{$CNSID}{'AbsStart'},$CNSTable{$CNSID}{'AbsEnd'})) {
 
 			## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
+
 			if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
 				$CNSToDelete = $CNSID;
 				$CNSDeleted++;
@@ -407,27 +413,27 @@ if($verbose) { print "\n"; }
 
 ### Identify CNS to merge
 my %CNSToMergeMap;
-
-### Scan all the hits to the locus. See if an alignment is hitting Two CNSs. If so, merge them.
 my $totalToScreen = scalar @positionList;
 $curPos=1;
 my $lastMapping = $positionList[0];
-foreach my $curMapping (@positionList[1..(scalar @positionList - 1)]) {
+
+if($mergeDeep) {
+	### Scan all the hits to the locus. See if an alignment is hitting Two CNSs. If so, merge them.
+	foreach my $curMapping (@positionList[1..(scalar @positionList - 1)]) {
 	
-	if($verbose) { print "PROGRESS: Identifying deep CNS to merge..." . ($curPos++) . "/$totalToScreen.\r"; }
+		if($verbose) { print "PROGRESS: Identifying deep CNS to merge..." . ($curPos++) . "/$totalToScreen.\r"; }
 	
-	if( geneToGenome($lastMapping->{'Locus'}) eq  geneToGenome($curMapping->{'Locus'}) &&
-	    $lastMapping->{'Name'} eq $curMapping->{'Name'} &&
-		$lastMapping->{'CNSID'} ne $curMapping->{'CNSID'} &&
-		defined $CNSTable{ $lastMapping->{'CNSID'} } && defined $CNSTable{ $curMapping->{'CNSID'} } ) {   ## If it is the same genome position, but different CNSs, mark them to be merged
-			$CNSToMergeMap{ $lastMapping->{'CNSID'} }{ $curMapping->{'CNSID'} }{ $lastMapping->{'Species'} } =1;
-			$CNSToMergeMap{ $curMapping->{'CNSID'} }{ $lastMapping->{'CNSID'} }{ $lastMapping->{'Species'} } =1;			
+		if( geneToGenome($lastMapping->{'Locus'}) eq  geneToGenome($curMapping->{'Locus'}) &&
+		    $lastMapping->{'Name'} eq $curMapping->{'Name'} &&
+			$lastMapping->{'CNSID'} ne $curMapping->{'CNSID'} &&
+			defined $CNSTable{ $lastMapping->{'CNSID'} } && defined $CNSTable{ $curMapping->{'CNSID'} } ) {   ## If it is the same genome position, but different CNSs, mark them to be merged
+				$CNSToMergeMap{ $lastMapping->{'CNSID'} }{ $curMapping->{'CNSID'} }{ $lastMapping->{'Species'} } =1;
+				$CNSToMergeMap{ $curMapping->{'CNSID'} }{ $lastMapping->{'CNSID'} }{ $lastMapping->{'Species'} } =1;			
+		}
+		$lastMapping= $curMapping;
 	}
-	$lastMapping= $curMapping;
+	if($verbose) {print "\n";}
 }
-if($verbose) {print "\n";}
-
-
 
 my $deletedForLowSupport=0;
 
@@ -460,6 +466,7 @@ for my $curCNSA (keys %CNSToMergeMap ) {
 	for my $curCNSB (keys %{ $CNSToMergeMap{$curCNSA}}) {
 
 		## Check to see if we have enough similarity between the ancesteral CNSs
+		### perform pairwide alignment (NeedlemanWunsch) between the two CNS sequences
 
 		sub score_sub {
 			  if (!@_) {  return -0.5;  }  ## gap penalty
@@ -487,9 +494,10 @@ for my $curCNSA (keys %CNSToMergeMap ) {
 			delete $CNSToMergeMap{$curCNSA}{$curCNSB};
 			delete $CNSToMergeMap{$curCNSB}{$curCNSA};
 			$deletedForLowIdentity++;
+#			print "removing $curCNSA and $curCNSB for low identity/overlap. Identty :" . $pairwise->percentage_identity() . "Overlap" . (min($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'}) / max($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'})) . "\n";
 		} 
 	}
-	if((scalar (keys %{ $CNSToMergeMap{$curCNSA} })) < 2) { delete $CNSToMergeMap{$curCNSA}; }	
+	if((scalar (keys %{ $CNSToMergeMap{$curCNSA} })) < 1) { delete $CNSToMergeMap{$curCNSA}; }	
 }
 if($verbose) { print "\n";}
 
@@ -523,7 +531,18 @@ $totalToScreen = scalar (keys %superGroups);
 $curPos=1;
 my %CNSGroups;
 
-### First, generate 
+#### We could have many many files. To avoid overloading the filesystem in clusters, split the files to directories
+### and log their locations
+
+my $curSubDirNum=0;
+my $curFileNumInSubDir=0;
+my $MAX_FILES_IN_ALIGN_DIR=1000;
+
+mkdir "$tmpDir/ALIGN_$curSubDirNum";
+
+my $filesToAlignListFileName = "$tmpDir/tmp_filestoalign.txt";
+open (my $filesToAlignFile, ">", $filesToAlignListFileName);
+
 foreach my $anchorCNS (keys %superGroups) {
 
 	if($verbose) { print "PROGRESS: Forming super CNS group fasta files...". $curPos++ . "/$totalToScreen.\r"; }
@@ -548,9 +567,9 @@ foreach my $anchorCNS (keys %superGroups) {
 		## Assemble sequences
 
 		#### build FASTA file for alignment
+
 		if(@mergedPositions >0) {
-			my $tmpOutputSuperCNSFastaFileName = $tmpDir . "/tmp_$anchorCNS.fasta";
-			my $tmpOutputSuperCNSFastaAlignedFileName = $tmpDir . "/tmp_$anchorCNS.aligned.fasta";
+			my $tmpOutputSuperCNSFastaFileName = "$tmpDir/ALIGN_$curSubDirNum/tmp_$anchorCNS.fasta";
 			open(my $tmpOutputSuperCNSFastaFile, ">" , $tmpOutputSuperCNSFastaFileName);
 
 			foreach my $curPos (@mergedPositions) {
@@ -563,35 +582,45 @@ foreach my $anchorCNS (keys %superGroups) {
 																   $curPos->{'Name'})) . "\n" . 
 																   $curPos->{'Seq'} . "\n";
 			}
-
 			close($tmpOutputSuperCNSFastaFile);
+			print $filesToAlignFile "$tmpOutputSuperCNSFastaFileName,$anchorCNS\n";
+			if($curFileNumInSubDir++ >= $MAX_FILES_IN_ALIGN_DIR) {
+				$curFileNumInSubDir=0;
+				$curSubDirNum++;
+				mkdir "$tmpDir/ALIGN_$curSubDirNum";
+			}
 		}
 	}
 }
-
+close($filesToAlignFile);
 
 ### Now align all the position files
 if(scalar (keys %superGroups) >0) {
-	system("ls $tmpDir | grep 'tmp_.*fasta' | grep -v aligned > $tmpDir/tmp_filestoalign.txt");
-
-	if($alignCNSProcess) {
+	if($alignCNSProcess) { ## Align using external aligned process (alignCNS)
 		if($verbose) { print "WAITING: for the alignCNS process to do the alignments for us...\n"; }
 	} else {
 		print "PROGRESS: Aligning CNSs\n";
-		system("perl $conservatoryDir/scripts/alignCNS 1 1")
+		system("perl $conservatoryDir/scripts/alignCNS 1 1 $tmpDir")
 	}
 }
-## Align using external aligned process (alignCNS)
 
 $curPos=1;
 
 ### And then, read the alignments, and build the Super CNS
-foreach my $anchorCNS (keys %superGroups) {
-	my $tmpOutputSuperCNSFastaFileName = $tmpDir . "/tmp_$anchorCNS.fasta";
-	my $tmpOutputSuperCNSFastaAlignedFileName = $tmpDir . "/tmp_$anchorCNS.aligned.fasta";
-	my %CNSsInGroup = %{ $superGroups{$anchorCNS} };
+open($filesToAlignFile, "<", $filesToAlignListFileName);
 
-	if(-e $tmpOutputSuperCNSFastaFileName) { ## if we have the alignment file
+#foreach my $anchorCNS (keys %superGroups) {
+while(<$filesToAlignFile>) {
+	chomp;
+	my ($tmpOutputSuperCNSFastaFileName, $anchorCNS) = split /,/;
+
+	my $tmpOutputSuperCNSFastaAlignedFileName = $tmpOutputSuperCNSFastaFileName;
+	$tmpOutputSuperCNSFastaAlignedFileName =~ s/\.fasta$/.aligned.fasta/;
+
+
+
+	if(-e $tmpOutputSuperCNSFastaFileName && defined $superGroups{$anchorCNS}) { ## if we have the alignment file
+
 		### wait for someone to do the alignments for us
 		if(! -e $tmpOutputSuperCNSFastaAlignedFileName) { 
 			sleep 1 while ( !(-e $tmpOutputSuperCNSFastaAlignedFileName) );
@@ -600,6 +629,8 @@ foreach my $anchorCNS (keys %superGroups) {
 		};
 
 		if($verbose) { print "PROGRESS: Forming super CNS groups...". $curPos++ . "/$totalToScreen (Current: $anchorCNS).\r"; }
+
+		my %CNSsInGroup = %{ $superGroups{$anchorCNS} };	
 
 		my $alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
 											-format => "fasta");
@@ -612,7 +643,7 @@ foreach my $anchorCNS (keys %superGroups) {
 			if($verbose) { print "\nERROR In loading $anchorCNS. Waiting for fixed file.\n"; }
 			my $fastaFileOK=0;
 			while(!$fastaFileOK) {
-				sleep 30;
+				sleep 5;
 				if($verbose) { print "\nERROR: Still can't load $anchorCNS. Trying self alignment or waiting for the fixed file.\n"; }	
 				$alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
 											-format => "fasta");
@@ -704,6 +735,12 @@ foreach my $anchorCNS (keys %superGroups) {
 
 if($verbose) { print "\n";}
 
+### clean up temporary directores
+close($filesToAlignFile);
+for my $curDirToDelete (0..$curSubDirNum) {
+	rmdir "$tmpDir/ALIGN_$curDirToDelete"; 
+}
+unlink($filesToAlignListFileName);
 
 ## Merge overlapping position hits segments
 $totalToScreen = scalar (keys %CNSTable);
@@ -726,6 +763,11 @@ foreach my $curCNS (keys %CNSGroups) {
 		for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
 			### Create a new sub-CNS
 			my $newSubCNSName = "$curCNS.$CNSBreakpoints[$curBreakpoint]";
+			my $newCNSLocus = $curCNS;
+			### if this is a compound CNS, keep the memory of CNS merged
+			if(index($curCNS, $superCNSPrefix) != -1) {
+				$newCNSLocus = $CNSTable{$curCNS}{'Locus'};
+			}
 
 			my $newAncesteralSeq = substr($CNSTable{$curCNS}{'AncesteralSeq'}, $CNSBreakpoints[$curBreakpoint], $CNSBreakpoints[$curBreakpoint+1] - $CNSBreakpoints[$curBreakpoint]);
 
@@ -735,7 +777,7 @@ foreach my $curCNS (keys %CNSGroups) {
 				'CNSID' => $newSubCNSName,
 				'Start' => $CNSBreakpoints[$curBreakpoint],
 				'Len' => $CNSBreakpoints[$curBreakpoint+1]- $CNSBreakpoints[$curBreakpoint],
-				'Locus' => $curCNS,
+				'Locus' => $newCNSLocus,
 				'Level' => "",
 				'SupportingSpecies' => 0,
 				'AncesteralSeq' => $newAncesteralSeq,
