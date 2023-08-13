@@ -69,7 +69,7 @@ my $minFamilySpeciesForCNS=0.333; # The minimum number of species in the family 
 my $minAlignmentLengthToTestOverlap = 30; ### Alignments of less than this length will be checked to see that they significally overlap with the CNS
 my $minCNSCoverageInitial=0.2; ### The minimum coverage of the CNS to be acceptable for an initial deep alignment
 my $minCNSCoverageAfterSplit=0.5; ### The minimum coverage of CNS to assign to a sub-CNS after splitting
-my $minCNSConservationAfterSplit = 0.2; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
+my $minCNSConservationAfterSplit = 0.4; ### The minimal relative number of bases with significant conservation score to have for a split CNS to be considered
 
 
 #my $minCNSCoverageFinal=0.7; ## The coverage a final CNS must have to be considered a hit to the CNS (after spliting and filtering)
@@ -288,6 +288,18 @@ if(!$justFamilyAlignment) { ## Check to see if we have a tree, if we need
 my $treeReader = new Bio::TreeIO(-file   => $treeFileName,
                             -format => "newick");
 my $tree = $treeReader->next_tree;
+
+## Also load the super tree
+my $conservatoryAnnotatedTreeFileName = $conservatoryDir . "/genomes/Conservatory.Annotated.tree";
+my $conservatoryAnnotatedTree;
+
+if(! -e $conservatoryAnnotatedTreeFileName) {
+	print "WARNING: Cannot find annotated conservatory tree ($conservatoryAnnotatedTreeFileName).\n";
+} else {
+	my $conservatoryAnnotatedTreeio = Bio::TreeIO->new(-file => $conservatoryAnnotatedTreeFileName, -format => 'newick');
+	$conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
+	if(!defined $conservatoryAnnotatedTree) { die "ERROR: Cannot read annotated tree file $conservatoryAnnotatedTreeFileName. Bad format.\n"; }
+}
 
 ### make place for the alignment and CNS
 if (! -e $outputDir) { mkdir($outputDir); }
@@ -623,7 +635,7 @@ foreach my $coord (@CNSCoordinates) {
 	open (my $tmpCNSFile, ">$tmpCNSFastaFileName");
 
 	my $numOfSpeciesWithCNS=0;
-	if($cnsRelStart < 0 ) { ## If this is upstream seqeunce
+	if($cnsRelStart < 0 ) { ## If this is upstream sequence
 		for my $curSpecies (keys %{ $speciesDatabase{$referenceGenomeFamily} }) {		
 			if(defined $fastaUpstreamAlignment{$locusFullName}{$curSpecies}) {
 				$cnsSeqs{$curSpecies}=substr($fastaUpstreamAlignment{$locusFullName}{$curSpecies}, $upstreamLengthReference{$locusFullName}+$cnsRelStart, $curCNSLength);
@@ -920,30 +932,12 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 			foreach my $curHit (@polishedAlignments) {
 				### If there is an overlap, assign the deep CNS to the new subCNS.
 
-				if($cnsReferenceLength{$newSubCNSName} ==0) { print "ERROR: $newSubCNSName has length 0.\n"; }
-				if(overlap($CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} + $cnsReferenceLength{$newSubCNSName},
-						   $curHit->{'RRP'}, $curHit->{'RRP'} + $curHit->{'Len'})>$minCNSCoverageAfterSplit) {
+				if($curHit->{'Breakpoint'} == $curBreakpoint) {
 
 					if(not defined $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'Species'} }) {
 						$mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'Species'} } = [];
 					}
-					my $startInTargetSequence = max(0, $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'} - $curHit->{'RRP'});
-
-					my $newSubCNSTargetSequence = substr($curHit->{'Seq'}, $startInTargetSequence,  min($curHit->{'Len'}, $cnsReferenceLength{$newSubCNSName}));
-
-					my $choppedSequence = substr($curHit->{'Seq'},0, $startInTargetSequence);
-					my $numberOfGaps = $choppedSequence =~ tr/-//;
-					my $newTargetPosition = shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $curHit->{'RefSeq'}, $startInTargetSequence, length($newSubCNSTargetSequence) );
-				
-					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'Species'} } }, {
-							'RRP' => max( 0, $curHit->{'RRP'} - $CNSforLocus{$newSubCNSName}{'PositionInCompositeCNS'}) ,
-							'RefUpDown' => $curHit->{'RefUpDown'},
-							'Len' => length($newSubCNSTargetSequence),
-							'Species' => $curHit->{'Species'},
-							'Locus' => $curHit->{'Locus'},
-							'Seq' => $newSubCNSTargetSequence,
-							'Strand' => $curHit->{'Strand'},							
-							'Pos' => $newTargetPosition }; 
+					push @{ $mapAlignmentDeepCNS{$newSubCNSName}{ $curHit->{'Species'} } }, $curHit;
 					$numberOfHitsReassigned++;
 				}
 			}
@@ -1041,56 +1035,76 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
 		  }
   	  }
   }
-  ### Recalculate conservation levels after filtering
-  @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	  
+  
+  #### All filtering is done. Identify CNS age
+  my @speciesForCNSList = keys %{ $mapAlignmentDeepCNS{$curCNS} };
+  my @speciesForCNSList = grep { $_ ne "Paralogs"} @speciesForCNSList;
 
-  foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
-  	  my @classification = split /-/ , $speciesClassification{$curSpecies};
-    	foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
-    		if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
-    			$CNSConservationLevel[$curClassificationLevel]++;  
-    	 	 }
-   	  }
-  }
-	
-  # Now mark the "Deepness" level of each CNS
-  $CNSforLocus{$curCNS}{'ConservationLevel'}= $referenceGenomeFamily;
-  foreach my $curLevel (0..$CLASSIFICATION_CLASSES_NUM) {
-  	  if($CNSforLocus{$curCNS}{'ConservationLevel'} eq $referenceGenomeFamily && $CNSConservationLevel[$curLevel]>0) {
-  	  	  $CNSforLocus{$curCNS}{'ConservationLevel'}= $referenceClassification[$curLevel-1] ;
-  	  }
+  if(defined $conservatoryAnnotatedTree) {
+		$CNSforLocus{$curCNS}{'ConservationLevel'} = findDeepestCommonNode($conservatoryAnnotatedTree, \@speciesForCNSList);
   }
 
   ### And recount the number of species
-  my @newSpeciesCount = keys %{ $mapAlignmentDeepCNS{$curCNS} };
-  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = scalar @newSpeciesCount;
+  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = scalar @speciesForCNSList;
 }
   
 if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writing output files...\n";	}
  
 ###########################################################
-#### Now we are done. Export CNS table and position maps  
+#### Now we are done. Identify absolute coordinates and export CNS table and position maps  
   
 open(my $finalCNSFile, ">$finalCNSFileName");
 open (my $finalMapFile, ">$finalMapFileName");
+
 foreach my $curCNS (keys %CNSforLocus) {
 	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Len'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
-  	print $finalMapFile "$curCNS,$referenceSpecies,$locusFullName,$CNSforLocus{$curCNS}{'Start'},+,0," . $CNSforLocus{$curCNS}{'Len'} . "," . $CNSforLocus{$curCNS}{'referenceSequence'} . "\n";
+	## Add self hit to the DB
+	push @{ $mapAlignmentDeepCNS{$curCNS}{$referenceSpecies} }, {
+		'Locus' => $locusFullName,
+		'Pos' => $CNSforLocus{$curCNS}{'Start'},
+		'Strand' => "+",
+		'RRP' => 0,
+		'Len' => length($CNSforLocus{$curCNS}{'referenceSequence'}),
+		'Seq' => $CNSforLocus{$curCNS}{'referenceSequence'}
+	};
 } 
 close($finalCNSFile);
- 
-### Then the CNS alignments
+
+my %speciesToCNSMap;
 foreach my $curCNS (keys %CNSforLocus) {
-	foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {	  	   	  	  
+	foreach my $curSpecies (keys %{ $mapAlignmentDeepCNS{$curCNS} }) {
+		$speciesToCNSMap{$curSpecies}{$curCNS}=1;
+	}
+}
+
+for my $curSpecies (keys %speciesToCNSMap) {
+	foreach my $curCNS (keys %{ $speciesToCNSMap{$curSpecies} }) {
 		foreach my $curHit ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} } ) {
 			my $hitSpecies = $curSpecies;
 			if($curSpecies eq "Paralogs") { $curSpecies = $referenceSpecies; }
-			
-			print $finalMapFile "$curCNS,$curSpecies,$curHit->{'Locus'},$curHit->{'Pos'},$curHit->{'Strand'},$curHit->{'RRP'},$curHit->{'Len'},$curHit->{'Seq'}\n";
+
+			my %geneCoordinates = getGeneCoordinates($conservatoryDir, $genomeToFamily{geneToGenome($curHit->{'Locus'})},  geneToGenome($curHit->{'Locus'}), $curHit->{'Locus'});
+			my %relativeCoordinate = ('Start' => ,$curHit->{'Pos'}, 'Len' => ,$curHit->{'Len'});
+			my %absGeneCoord = translateRealtiveToAbsoluteCoordinates( \%relativeCoordinate, $geneCoordinates{'Start'}, $geneCoordinates{'End'}, $geneCoordinates{'Strand'}, $curHit->{'Strand'} );
+
+			print $finalMapFile join(",",
+					$curCNS,
+					$curSpecies,
+					$curHit->{'Locus'},
+					$curHit->{'Pos'},
+					$curHit->{'Strand'},					
+					$curHit->{'RRP'},
+					$curHit->{'Len'},
+					$curHit->{'Seq'},
+					$geneCoordinates{'Chr'},
+					$absGeneCoord{'Start'},
+					$geneCoordinates{'Strand'},
+					"" ) . "\n";
 		}
-    }
+	}
+	clearGeneCooordinateDatabase();	
 }
- 	
+
 close($finalMapFile);
 
 #### Go back to the original directory, and we are done!
@@ -1125,7 +1139,7 @@ sub extractFastaToFile {
 	my @seqLines;
 	while(my $curLine = <$inFasta>) {
 		chomp($curLine);
-		push @seqLines, $curLine;
+		push @seqLines, uc($curLine);
 	}
 	close($inFasta);
 	$seq = join("", @seqLines);

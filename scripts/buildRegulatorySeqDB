@@ -45,8 +45,6 @@ my $curChr = "";
 while(my $curLine = <$genomeFastaFile>) {
 	chomp($curLine);	
 	if(substr($curLine,0,1) eq ">") {
-		if($curChr ne "") {
-		}
 		$curChr = cleanChrName($curLine);
 	} else {
 		$chromosomes{$curChr} .= $curLine;

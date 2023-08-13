@@ -285,7 +285,7 @@ while(my $curgenomeline= <$genomedb>) {
 				open(my $chromosomeIndexFile, "<", "$genomeFastaFile.fai");
 				while(my $line = <$chromosomeIndexFile>) {
 					my ($chr, $length) = split /\t/, $line;
-					print $chromosomeSizeFile "$chr\t" . ($length+1) . "\n";
+					print $chromosomeSizeFile "$chr\t" . ($length+100) . "\n";
 				}
 				close($chromosomeSizeFile);
 				close($chromosomeIndexFile);

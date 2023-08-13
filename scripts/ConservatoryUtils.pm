@@ -4,6 +4,7 @@ use POSIX;
 use strict;
 use warnings;
 use List::Util qw(min max);
+use File::Temp qw /tempfile/;
 
 use Statistics::Basic qw(:all nofill);
 use Bio::SimpleAlign;
@@ -11,7 +12,7 @@ use Bio::SimpleAlign;
 use Exporter;
 
 our @ISA= qw( Exporter );
-our @EXPORT = qw (overlap isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase);
+our @EXPORT = qw (overlap reverseComplement alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase findDeepestCommonNode multipleAlignment);
 
 
 ##############################################################################
@@ -29,6 +30,56 @@ my %footprintDatabase;   ### Database of footprints for the getGeneCoordiantes f
 
 
 #############################################################################
+### Returns the reverse complement of a DNA sequence
+
+
+sub reverseComplement {
+	my ($seq) = @_;
+	$seq =~ tr/ATCGatcg/TAGCtagc/;
+	$seq = reverse $seq;
+	return $seq;
+}
+
+
+#############################################################################
+### Perform pairwise alignment between two DNA sequences
+### Usage: alignPariwise(Sequence1, Sequence2)
+###
+### Returns a SimpleAlign object with the alignment
+###
+
+sub alignPairwise {
+	my ($seq1, $seq2) = @_;
+
+	sub score_sub {
+		  if (!@_) {  return -0.5;  }  ## gap penalty
+  			## mismatch scores -1, match +1
+  			return ($_[0] eq $_[1]) ? 1 : -1;
+	}
+	
+	my $nw = Algorithm::NeedlemanWunsch->new(\&score_sub);
+	$nw->gap_open_penalty(-5);
+	$nw->gap_extend_penalty(-0.25);
+
+	my $seq1Arr = [split//, $seq1];
+	my $seq2Arr = [split//, $seq2];
+	my (@align1, @align2);
+
+	$nw->align($seq1Arr,$seq2Arr,
+	   {
+			align   => sub {unshift @align1, $seq1Arr->[shift]; unshift @align2, $seq2Arr->[shift];},
+			shift_a => sub {unshift @align1, $seq1Arr->[shift]; unshift @align2,            '-'},
+			shift_b => sub {unshift @align1,               '-'; unshift @align2, $seq2Arr->[shift]},
+		});
+
+	my $pairwise = Bio::SimpleAlign->new();
+	$pairwise->add_seq(Bio::LocatableSeq->new( -seq => join("",@align1), -id=> "seq1", -start=>0, -end=> scalar @align1));
+	$pairwise->add_seq(Bio::LocatableSeq->new( -seq => join("",@align2), -id=> "seq2", -start=>0, -end=> scalar @align2));
+
+	return $pairwise;
+}
+
+#############################################################################
 ### Compute overlap between two fragments. 
 ### Parameters:
 ### overlap(startOne, endOne, StartTwo, endTwo)
@@ -37,8 +88,8 @@ my %footprintDatabase;   ### Database of footprints for the getGeneCoordiantes f
 
 sub overlap {
 	my ($startOne, $endOne, $startTwo, $endTwo) =@_;
-	if ( ($startOne < $startTwo && $endOne < $startTwo) ||
-		 ($startOne > $endTwo) || ($startTwo > $endOne)) {
+	if ( ($startOne <= $startTwo && $endOne <= $startTwo) ||
+		 ($startOne >= $endTwo) || ($startTwo >= $endOne)) {
 		return 0;
 	} else {
 		return (min($endOne, $endTwo) - max($startOne, $startTwo))/ max( $endOne-$startOne, $endTwo-$startTwo);
@@ -301,6 +352,7 @@ sub getCNSbreakpoints {
 		 ($pos - $lastBreakpointPos > $minCNSLength && ($CNSLength - $pos) > $minCNSLength ) ) {
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
+			print "DEBUG: Break at $pos because " . $CNSdelta[$pos] . ". from " . $CNSCoverageSmooth[$pos-1] . " to " . $CNSCoverageSmooth[$pos] . "to" . $CNSCoverageSmooth[$pos+1]  . "\n";
 		}
 	}
 	# Add start and end points
@@ -331,67 +383,58 @@ sub polishCNSAlignments {
 
 	foreach my $curHit (@alignmentMap) {
 		my $start =  $curHit->{'RRP'};
-		my $end = $start + $curHit->{'Len'};
+		my $end = $start + length( $curHit->{'Seq'});
 
 		for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
 			### if the hit overlaps the sub CNS
 
-			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $curHit->{'RRP'}, $curHit->{'RRP'} + $curHit->{'Len'} )) {
-
+			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $start, $end)) {
 
 				### distance from breakpoint start
 				my $positionInCNS = max($breakpoints[$curBreakpoint], $curHit->{'RRP'});
+				my $positionInSubCNS = max(0, $curHit->{'RRP'}- $breakpoints[$curBreakpoint]);
 				my $subCNSSeqStart = max(0,$breakpoints[$curBreakpoint] - $start);
-				my $subCNSTargetSeq = substr($curHit->{'Seq'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'RRP'}, $curHit->{'Len'} - $breakpoints[$curBreakpoint]+$start ));
+				my $subCNSSeqLength = min(length($curHit->{'Seq'}), ($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint])-$positionInSubCNS );
+				my $subCNSTargetSeq = substr($curHit->{'Seq'}, $subCNSSeqStart , $subCNSSeqLength);
 
 				my $referenceSequence = $curHit->{'Seq'}; 
 				my $newReferenceSeq = $subCNSTargetSeq;  ## Default value for reference sequence is the current sequence
 				if(defined $curHit->{'RefSeq'}) {
 					$referenceSequence = $curHit->{'RefSeq'};
-					$newReferenceSeq = substr($curHit->{'RefSeq'}, $subCNSSeqStart , min($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1] - $curHit->{'RRP'}, $curHit->{'Len'} - $breakpoints[$curBreakpoint]+$start ));
+					$newReferenceSeq = substr($curHit->{'RefSeq'}, $subCNSSeqStart , $subCNSSeqLength);
 				}
 
 				### remove trailing and leading gaps
-				$subCNSTargetSeq =~ s/(-+)$//;
- 			    my $numOfTrailingGaps = length($1);
+				my $numOfTrailingGaps = $subCNSTargetSeq =~ s/-+$//;
        
-				$subCNSTargetSeq =~ s/^(-+)//;
-				my $numOfLeadingGaps = length($1);
+				my $numOfLeadingGaps = $subCNSTargetSeq =~ s/^-+//;
+				$positionInSubCNS += $numOfLeadingGaps;
 
-				if(!defined $numOfLeadingGaps) { $numOfLeadingGaps = 0; }
-				if(!defined $numOfTrailingGaps) { $numOfTrailingGaps = 0; }
-
-				my $numOfInternalGaps = ($subCNSTargetSeq =~ tr/-//) + 0;
+				my $numOfInternalGaps = () = ($subCNSTargetSeq =~ /-/g);
 
 				### Only include the hit of the coverage is sufficient and if its not too gappy
 				if((length($subCNSTargetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSConservationAfterSplit && length($subCNSTargetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subCNSTargetSeq)) < $minSequenceContentInAlignment ) {
-					
+
 					## update the target coordinates
-					my $newTargetPosition= shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart, length($subCNSTargetSeq));
-					my $newAbsolutePosition = shiftTargetCoordinate($curHit->{'AbsPos'}, $curHit->{'GeneStrand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart, length($subCNSTargetSeq));
+					my $newTargetPosition= shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart+$numOfLeadingGaps, length($subCNSTargetSeq));
 
-					my $alignedSeq = ('-' x ($positionInCNS-$breakpoints[$curBreakpoint]+$numOfLeadingGaps)) . $subCNSTargetSeq;
-          			### pad end of alignments with gaps to make it equal length
-		          	$alignedSeq = $alignedSeq . ('-' x ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] - length($alignedSeq)));
-          
+					my $newAbsolutePosition=0;
+					if(defined $curHit->{'AbsPos'}) {
+						$newAbsolutePosition = shiftTargetCoordinate($curHit->{'AbsPos'}, $curHit->{'GeneStrand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart+$numOfLeadingGaps, length($subCNSTargetSeq));
+					}
+					# remove internal gaps
+					$subCNSTargetSeq =~ s/-//g;
+    
 					### Log the alignment to the breakpointlist
-					$alignedSeq =~ tr/-/N/;
-					my $seq = Bio::LocatableSeq->new(-seq => $alignedSeq,
-													 -start => 1,
-													 -end => length($alignedSeq),
-												     -id => $curHit->{'Locus'}. $curHit->{'Pos'});
-					$alignmentsForBreakpoints{$curBreakpoint}->add_seq($seq);
-
 					push (@splitAndPolishedAlignments, {
 							'Species' => $curHit->{'Species'},
 							'Locus' => $curHit->{'Locus'},
 							'Strand' => $curHit->{'Strand'},
 							'Len' => length($subCNSTargetSeq),
 							'RefUpDown' => $curHit->{'RefUpDown'},
-							'RefLocus' => $curHit->{'RefLocus'},
 							'Seq' => $subCNSTargetSeq,
 							'RefSeq' => $newReferenceSeq,
-							'RRP' => $positionInCNS+$numOfLeadingGaps,
+							'RRP' => $positionInSubCNS+$numOfLeadingGaps,
 							'Pos' => $newTargetPosition,
 							'AbsChr' => $curHit->{'AbsChr'},
 							'AbsPos' => $newAbsolutePosition,
@@ -399,6 +442,12 @@ sub polishCNSAlignments {
 							'Name' => $curHit->{'Name'},
 							'Breakpoint' => $curBreakpoint
 					});
+
+					my $seq = Bio::LocatableSeq->new(-seq => $subCNSTargetSeq,
+													 -start => 1,
+													 -end => length($subCNSTargetSeq),
+												     -id => $curHit->{'Locus'} . $newTargetPosition);
+					$alignmentsForBreakpoints{$curBreakpoint}->add_seq($seq);
 				}
 			}
 		}
@@ -406,8 +455,31 @@ sub polishCNSAlignments {
 
 	my %breakpointsToDelete;
 	for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
-		if( $alignmentsForBreakpoints{$curBreakpoint}->percentage_identity() < $minIdentityToKeepBreakpoint ||  $alignmentsForBreakpoints{$curBreakpoint}->num_sequences < $minSpeciesToKeepBreakpoint ) {
+
+		my $alignedBP = multipleAlignment($alignmentsForBreakpoints{$curBreakpoint});
+
+		if( $alignedBP->percentage_identity() < $minIdentityToKeepBreakpoint || $alignedBP->num_sequences < $minSpeciesToKeepBreakpoint ) {
 			$breakpointsToDelete{$curBreakpoint}=1;
+		} else {
+			## update sequences for BP
+			foreach my $curHit (@splitAndPolishedAlignments) {
+				if($curHit->{'Breakpoint'} == $curBreakpoint) {
+					my $alignedSeq = $alignedBP->get_seq_by_id($curHit->{'Locus'} . $curHit->{'Pos'});
+					if(!defined $alignedSeq) { print "ERR: Can't find ID " . $curHit->{'Locus'} . $curHit->{'Pos'} . "\n"; }
+					my $newAlignedSeq = uc($alignedSeq->seq());
+					### remove leading and trailing gaps
+					$newAlignedSeq =~ s/-+$//; # remove trailing
+					my $numOfLeadingGaps = $newAlignedSeq =~ s/^-+//;  ## and leading
+					$curHit->{'Seq'} = $newAlignedSeq;
+					$curHit->{'Len'} = length($newAlignedSeq =~ s/-//gr);
+					## and update the positions
+					$curHit->{'RRP'} += $numOfLeadingGaps;
+					$curHit->{'Pos'} = shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $curHit->{'RefSeq'}, $numOfLeadingGaps, length($curHit->{'Seq'}));
+					if(defined $curHit->{'AbsPos'}) {
+						$curHit->{'AbsPos'} = shiftTargetCoordinate($curHit->{'AbsPos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $curHit->{'RefSeq'}, $numOfLeadingGaps, length($curHit->{'Seq'}));
+					}					
+				}
+			}
 		}
 	}
 
@@ -548,4 +620,71 @@ sub shiftTargetCoordinate {
 	return $newTargetPosition;	
 }
 
+##########################################################################################################
+####
+####  Given a tree and a set of nodes on the tree, findDeepestCommonNode returns the name of the deepest node
+####   shared by all leaves. This can be used to identify the evolutionary origin of a CNS
+###
+
+sub findDeepestCommonNode {
+	my ($tree, $leavesListRef) = @_;
+	my @leavesList = @$leavesListRef;
+
+	my $anchorLeafNode = $tree->find_node( ($leavesList[0] =~ s/\./_/gr) );
+	if(!defined $anchorLeafNode) { die "ERROR in findDeepestCommonNode: Cannot find deepest node $leavesList[0] in tree.\n"; }
+	my %anchorLeafPath;
+	my $node = $anchorLeafNode;
+	my $deepestNode = $node->id;
+	$anchorLeafPath{$deepestNode}=0;
+
+	my $deepness=1;
+	while($node->ancestor) {
+		$node = $node->ancestor;
+		$anchorLeafPath{$node->id} = $deepness++;
+	}
+
+	foreach my $leaf (@leavesList) {
+		my $node = $tree->find_node( -id => $leaf=~ s/\./_/gr );
+		if(! defined $node) { next;}
+		while($node->ancestor) {
+			$node = $node->ancestor;
+			if(defined $anchorLeafPath{$node->id}) {  ### This is where the path intersect. Check if this is the deepest we found
+				if( $anchorLeafPath{$node->id} > $anchorLeafPath{$deepestNode}) {
+					$deepestNode = $node->id;
+				}
+				last;
+			}
+		}
+	}
+	return $deepestNode;
+}
+
+##########################################################################################################
+####
+####  multipleAlignment(alignObject)
+####
+####  Accepts a SimpleAlign object, performs multiple alignment and returns an aligned SimpleAlign
+####
+
+sub multipleAlignment {
+	my ($inAlign) = @_;
+	## make temporary fasta file
+	my $pid = $$;
+	chomp($pid);
+	my $tempFileName = "/dev/shm/$pid.CNS.fasta";
+
+	my $out = Bio::SeqIO->new(-file=> ">$tempFileName", -format => "fasta");
+	foreach my $seq ($inAlign->each_seq) { $out->write_seq($seq); }
+
+	## perform the alignment
+	system("mafft --quiet --thread -1 --auto $tempFileName > $tempFileName.align.fasta");
+
+	## Now read the fasta file
+	my $alignedCNSFile = Bio::AlignIO->new(-file => "$tempFileName.align.fasta",
+										-format => "fasta");
+	my $outAlign = $alignedCNSFile->next_aln;
+#	unlink($tempFileName);
+#	unlink("$tempFileName.align.fasta");
+	return $outAlign;
+}
 1;

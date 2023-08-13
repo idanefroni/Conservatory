@@ -32,15 +32,15 @@ my $mapFileName="";
 my $outputCNSFileName="";
 my $outputMapFileName="";
 my $outputMergedCNSFileName="";
-
 my $conservatoryTreeFileName;
-
 
 ### Merging parameters
 my $superCNSPrefix = "Super";
 my $minOverlappingSpeciesForMerge=5; ### How many overlapping hits to merge a CNS
 my $minCNSOverlap = 0.1;
-my $minSyntenyBiasToAssignCNS= 1.1; ### Number between 1 and 2 (how many more species need to support a two-gene CNS assignment to just one of the genes, based on synteny)
+my $minSyntenyBiasToAssignCNS= 3; ### The minimum number of species differences between syntenic coding and non-coding region to delete the less
+									# syntenic one
+
 my $minSupportingSpeciesToKeepMultipleCNS = 80;
 my $removeOriginalCNS=0;
 my $minCNSLength=8;
@@ -100,14 +100,26 @@ if ($verbose) { print "START: Loading genome database.\n"; }
 my $genomedbFile = $conservatoryDir . "/genome_database.csv";
 die "ERROR: Cannot find file genome database file ($genomedbFile)\n" unless -e $genomedbFile;
 
-$conservatoryTreeFileName = $conservatoryDir . "/genomes/Conservatory.tree";
-if(! -e $conservatoryTreeFileName) { print "WARNING: Cannot find conservatory tree ($conservatoryTreeFileName).\n"; $conservatoryTreeFileName=""; }
 ### Load the super tree
-my $conservatoryTreeio = Bio::TreeIO->new(-file => $conservatoryTreeFileName, -format => 'newick');
-my $conservatoryTree = $conservatoryTreeio->next_tree;
-my %speciesInTree = map { ($_)->id => 1} $conservatoryTree->get_leaf_nodes();
+my $conservatoryAnnotatedTreeFileName = $conservatoryDir . "/genomes/Conservatory.Annotated.tree";
+my $conservatoryAnnotatedTreeNodeAgesFileName = $conservatoryDir . "/genomes/Conservatory.Annotated.NodeAges.csv";
+if(! -e $conservatoryAnnotatedTreeFileName) { print "WARNING: Cannot find annotated conservatory tree ($conservatoryAnnotatedTreeFileName).\n"; $conservatoryAnnotatedTreeFileName=""; }
+if(! -e $conservatoryAnnotatedTreeNodeAgesFileName) { print "WARNING: Cannot find node ages files for annotated conservatory tree ($conservatoryAnnotatedTreeNodeAgesFileName).\n"; $conservatoryAnnotatedTreeFileName=""; }
 
-if(!defined $conservatoryTree) { die "ERROR: Cannot read tree file $conservatoryTreeFileName. Bad format.\n"; }
+my $conservatoryAnnotatedTreeio = Bio::TreeIO->new(-file => $conservatoryAnnotatedTreeFileName, -format => 'newick');
+my $conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
+if(!defined $conservatoryAnnotatedTree) { die "ERROR: Cannot read annotated tree file $conservatoryAnnotatedTreeFileName. Bad format.\n"; }
+my %speciesInTree = map { ($_)->id => 1} $conservatoryAnnotatedTree->get_leaf_nodes();
+
+my %conservatoryTreeNodeAges;
+
+open(my $nodeAgesFile, $conservatoryAnnotatedTreeNodeAgesFileName) || die ("Error reading $conservatoryAnnotatedTreeNodeAgesFileName.\n");
+while(<$nodeAgesFile>) {
+	chomp;
+	my ($node,$age)= split /,/;
+	$conservatoryTreeNodeAges{$node}=$age;
+}
+close($nodeAgesFile);
 
 open (my $genomeDatabase, "<", $genomedbFile);
 while((my $curgenomeline = <$genomeDatabase>)) {
@@ -157,7 +169,7 @@ while(<$CNSPositionFile>) {
 					'RRP' => $referenceRelativePosition,   # ReferenceRelativePosition
 					'Len' => $length,
 					'AbsLen' => $length - ($targetSequence =~ tr/-//),
-					'Seq' => $targetSequence,
+					'Seq' => uc($targetSequence),
 					'AbsChr' => $absChromosome,
 					'AbsPos' => $absStart,
 					'GeneStrand' => $geneStrand,				
@@ -186,9 +198,9 @@ if($verbose) { print "Done\n"; };
 my $lastPosition = $positionList[0];
 my $positionNameCounter=1;
 $lastPosition->{'Name'} = "M_" . $positionNameCounter;
-my $curPos=1;
-
 push( @{ $positionsForCNS{ $lastPosition->{'CNSID'} } }, $lastPosition  );
+
+my $curPos=1;
 
 foreach my $curPosition (@positionList[1..((scalar @positionList) -1 )]) {
 
@@ -284,11 +296,12 @@ foreach my $CNSID (@CNSList[1..(scalar @CNSList)]) {
 		overlap($CNSTable{$lastCNS}{'AbsStart'},$CNSTable{$lastCNS}{'AbsEnd'}, $CNSTable{$CNSID}{'AbsStart'},$CNSTable{$CNSID}{'AbsEnd'})) {
 
 			## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
+			my $syntenyComparison = compareSynteny($CNSTable{$lastCNS}, $CNSTable{$CNSID});
 
-			if($CNSTable{$lastCNS}{'SupportingSpecies'} > $CNSTable{$CNSID}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
+			if($syntenyComparison == 1) { ## If the lastCNS is more conserved that the current CNSID
 				$CNSToDelete = $CNSID;
 				$CNSDeleted++;
-			} elsif($CNSTable{$CNSID}{'SupportingSpecies'} > $CNSTable{$lastCNS}{'SupportingSpecies'} * $minSyntenyBiasToAssignCNS) {
+			} elsif($syntenyComparison ==2) { ## If it is the other way around
 				$CNSToDelete = $lastCNS;
 				$CNSDeleted++;
 			} else {   ### If both CNSs have a similar number of supporting species, we have to decide:
@@ -296,7 +309,7 @@ foreach my $CNSID (@CNSList[1..(scalar @CNSList)]) {
 				###  then associate with the closest gene.
 				if( ($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $CNSTable{$CNSID}{'RegulatorySeqPart'}) && ($CNSTable{$CNSID}{'RegulatorySeqPart'} eq "Upstream") &&
 					($CNSTable{$lastCNS}{'GeneStrand'} eq $CNSTable{$CNSID}{'GeneStrand'})) {    #### If both upstream. delete the one further away
-					if($CNSTable{$CNSID}{'Start'} + $CNSTable{$CNSID}{'Len'}> $CNSTable{$lastCNS}{'Start'} + $CNSTable{$lastCNS}{'Len'}) {
+					if($CNSTable{$CNSID}{'AbsStart'} + $CNSTable{$CNSID}{'Len'}> $CNSTable{$lastCNS}{'AbsStart'} + $CNSTable{$lastCNS}{'Len'}) {
 						$CNSToDelete = $lastCNS;
 					}
 					else {
@@ -305,7 +318,7 @@ foreach my $CNSID (@CNSList[1..(scalar @CNSList)]) {
 					$CNSDeleted++;
 				} elsif(($CNSTable{$lastCNS}{'RegulatorySeqPart'} eq $CNSTable{$CNSID}{'RegulatorySeqPart'}) && ($CNSTable{$CNSID}{'RegulatorySeqPart'} eq "Downstream") &&
 						($CNSTable{$lastCNS}{'GeneStrand'} ne $CNSTable{$CNSID}{'GeneStrand'} )) {  ### If both downstream, delete the one further away
-						if($CNSTable{$CNSID}{'Start'} < $CNSTable{$lastCNS}{'Start'}) {
+						if($CNSTable{$CNSID}{'AbsStart'} < $CNSTable{$lastCNS}{'AbsStart'}) {
 							$CNSToDelete = $lastCNS;
 						} else {
 							$CNSToDelete = $CNSID;
@@ -323,7 +336,7 @@ foreach my $CNSID (@CNSList[1..(scalar @CNSList)]) {
 					$CNSToDelete = $CNSID;
 					$CNSDeleted++;
 				} else { ### If orientation is different then merge into one CNS.
-					my $diffInCNSPos = $CNSTable{$CNSID}{'Start'} -$CNSTable{$lastCNS}{'Start'};
+					my $diffInCNSPos = $CNSTable{$CNSID}{'AbsStart'} - $CNSTable{$lastCNS}{'AbsStart'};
 					### Pick the longest one
 					my $longestSeq;
 					my $longestSeqCNS;
@@ -336,27 +349,31 @@ foreach my $CNSID (@CNSList[1..(scalar @CNSList)]) {
 					}
 					## Update all the positions
 
-					### If there is a difference of the stands between the merged CNS, reverse complement the mismatched one
+					### If there is a difference in the stands between the merged CNS, reverse complement the mismatched one
 					if($CNSTable{$CNSID}{'GeneStrand'} ne $CNSTable{$lastCNS}{'GeneStrand'} && $longestSeqCNS eq $CNSID) {
 						
 						foreach my $mapping (@{ $positionsForCNS{$lastCNS}}) {
-							my $seq = $mapping->{'Seq'};
-							$seq = reverse $seq;
-                            $seq =~ tr/ACGT/TGCA/;
-							$mapping->{'Seq'} = $seq;
+							$mapping->{'Seq'} = reverseComplement(uc($mapping->{'Seq'}));
+							if($mapping->{'Strand'} eq "+") {
+								$mapping->{'Strand'} = "-";
+							} else {
+								$mapping->{'Strand'} = "+";
+							}
 						}
 					}
 					
 					foreach my $mapping (@{ $positionsForCNS{$CNSID} }) {
-						$mapping->{'PosInCNS'} = $mapping->{'PosInCNS'} + $diffInCNSPos;
+						$mapping->{'RRP'} = $mapping->{'RRP'} + $diffInCNSPos;
 						$mapping->{'CNSID'} = $lastCNS;
 						push(@{ $positionsForCNS{$lastCNS} }, $mapping);
 						# If we changed the direction, we should reverse the sequence
 						if($CNSTable{$CNSID}{'GeneStrand'} ne $CNSTable{$lastCNS}{'GeneStrand'} && $longestSeqCNS eq $lastCNS) {
-							my $seq = $mapping->{'Seq'};
-							$seq = reverse $seq;
-                            $seq =~ tr/ACGT/TGCA/;
-							$mapping->{'Seq'} = $seq;
+							$mapping->{'Seq'} = reverseComplement(uc($mapping->{'Seq'}));
+							if($mapping->{'Strand'} eq "+") {
+								$mapping->{'Strand'} = "-";
+							} else {
+								$mapping->{'Strand'} = "+";
+							}							
 						}
 					}
 					### Merge CNS rel position
@@ -423,10 +440,10 @@ if($mergeDeep) {
 	
 		if($verbose) { print "PROGRESS: Identifying deep CNS to merge..." . ($curPos++) . "/$totalToScreen.\r"; }
 	
-		if( geneToGenome($lastMapping->{'Locus'}) eq  geneToGenome($curMapping->{'Locus'}) &&
+		if( defined $CNSTable{ $lastMapping->{'CNSID'} } && defined $CNSTable{ $curMapping->{'CNSID'} } &&
+		    geneToGenome($lastMapping->{'Locus'}) eq  geneToGenome($curMapping->{'Locus'}) &&
 		    $lastMapping->{'Name'} eq $curMapping->{'Name'} &&
-			$lastMapping->{'CNSID'} ne $curMapping->{'CNSID'} &&
-			defined $CNSTable{ $lastMapping->{'CNSID'} } && defined $CNSTable{ $curMapping->{'CNSID'} } ) {   ## If it is the same genome position, but different CNSs, mark them to be merged
+			$lastMapping->{'CNSID'} ne $curMapping->{'CNSID'} ) {   ## If it is the same genome position, but different CNSs, mark them to be merged
 				$CNSToMergeMap{ $lastMapping->{'CNSID'} }{ $curMapping->{'CNSID'} }{ $lastMapping->{'Species'} } =1;
 				$CNSToMergeMap{ $curMapping->{'CNSID'} }{ $lastMapping->{'CNSID'} }{ $lastMapping->{'Species'} } =1;			
 		}
@@ -465,36 +482,46 @@ for my $curCNSA (keys %CNSToMergeMap ) {
 	if($verbose) { print "PROGRESS: Merging overlapping CNS hits and filtering divergent sequences..." . ($curPos++) . "/$totalToScreen. Removed $deletedForLowIdentity CNS merge events.\r"; }
 	for my $curCNSB (keys %{ $CNSToMergeMap{$curCNSA}}) {
 
-		## Check to see if we have enough similarity between the ancesteral CNSs
+
+		## Check to see if we have enough similarity between the ancesteral CNSs.
+		my $deleteMergeEvent=0;
+
+		## First, check if we have enough overlap
+		if( (min($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'}) / max($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'})) > $minCNSOverlapToMerge) {
+			### If we have enough, check for identity
+				print "Considerign $curCNSA and $curCNSB.\n";
+			my $pairwise = alignPairwise($CNSTable{$curCNSA}{'AncesteralSeq'}, $CNSTable{$curCNSB}{'AncesteralSeq'});
+			if($pairwise->percentage_identity() < $minCNSIdentityToMerge) {
+				print "Considerign $curCNSA and $curCNSB: Alignment identity too low. try RC\n";
+				### perhaps the CNS has switch directions?
+				my $rcPairwise = alignPairwise($CNSTable{$curCNSA}{'AncesteralSeq'}, reverseComplement($CNSTable{$curCNSB}{'AncesteralSeq'}));
+				if($rcPairwise->percentage_identity() >$minCNSIdentityToMerge) {
+					## We should merge, but first reverse complement the sequence
+					$CNSTable{$curCNSB}{'AncesteralSeq'} = reverseComplement($CNSTable{$curCNSB}{'AncesteralSeq'});
+					### and reverse all positions
+					foreach my $curPosition (@{ $positionsForCNS{$curCNSB} }) {
+						$curPosition->{'Seq'} = reverseComplement($curPosition->{'Seq'});
+						if($curPosition->{'Strand'} eq "+") {
+							$curPosition->{'Strand'} = "-";
+						} else {
+							$curPosition->{'Strand'} = "+";							
+						}
+					}
+				} else {
+					print "also too low\n";
+					$deleteMergeEvent=1;
+				}
+			}
+		} else {
+			$deleteMergeEvent=1;
+		}
+
 		### perform pairwide alignment (NeedlemanWunsch) between the two CNS sequences
 
-		sub score_sub {
-			  if (!@_) {  return -0.5;  }  ## gap penalty
-  				## mismatch scores -1, match +1
-  				return ($_[0] eq $_[1]) ? 1 : -1;
-		}
-		my $nw = Algorithm::NeedlemanWunsch->new(\&score_sub);
-		$nw->gap_open_penalty(-5);
-		$nw->gap_extend_penalty(-0.25);
-
-		my $seq1Arr = [split//, $CNSTable{$curCNSA}{'AncesteralSeq'}];
-		my $seq2Arr = [split//, $CNSTable{$curCNSB}{'AncesteralSeq'}];
-		my (@align1, @align2);
-
-		$nw->align($seq1Arr,$seq2Arr,
-		   {
-   				align   => sub {unshift @align1, $seq1Arr->[shift]; unshift @align2, $seq2Arr->[shift];},
-   				shift_a => sub {unshift @align1, $seq1Arr->[shift]; unshift @align2,            '-'},
-   				shift_b => sub {unshift @align1,               '-'; unshift @align2, $seq2Arr->[shift]},
-  			});
-		my $pairwise = Bio::SimpleAlign->new();
-		$pairwise->add_seq(Bio::LocatableSeq->new( -seq => join("",@align1), -id=> "seq1", -start=>0, -end=> scalar @align1));
-		$pairwise->add_seq(Bio::LocatableSeq->new( -seq => join("",@align2), -id=> "seq2", -start=>0, -end=> scalar @align2));
-		if($pairwise->percentage_identity() < $minCNSIdentityToMerge || (min($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'}) / max($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'})) < $minCNSOverlapToMerge ) {  ## If the sequences are too disimilar by sequence or by length
+		if($deleteMergeEvent) {  ## If the sequences are too disimilar by sequence or by length
 			delete $CNSToMergeMap{$curCNSA}{$curCNSB};
 			delete $CNSToMergeMap{$curCNSB}{$curCNSA};
 			$deletedForLowIdentity++;
-#			print "removing $curCNSA and $curCNSB for low identity/overlap. Identty :" . $pairwise->percentage_identity() . "Overlap" . (min($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'}) / max($CNSTable{$curCNSA}{'Len'},$CNSTable{$curCNSB}{'Len'})) . "\n";
 		} 
 	}
 	if((scalar (keys %{ $CNSToMergeMap{$curCNSA} })) < 1) { delete $CNSToMergeMap{$curCNSA}; }	
@@ -697,9 +724,6 @@ while(<$filesToAlignFile>) {
 			$sequence =~ s/^(-+)//;
 			$sequence =~ s/(-+)$//;
 
-			#### Calculate Absolute coordinates
-#			print "DEBUG: $CNSGroupName: shifting: " . uc($curCNSposition->seq) . " by $positionInCNS. Final: $sequence.\n";
-
 			my $newTargetPosition = shiftTargetCoordinate($targetPosition, $targetStrand, $sequence, $sequence, $positionInCNS, length($sequence));
 			my $newAbsPosition = shiftTargetCoordinate($absPosition, $geneStrand, $sequence, $sequence, $positionInCNS, length($sequence));			
 
@@ -710,6 +734,7 @@ while(<$filesToAlignFile>) {
 				'Strand' => $targetStrand,
 				'RRP' => $positionInCNS,
 				'Len' => length($sequence),
+				'AbsLen' => length($sequence) - ($sequence =~ tr/-//),
 				'Seq' => $sequence,
 				'AbsChr' => $absChromosome,
 				'AbsPos' => $newAbsPosition,
@@ -800,6 +825,7 @@ foreach my $curCNS (keys %CNSGroups) {
 							'Strand' => $curHit->{'Strand'},
 							'Seq' => $curHit->{'Seq'},
 							'Pos' => $curHit->{'Pos'},
+							'AbsLen' => $curHit->{'AbsLen'},
 							'AbsChr' => $curHit->{'AbsChr'},
 							'AbsPos' => $curHit->{'AbsPos'},
 							'GeneStrand' => $curHit->{'GeneStrand'},
@@ -879,6 +905,65 @@ print "END: Deleted $CNSDeleted duplicated CNSs, of which $CNSDeletedButMappingK
 
 
 #########################################################################################################
+#### Compare synteny of a CNS to two genes
+#### format: compareSynteny(CNSOne, CNSTwo)
+####
+####  Returns a number: 1 - CNS one has deeper synteny
+####                    2 - CNS two has deeper synteny
+####	                0 - both mappings have similar synteny
+####
+
+sub compareSynteny {
+	my ($CNSOne, $CNSTwo) = @_;
+	### First, compare the level of conservation
+
+	## If the number of species between the two CNS-coding pairs is not large enough to determine synteny bias,
+	## return here
+	if(abs($CNSOne->{'SupportingSpecies'} - $CNSTwo->{'SupportingSpecies'})< $minSyntenyBiasToAssignCNS) {
+		return 0;
+	}
+
+	my $conservationLevelOne;
+	my $conservationLevelTwo;
+
+	## First, see if we have the conservation level
+	if(! ($CNSOne->{'Level'} =~ /N[0-9]+/)) { ## if we don't, measure it
+		my @speciesForCNS;
+		foreach my $curMapping (@{ $positionsForCNS{ $CNSOne->{'CNSID'} } }) {
+			push(@speciesForCNS, $curMapping->{'Species'}) unless (!defined $speciesInTree{ $curMapping->{'Species'} });
+		}
+		$conservationLevelOne = findDeepestCommonNode($conservatoryAnnotatedTree, \@speciesForCNS);
+	} else {
+		$conservationLevelOne = $CNSOne->{'Level'};
+	}
+	if(! ($CNSTwo->{'Level'} =~ /N[0-9]+/)) { ## if we don't, measure it
+		my @speciesForCNS;
+		foreach my $curMapping (@{ $positionsForCNS{ $CNSTwo->{'CNSID'} } }) {
+			push(@speciesForCNS, $curMapping->{'Species'}) unless (!defined $speciesInTree{ $curMapping->{'Species'} });
+		}
+		$conservationLevelTwo = findDeepestCommonNode($conservatoryAnnotatedTree, \@speciesForCNS);
+	} else {
+		$conservationLevelTwo = $CNSTwo->{'Level'};
+	}
+
+	### Pick the one with deepest conservation. If conservation level is the same, pick the better supported one by number of species
+	### And if they are all the same, return 0.
+
+	if($conservatoryTreeNodeAges{$conservationLevelOne} > $conservatoryTreeNodeAges{$conservationLevelTwo} ) {
+		return 1;
+	} elsif($conservatoryTreeNodeAges{$conservationLevelOne} < $conservatoryTreeNodeAges{$conservationLevelTwo}  ) {
+		return 2;
+	} elsif($CNSOne->{'SupportingSpecies'} > $CNSTwo->{'SupportingSpecies'}) {
+		return 1;
+	} elsif($CNSTwo->{'SupportingSpecies'} > $CNSOne->{'SupportingSpecies'}) {
+		return 2;
+	} else {
+		return 0;   
+	}
+}
+
+
+#########################################################################################################
 #### Recurive function to identify all overlapping CNSs
 #### format: collateCNS(<Name of CNS>, <hash of CNS-CNS overlaps>, <list of overlapping CNS>)
 ####
@@ -922,6 +1007,9 @@ sub mergeOverlappingTargetsForCNS {
 	my @positionMapForLocus=();
 
 	foreach my $curPositionForGene (@positionMapSortedByGene) {
+		### remove the gaps
+		$curPositionForGene->{'Seq'} =~ s/-//g;
+		$curPositionForGene->{'Len'} = length($curPositionForGene->{'Seq'} );			
 		if($curPositionForGene->{'Locus'} eq $curLocus) {
 			push @positionMapForLocus, $curPositionForGene;
 		} else {
@@ -929,23 +1017,65 @@ sub mergeOverlappingTargetsForCNS {
 			my @positionMapSorted = sort { $a->{'Pos'} <=> $b->{'Pos'} } @positionMapForLocus;
 
 			my $curPosition = $positionMapSorted[0];
+			
+			if($curPosition->{'Strand'} eq "-") {
+				$curPosition->{'Strand'} = "Reversed";
+				$curPosition->{'Seq'} = reverseComplement($curPosition->{'Seq'});
+			}
 			foreach my $nextPosition (@positionMapSorted) {
+
 				if(overlap($curPosition->{'Pos'},$curPosition->{'Pos'} + $curPosition->{'Len'},
 					   	$nextPosition->{'Pos'}, $nextPosition->{'Pos'} + $nextPosition->{'Len'})) {
 					### merge the two positions
+					### see if we need to reverse
+
+					if($nextPosition->{'Strand'} eq "-") {
+						$nextPosition->{'Strand'} = "Reversed";
+						$nextPosition->{'Seq'} = reverseComplement($nextPosition->{'Seq'});
+					}
+
 					### Set up the merged sequence string background
 					my $combinedSequence = '-' x (max($curPosition->{'Pos'} + $curPosition->{'Len'}, $nextPosition->{'Pos'} + $nextPosition->{'Len'} ) - $curPosition->{'Pos'});
-					substr($combinedSequence,0, $curPosition->{'Len'}) = $curPosition->{'Seq'};
-					substr($combinedSequence,$nextPosition->{'Pos'} - $curPosition->{'Pos'}, $nextPosition->{'Len'}) = $nextPosition->{'Seq'};
+					my $startPos = min($curPosition->{'Pos'}, $nextPosition->{'Pos'} );
+					eval {
+						substr($combinedSequence,$curPosition->{'Pos'}-$startPos, $curPosition->{'Len'}) = $curPosition->{'Seq'};
+						substr($combinedSequence,$nextPosition->{'Pos'} - $startPos, $nextPosition->{'Len'}) = $nextPosition->{'Seq'};
+						1;
+					} or do {
+						print "\n\nDEBUG: ERROR in mergeoverlapping. trying to merge:\n";
+						print $curPosition->{'Locus'} . ":" . $nextPosition->{'Locus'} . ". Pos 1: " . $curPosition->{'Pos'} . ":" . $curPosition->{'Len'} . ":" . $curPosition->{'Strand'} . "\n";
+						print $curPosition->{'Locus'} . ":" . $nextPosition->{'Locus'} . ". Pos 2: " . $nextPosition->{'Pos'} . ":" . $nextPosition->{'Len'} . ":" . $nextPosition->{'Strand'} . "\n";						
+						print "SEQ: " . $curPosition->{'Seq'} . ":" . $nextPosition->{'Seq'} . "\n";
+					};
+#					if($curPosition->{'Locus'} eq "Ljaponicus-Ljaponicus-Lj0g3v0059079") {
+#						print $curPosition->{'Locus'} . ":" . $nextPosition->{'Locus'} . ". Pos 1: " . $curPosition->{'Pos'} . ":" . $curPosition->{'Len'} . ":" . $curPosition->{'Strand'} . "\n";
+#						print $curPosition->{'Locus'} . ":" . $nextPosition->{'Locus'} . ". Pos 2: " . $nextPosition->{'Pos'} . ":" . $nextPosition->{'Len'} . ":" . $nextPosition->{'Strand'} . "\n";
+#						print "SEQ: " . $curPosition->{'Seq'} . ":" . $nextPosition->{'Seq'} . "\n";
+#						print "MERGED: $combinedSequence\n";
+#					}
 					$curPosition->{'Seq'} = $combinedSequence;
 					### 
 					$curPosition->{'Len'} = length($curPosition->{'Seq'});
 
 	   			} else {
+					if($curPosition->{'Strand'} eq "Reversed") {
+						$curPosition->{'Strand'} = "-";
+						$curPosition->{'Seq'} = reverseComplement($curPosition->{'Seq'});
+					}
 					my %newPosition = %$curPosition;
 					push @positionMapMerged, \%newPosition;
+
+					if($nextPosition->{'Strand'} eq "-") {
+						$nextPosition->{'Strand'} = "Reversed";
+						$nextPosition->{'Seq'} = reverseComplement($nextPosition->{'Seq'});
+					}
+					#print "HERE: " . $curPosition->{'Pos'} . "vs " . $nextPosition->{'Pos'} . "\n";
 					$curPosition = $nextPosition;
 		   		}
+			}
+			if($curPosition->{'Strand'} eq "Reversed") {
+				$curPosition->{'Strand'} = "-";
+				$curPosition->{'Seq'} = reverseComplement($curPosition->{'Seq'});
 			}
 			push @positionMapMerged, $curPosition;
 			$curLocus = $curPositionForGene->{'Locus'};

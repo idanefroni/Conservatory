@@ -194,14 +194,19 @@ while(my $curgenomeline= <$genomedb>) {
 		unlink("$conservationDir/$family.bw");
 		
 		# merge gene files for entire genome
-		system("for a in $conservationDir/$family/*.cns.csv; do cat \$a >> $conservationDir/$family.csv.tmp; done");
-		system("for a in $conservationDir/$family/*.bed; do cat \$a | sed 's/ /\t/g' >> $conservationDir/$family.bed; done");
-		system("for a in $conservationDir/$family/*.map.csv; do cat \$a >> $conservationDir/$family.map.csv.tmp; done");
+
+#		system("for a in $conservationDir/$family/*.cns.csv; do cat \$a >> $conservationDir/$family.csv.tmp; done");
+#		system("for a in $conservationDir/$family/*.bed; do cat \$a | sed 's/ /\t/g' | awk '(\$4>0 && \$3>\$2 && \$2>=0)' >> $conservationDir/$family.bed; done");
+#		system("for a in $conservationDir/$family/*.map.csv; do cat \$a >> $conservationDir/$family.map.csv.tmp; done");
+
+		system("find $conservationDir/$family/ -name '*.cns.csv' -exec cat {} \\; > $conservationDir/$family.csv.tmp");
+#		system("find $conservationDir/$family/ -name '*.bed' -exec cat {} \\; | sed 's/ /\t/g' | awk '(\$4>0 && \$3>\$2 && \$2>=0)' > $conservationDir/$family.bed");
+		system("find $conservationDir/$family/ -name '*.map.csv' -exec cat {} \\; > $conservationDir/$family.map.csv.tmp");
 	
 		# sort files
-		system("sort -t',' -k1,1 -k7,7n $conservationDir/$family.csv.tmp | uniq > $conservationDir/$family.sorted.csv");
-		system("sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
+		system("sort -t',' -k1,1 -k7,7n $conservationDir/$family.csv.tmp | uniq > $conservationDir/$family.cns.sorted.csv");
 		system("sort -t',' -k1,1 $conservationDir/$family.map.csv.tmp | uniq > $conservationDir/$family.map.sorted.csv");
+		system("LC_COLLATE=C sort -k1,1 -k2,2n -u -o $conservationDir/$family.bed $conservationDir/$family.bed");
 		unlink("$conservationDir/$family.csv.tmp");
 		unlink("$conservationDir/$family.map.csv.tmp");
 
@@ -213,9 +218,9 @@ while(my $curgenomeline= <$genomedb>) {
 		my $options;
 		if($verbose) { $options .= "--verbose "; }
 		if($donotFilter) { $options .= "--do-not-filter "; }
-		system("/usr/bin/perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv  $options");
-		#unlink("$conservationDir/$family.sorted.csv");
-		#unlink("$conservationDir/$family.map.sorted.csv");
+		system("/usr/bin/perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.cns.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.csv --remove-original-CNS  $options");
+		unlink("$conservationDir/$family.cns.sorted.csv");
+		unlink("$conservationDir/$family.map.sorted.csv");
 
 		print localtime() . ": END CNS table build.\n";
 		

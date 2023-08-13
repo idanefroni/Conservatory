@@ -23,6 +23,7 @@ $|=1;
 ### Filenames
 my $conservatoryDir=abs_path(".");
 my $tmpDirRoot= "/dev/shm/";
+my $superCNSPrefix = "Super";
 my $CNSFileName="";
 my $mapFileName="";
 my $outputCNSFileName="";
@@ -101,6 +102,7 @@ mkdir $tmpDir;
 ### Check number of CNSs
 my $CNSLineCount = (qx(wc -l $CNSFileName))[0];
 chomp($CNSLineCount);
+$CNSLineCount =~ s/ .*$//;
 my $startLine=0;
 my $endLine= $CNSLineCount;
 
@@ -109,7 +111,10 @@ if($totalSplits>1) {
 	$endLine = ceil( ($CNSLineCount/$totalSplits) * ($splitNum) + 1);
 	$outputCNSFileName = $outputCNSFileName . "_" . $splitNum;
 }
+
 open (my $tmpCNSToReconstructFile , ">$tmpCNSToReconstructFileName") || die ("ERROR: Cannot open temporary file $tmpCNSToReconstructFileName.\n");
+
+print "PROGRESS: Reading CNS from $CNSFileName.\n";
 open (my $CNSInputFile, $CNSFileName) ||  die "ERROR: Cannot find CNS file $CNSFileName.\n";
 
 ### Go to starting position
@@ -124,7 +129,7 @@ while($curPos++ <= $endLine) {
 
 	my $line = <$CNSInputFile>;
 	chomp $line;
-	my ($referenceGenome, $cnsToReconstruct, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/, $line;
+	my ($referenceGenome, $cnsToReconstruct, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/, $line;
 	print $tmpCNSToReconstructFile "$cnsToReconstruct\n";
 }
 
@@ -138,24 +143,35 @@ open (my $CNSPositionFile, "grep -f $tmpCNSToReconstructFileName $mapFileName |"
 while(<$CNSPositionFile>) {
 	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "\r" };
 	chomp;
-	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence) = split /,/;
-	
-	## Only if non-filtered CNS
-	if(!defined $positionTable{$CNSID}) {
-		$positionTable{$CNSID} = {
-					'CNSID' => $CNSID,
-					'Positions' => () };
-	}
+	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence, $absChromosome, $absStart, $geneStrand, $name) = split /,/;
 
-	push( @{ $positionTable{$CNSID}{'Positions'} } , {
+	### Get absolute coordiantes for gene, if we don't have them
+#	if($absChromosome eq "") {
+#		my %geneCoordinates = getGeneCoordinates($conservatoryDir, $speciesToFamily{$targetSpecies},  geneToGenome($targetLocus), $targetLocus);
+#		my %relativeCoordinate = ('Start' => $targetRelativePosition, 'Length' => $length);
+#		my %absGeneCoord = translateRealtiveToAbsoluteCoordinates( \%relativeCoordinate, $geneCoordinates{'Start'}, $geneCoordinates{'End'}, $geneCoordinates{'Strand'}, $targetStrand );
+#		$absChromosome = $geneCoordinates{'Chromosome'};
+#		$geneStrand = $geneCoordinates{'Strand'};
+#		$absStart = $absGeneCoord{'Start'};
+#	}
+
+
+	push( @{ $positionTable{$CNSID} } , {
+				'CNSID' => $CNSID,
 				'TargetSpecies' => $targetSpecies,
 				'TargetLocus' => $targetLocus,
 				'TargetPosition' => $targetRelativePosition,
 				'TargetStrand' => $targetStrand,
-				'ReferenceRelativePosition' => $referenceRelativePosition,
+				'RRP' => $referenceRelativePosition,   # ReferenceRelativePosition
 				'Length' => $length,
-				'TargetSequence' => $targetSequence} );		
+				'AbsLength' => $length - ($targetSequence =~ tr/-//),
+				'TargetSequence' => $targetSequence,
+				'AbsChromosome' => $absChromosome,
+				'AbsStart' => $absStart,
+				'GeneStrand' => $geneStrand,				
+				'Name' => $name } );
 }
+
 close($CNSPositionFile);
 if($verbose) { print "\n"; };
 
@@ -179,25 +195,18 @@ while($curPos <= $endLine) {
 
 	my $line = <$CNSInputFile>;
 	chomp $line;
-	my ($referenceGenome, $cnsToReconstruct, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/, $line;
+	my ($referenceGenome, $cnsToReconstruct, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/, $line;
 
 	if(!defined $positionTable{$cnsToReconstruct} ) { next;}
 	
 	$CNSTable{$cnsToReconstruct} = {
 				'ReferenceGenome' => $referenceGenome,
 				'CNSID' => $cnsToReconstruct,
-				'Chromosome' => $chromosome,
-				'Strand' => $strand,
-				'Start' => $start,	
-				'End' => $end,
 				'Locus' => $locus,
-				'RelStart' => $relStart,
-				'RelEnd' => $relEnd,
+				'Start' => $start,
+				'Length' => $length,
 				'Level' => $level,
 				'SupportingSpecies' => $supportingSpecies,
-				'ORFLength' => $orfLength,
-				'ORFDir' => $orfDir,
-				'Omega' => $omega,
 				'AncesteralSeq' => $ancesteralSeq,
 	};
 
@@ -213,8 +222,12 @@ while($curPos <= $endLine) {
 		my $lastCommonNode = findDeepestCommonNode($conservatoryAnnotatedTree, \@sharedLeaves);
 		$CNSTable{$cnsToReconstruct}{'Level'} = $lastCommonNode;
 
+
+		### if this is a merged cns, reconstructed the ancesteral sequence a new
 		## Reconstruct the ancesteral sequence
-		$CNSTable{$cnsToReconstruct}{'AncesteralSeq'} = getReconstructedCNSSequence($cnsToReconstruct, $conservatoryTree, \%speciesSequencesForCNS);
+		if(index($cnsToReconstruct, $superCNSPrefix) != -1) {
+			$CNSTable{$cnsToReconstruct}{'AncesteralSeq'} = getReconstructedCNSSequence($cnsToReconstruct, $conservatoryTree, \%speciesSequencesForCNS);
+		}
 	}
 }
 
@@ -233,24 +246,17 @@ open (my $outputCNSFile, ">$outputCNSFileName") || die ("INTERNAL ERROR.\n");
 
 foreach my $curCNS (sort keys %CNSTable) {
 
-	if(defined $positionTable{$curCNS}{'Positions'} && $CNSTable{$curCNS}{'CNSID'} eq $curCNS) {  ### The second conditions is to verify that all the CNS in the position file are found in the CNS file.
-																								  ### This only occurs if we partial files in our input
-		print $outputCNSFile join(",",
-				$CNSTable{$curCNS}{'ReferenceGenome'},
-				$CNSTable{$curCNS}{'CNSID'},
-				$CNSTable{$curCNS}{'Chromosome'},
-				$CNSTable{$curCNS}{'Strand'},
-				$CNSTable{$curCNS}{'Start'},	
-				$CNSTable{$curCNS}{'End'},
-				$CNSTable{$curCNS}{'Locus'},
-				$CNSTable{$curCNS}{'RelStart'},
-				$CNSTable{$curCNS}{'RelEnd'},
-				$CNSTable{$curCNS}{'Level'},
-				$CNSTable{$curCNS}{'SupportingSpecies'},
-				$CNSTable{$curCNS}{'ORFLength'},
-				$CNSTable{$curCNS}{'ORFDir'},
-				$CNSTable{$curCNS}{'Omega'},
-				$CNSTable{$curCNS}{'AncesteralSeq'}) ."\n";
+	if(defined $positionTable{$curCNS} && $CNSTable{$curCNS}{'CNSID'} eq $curCNS) {  ### The second conditions is to verify that all the CNS in the position file are found in the CNS file.
+																						  ### This only occurs if we partial files in our input
+			print $outputCNSFile join(",",
+					$CNSTable{$curCNS}{'ReferenceGenome'},
+					$curCNS,
+					$CNSTable{$curCNS}{'Locus'},
+					$CNSTable{$curCNS}{'Start'},
+					$CNSTable{$curCNS}{'Length'},
+					$CNSTable{$curCNS}{'Level'},
+					$CNSTable{$curCNS}{'SupportingSpecies'},
+					$CNSTable{$curCNS}{'AncesteralSeq'}) ."\n";
 	
 	}
 }
@@ -266,7 +272,7 @@ sub getSpeciesSequencesForCNS{
 	my ($CNSName, $positionTableRef) = @_;
 	my %speciesSequencesForCNS;
 
-	foreach my $curPosInCNS (@{ $positionTableRef->{$CNSName}{'Positions'}}) {
+	foreach my $curPosInCNS (@{ $positionTableRef->{$CNSName}}) {
 		my $speciesName = $curPosInCNS->{'TargetSpecies'};		
 		## replace the dot in species name which makes tree life difficult
 		$speciesName =~ s/\./_/g;
@@ -348,42 +354,6 @@ sub getReconstructedCNSSequence {
 	return($reconstructedSequence);
 }
 
-
-##########################################################################################################
-####
-####  Given a tree and a set of nodes on the tree, findDeepestCommonNode returns the name of the deepest node
-####   shared by all leaves. This can be used to identify the evolutionary origin of a CNS
-###
-
-sub findDeepestCommonNode {
-	my ($tree, $leavesListRef) = @_;
-	my @leavesList = @$leavesListRef;
-
-	my $anchorLeafNode = $tree->find_node($leavesList[0]);
-	my %anchorLeafPath;
-	my $node = $anchorLeafNode;
-	my $deepestNode = $node->id;
-
-	my $deepness=1;
-	while($node->ancestor) {
-		$node = $node->ancestor;
-		$anchorLeafPath{$node->id} = $deepness++;
-	}
-
-	foreach my $leaf (@leavesList) {
-		my $node = $tree->find_node( -id => $leaf);
-		while($node->ancestor) {
-			$node = $node->ancestor;
-			if(defined $anchorLeafPath{$node->id}) {  ### This is where the path intersect. Check if this is the deepest we found
-				if( $anchorLeafPath{$node->id} > $anchorLeafPath{$deepestNode}) {
-					$deepestNode = $node->id;
-				}
-				last;
-			}
-		}
-	}
-	return $deepestNode;
-}
 
 ################################################################################################################
 #####
