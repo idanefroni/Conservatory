@@ -62,7 +62,6 @@ if($verifyPositions) {
     my $totalFixedPositions=0;
     my $totalRejectedPositions=0;
     my $regionSearchFlank=100;
-    my $searchSequenceLength=30;
 
     my %genomeToFamily;
 
@@ -116,7 +115,7 @@ if($verifyPositions) {
 	            if(substr($curFastaLine,0,1) eq ">") {
 		            $curChr = cleanChrName($curFastaLine);
 	            } else {
-		            $curGenomeSequence{$curChr} .= $curFastaLine;
+		            $curGenomeSequence{$curChr} .= uc($curFastaLine);
                 }
 	        }
             close($genomeFastaFile);

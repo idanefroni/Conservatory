@@ -352,7 +352,7 @@ sub getCNSbreakpoints {
 		 ($pos - $lastBreakpointPos > $minCNSLength && ($CNSLength - $pos) > $minCNSLength ) ) {
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
-			print "DEBUG: Break at $pos because " . $CNSdelta[$pos] . ". from " . $CNSCoverageSmooth[$pos-1] . " to " . $CNSCoverageSmooth[$pos] . "to" . $CNSCoverageSmooth[$pos+1]  . "\n";
+#			print "DEBUG: Break at $pos because " . $CNSdelta[$pos] . ". from " . $CNSCoverageSmooth[$pos-1] . " to " . $CNSCoverageSmooth[$pos] . "to" . $CNSCoverageSmooth[$pos+1]  . "\n";
 		}
 	}
 	# Add start and end points

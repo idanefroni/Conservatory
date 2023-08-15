@@ -1037,15 +1037,15 @@ foreach my $curCNS (keys %mapAlignmentDeepCNS) {
   }
   
   #### All filtering is done. Identify CNS age
+  ### And recount the number of species
   my @speciesForCNSList = keys %{ $mapAlignmentDeepCNS{$curCNS} };
   my @speciesForCNSList = grep { $_ ne "Paralogs"} @speciesForCNSList;
+  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = scalar @speciesForCNSList;
 
-  if(defined $conservatoryAnnotatedTree) {
+  if(defined $conservatoryAnnotatedTree && $CNSforLocus{$curCNS}{'NumberOfSpecies'} > 0) {
 		$CNSforLocus{$curCNS}{'ConservationLevel'} = findDeepestCommonNode($conservatoryAnnotatedTree, \@speciesForCNSList);
   }
 
-  ### And recount the number of species
-  $CNSforLocus{$curCNS}{'NumberOfSpecies'} = scalar @speciesForCNSList;
 }
   
 if($verbose) { print "PROGRESS: End analysis for $referenceGenome:$locus. Writing output files...\n";	}
@@ -1057,16 +1057,18 @@ open(my $finalCNSFile, ">$finalCNSFileName");
 open (my $finalMapFile, ">$finalMapFileName");
 
 foreach my $curCNS (keys %CNSforLocus) {
-	print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Len'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
-	## Add self hit to the DB
-	push @{ $mapAlignmentDeepCNS{$curCNS}{$referenceSpecies} }, {
-		'Locus' => $locusFullName,
-		'Pos' => $CNSforLocus{$curCNS}{'Start'},
-		'Strand' => "+",
-		'RRP' => 0,
-		'Len' => length($CNSforLocus{$curCNS}{'referenceSequence'}),
-		'Seq' => $CNSforLocus{$curCNS}{'referenceSequence'}
-	};
+	if($CNSforLocus{$curCNS}{'NumberOfSpecies'}>0) {
+		print $finalCNSFile "$referenceGenome,$curCNS,$CNSforLocus{$curCNS}{'Locus'},$CNSforLocus{$curCNS}{'Start'},$CNSforLocus{$curCNS}{'Len'},$CNSforLocus{$curCNS}{'ConservationLevel'},$CNSforLocus{$curCNS}{'NumberOfSpecies'},$CNSforLocus{$curCNS}{'ancesteralSequence'}\n";
+		## Add self hit to the DB
+		push @{ $mapAlignmentDeepCNS{$curCNS}{$referenceSpecies} }, {
+			'Locus' => $locusFullName,
+			'Pos' => $CNSforLocus{$curCNS}{'Start'},
+			'Strand' => "+",
+			'RRP' => 0,
+			'Len' => length($CNSforLocus{$curCNS}{'referenceSequence'}),
+			'Seq' => $CNSforLocus{$curCNS}{'referenceSequence'}
+		};
+	}
 } 
 close($finalCNSFile);
 
@@ -1079,6 +1081,7 @@ foreach my $curCNS (keys %CNSforLocus) {
 
 for my $curSpecies (keys %speciesToCNSMap) {
 	foreach my $curCNS (keys %{ $speciesToCNSMap{$curSpecies} }) {
+		if($CNSforLocus{$curCNS}{'NumberOfSpecies'}==0) { next;}
 		foreach my $curHit ( @{ $mapAlignmentDeepCNS{$curCNS}{$curSpecies} } ) {
 			my $hitSpecies = $curSpecies;
 			if($curSpecies eq "Paralogs") { $curSpecies = $referenceSpecies; }
