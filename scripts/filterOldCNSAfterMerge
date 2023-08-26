@@ -1,1 +1,0 @@
-awk -F',' '{if( ((0+substr($10,2))<=13 && substr($1,1,5)=="Super") || (0+substr($10,2)>13) ) {print;} }' conservatoryV5.merged.prefilter.cns.csv > conservatoryV5.final.cns.csv

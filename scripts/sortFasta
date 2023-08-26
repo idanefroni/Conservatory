@@ -1,0 +1,27 @@
+#!/usr/bin/perl
+
+use POSIX;
+use strict;
+
+my $inFastaFileName = $ARGV[0];
+
+my %fastaSeq;
+my %fastaNs;
+open(my $inFasta, "<$inFastaFileName");
+while(my $name= <$inFasta>) {
+    my $seq = <$inFasta>;
+    chomp($name);
+    chomp($seq);
+ #   print $seq . "\n";
+    $seq =~ s/X/N/g;
+    $fastaSeq{$name} = $seq;
+    $fastaNs{$name} = $seq =~ tr/N//;
+}
+close($inFasta);
+
+open(my $outFasta, ">$inFastaFileName");
+
+for my $curName ( sort { $fastaNs{$a} <=> $fastaNs{$b} } keys %fastaNs ) {
+	print $outFasta "$curName\n" .  $fastaSeq{$curName} . "\n";
+}
+close($outFasta);

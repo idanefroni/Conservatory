@@ -4,52 +4,45 @@ use POSIX;
 use Cwd;
 use Cwd 'abs_path';
 
-use Array::Utils qw(:all);
-use List::Util qw(min max uniq);
-use Bio::SeqIO;
-use Bio::AlignIO;
-use Bio::TreeIO;
-use Bio::Seq;
-use Bio::LocatableSeq;
-use Bio::SimpleAlign;
+#use Array::Utils qw(:all);
+use List::Util qw(min max);
 use Getopt::Long;
 
 
 use lib './scripts';
 use ConservatoryUtils;
+use ConservatoryTree;
+use GenomeDatabase;
+use MappingDatabase;
+use CNSDatabase;
+
 
 $|=1;
 
 ### Filenames
 my $conservatoryDir=abs_path(".");
-my $tmpDirRoot= "/dev/shm/";
-my $superCNSPrefix = "Super";
-my $CNSFileName="";
-my $mapFileName="";
-my $outputCNSFileName="";
-my $conservatoryTreeFileName;
-my $conservatoryAnnotatedTreeFileName;
+my $tmpDirRoot;
+my $CNSFileName;
+my $mapFileName;
+my $outputCNSFileName;
+my $outputMapFileName;
+
 my $keep_tmp=0;
-my $outputAnnotatedTree=0;
 
 ## Filtering parameters
-my $minSpeciesForCNS=5;
-my $minSequenceContentToConsiderReconstruction = 0.33; ## how many of the sequences in the alignment has to be informative (non-gap)
-													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
-													  # this is to avoid reconstructing sequences based on small number of samples.
 
-my %CNSTable;
-my %positionTable;
 
 my $totalSplits;
 my $splitNum;
 my $verbose=0;
 my $help=0;
+my $totalToScreen;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"in-cns=s" => \$CNSFileName,
 			"in-map=s" => \$mapFileName,
 			"out-cns=s" => \$outputCNSFileName,
+			"out-map=s" => \$outputMapFileName,
 			"verbose" => \$verbose,
 			"split=i" => \$splitNum,
 			"total-splits=i" => \$totalSplits,
@@ -57,182 +50,152 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
 			
-if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq "" ) {
+if($help || !defined $CNSFileName || !defined $mapFileName || !defined $outputCNSFileName ) {
 	print "Conservatory version 2.0.1\n\n";
-	print "reconstructCNSSequences --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> [--verbose] [--split <curProcess> --total-splits <total number of processes>].\n\n";
+	print "reconstructCNSSequences --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <mapFile> [--verbose] [--split <curProcess> --total-splits <total number of processes>].\n\n";
 	
 	exit();
 }
-
-$conservatoryTreeFileName = $conservatoryDir . "/genomes/Conservatory.tree";
-$conservatoryAnnotatedTreeFileName = $conservatoryDir . "/genomes/Conservatory.Annotated.tree";
-
-if(! -e $conservatoryTreeFileName) { print "WARNING: Cannot find conservatory tree ($conservatoryTreeFileName).\n"; $conservatoryTreeFileName=""; }
-if(! -e $conservatoryAnnotatedTreeFileName) { print "WARNING: Cannot find annotated conservatory tree ($conservatoryAnnotatedTreeFileName).\n"; $conservatoryAnnotatedTreeFileName=""; }
-### Load the super tree
-my $conservatoryTreeio = Bio::TreeIO->new(-file => $conservatoryTreeFileName, -format => 'newick');
-my $conservatoryTree = $conservatoryTreeio->next_tree;
-if(!defined $conservatoryTree) { die "ERROR: Cannot read tree file $conservatoryTreeFileName. Bad format.\n"; }
-
-my $conservatoryAnnotatedTreeio = Bio::TreeIO->new(-file => $conservatoryAnnotatedTreeFileName, -format => 'newick');
-my $conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
-if(!defined $conservatoryAnnotatedTree) { die "ERROR: Cannot read annotated tree file $conservatoryAnnotatedTreeFileName. Bad format.\n"; }
-my %speciesInTree = map { ($_)->id => 1} $conservatoryTree->get_leaf_nodes();
-
-### Annotated Internal nodes
-#my $curNodeNumber=1;
-#my @nodes = $conservatoryTree->get_nodes();
-#foreach my $curNode (@nodes) {
-#	if($curNode->id eq "") { 
-#		$curNode->id("N$curNodeNumber");
-#		$curNodeNumber++;
-#	}
-#}
-#my $conservatoryTreeOutput = Bio::TreeIO->new(-file => ">AnnotatedTree.tree", -format => 'newick');
-#$conservatoryTreeOutput->write_tree($conservatoryTree);
-
+### Load genome and tree
+my $genomeDB = new GenomeDatabase($conservatoryDir);
+my $conservatoryTree = new ConservatoryTree($genomeDB);
 
 ### Prepare temporary files
 
+if(!defined $tmpDirRoot) { $tmpDirRoot = $genomeDB->getTemporaryDir(); }
+
 my $tmpDir = $tmpDirRoot . "/S" . $splitNum . "/";
+mkdir $tmpDir;
+$genomeDB->setTemporaryDir($tmpDir);
+
 my $tmpCNSToReconstructFileName = "$tmpDir/tmpCNSToReconstruct.txt";
 
-mkdir $tmpDir;
-### Collect the CNS we need to reconstruct
-### Check number of CNSs
-my $CNSLineCount = (qx(wc -l $CNSFileName))[0];
-chomp($CNSLineCount);
-$CNSLineCount =~ s/ .*$//;
+print "PROGRESS: Reading CNS from $CNSFileName.\n";
+my $CNSDB = new CNSDatabase($CNSFileName);
+$CNSDB->orderCNSByName();
+
+my @CNSList = @{ $CNSDB->getCNSByOrder() };
 my $startLine=0;
-my $endLine= $CNSLineCount;
+my $endLine= $CNSDB->getNumberOfCNSs();
 
 if($totalSplits>1) {
-	$startLine = floor(($CNSLineCount/$totalSplits) * ($splitNum-1));
-	$endLine = ceil( ($CNSLineCount/$totalSplits) * ($splitNum) + 1);
+	$startLine = floor(( $CNSDB->getNumberOfCNSs() /$totalSplits) * ($splitNum-1));
+	$endLine = ceil( ( $CNSDB->getNumberOfCNSs() /$totalSplits) * ($splitNum));
 	$outputCNSFileName = $outputCNSFileName . "_" . $splitNum;
+	$outputMapFileName = $outputMapFileName . "_" . $splitNum;	
 }
+
+$endLine = min($endLine, $CNSDB->getNumberOfCNSs() -1 );
+if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
+
+#### subset CNS database
+my @CNSsubset = @CNSList[$startLine..$endLine];
+$CNSDB = $CNSDB->createSubsetCNSDatabase(\@CNSsubset);
+if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
 
 open (my $tmpCNSToReconstructFile , ">$tmpCNSToReconstructFileName") || die ("ERROR: Cannot open temporary file $tmpCNSToReconstructFileName.\n");
 
-print "PROGRESS: Reading CNS from $CNSFileName.\n";
-open (my $CNSInputFile, $CNSFileName) ||  die "ERROR: Cannot find CNS file $CNSFileName.\n";
-
-### Go to starting position
-print "PROGRESS: Compiling CNS list (" . ($endLine - $startLine) . " CNSs)\n";
-
-foreach (1..$startLine) {
-	my $line = <$CNSInputFile>;
+print "PROGRESS: Compiling CNS list ($startLine - $endLine)\n";
+foreach my $curCNS (@CNSList[$startLine..$endLine]) {
+	print $tmpCNSToReconstructFile $curCNS->getID() ."\n";
 }
-my $curPos=$startLine;
-my %CNSTable;
-while($curPos++ <= $endLine) {
-
-	my $line = <$CNSInputFile>;
-	chomp $line;
-	my ($referenceGenome, $cnsToReconstruct, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/, $line;
-	print $tmpCNSToReconstructFile "$cnsToReconstruct\n";
-}
-
-seek($CNSInputFile, 0, SEEK_SET);
 close($tmpCNSToReconstructFile);
 
-$curPos=1;
+### Load just the relevant mappings for the CNSs we are working with
+my $mappingDB = new MappingDatabase("grep -f $tmpCNSToReconstructFileName $mapFileName |");
 
-########## Load position table to memory
-open (my $CNSPositionFile, "grep -f $tmpCNSToReconstructFileName $mapFileName |") ||  die "ERROR: Cannot find position file $mapFileName.\n";
-while(<$CNSPositionFile>) {
-	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "\r" };
-	chomp;
-	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence, $absChromosome, $absStart, $geneStrand, $name) = split /,/;
-
-	### Get absolute coordiantes for gene, if we don't have them
-#	if($absChromosome eq "") {
-#		my %geneCoordinates = getGeneCoordinates($conservatoryDir, $speciesToFamily{$targetSpecies},  geneToGenome($targetLocus), $targetLocus);
-#		my %relativeCoordinate = ('Start' => $targetRelativePosition, 'Length' => $length);
-#		my %absGeneCoord = translateRealtiveToAbsoluteCoordinates( \%relativeCoordinate, $geneCoordinates{'Start'}, $geneCoordinates{'End'}, $geneCoordinates{'Strand'}, $targetStrand );
-#		$absChromosome = $geneCoordinates{'Chromosome'};
-#		$geneStrand = $geneCoordinates{'Strand'};
-#		$absStart = $absGeneCoord{'Start'};
-#	}
-
-
-	push( @{ $positionTable{$CNSID} } , {
-				'CNSID' => $CNSID,
-				'TargetSpecies' => $targetSpecies,
-				'TargetLocus' => $targetLocus,
-				'TargetPosition' => $targetRelativePosition,
-				'TargetStrand' => $targetStrand,
-				'RRP' => $referenceRelativePosition,   # ReferenceRelativePosition
-				'Length' => $length,
-				'AbsLength' => $length - ($targetSequence =~ tr/-//),
-				'TargetSequence' => $targetSequence,
-				'AbsChromosome' => $absChromosome,
-				'AbsStart' => $absStart,
-				'GeneStrand' => $geneStrand,				
-				'Name' => $name } );
-}
-
-close($CNSPositionFile);
-if($verbose) { print "\n"; };
+unlink($tmpCNSToReconstructFileName);
+my $curPos=1;
 
 ### record current directory and move to the temporary directory. This is because fastml creates a log.txt file
 ### In the working directory and there is no way to change that. When run in parallel this creates file conflicts...
 
 my $curDir = getcwd();
 chdir $tmpDir;
+$curPos=0;
+$totalToScreen = $endLine - $startLine+1;
 
-### Start merging CNSs. First read and merge all CNSs in the family
-### Go to starting position
-print "PROGRESS: Skipping to line $startLine.\n";
+if($verbose) { print "PROGRESS: Processing $totalToScreen CNSs...\n"; }
+foreach my $curCNS (@CNSList[$startLine..$endLine]) {
+	### If its a super CNS, see if we can split it	
+	$curPos++;
+	if($curCNS->isMerged()) {
 
-foreach (1..$startLine) {
-	my $line = <$CNSInputFile>;
-}
-$curPos=$startLine;
-my %CNSTable;
-while($curPos <= $endLine) {
-	if($verbose) { print "PROGRESS: Reconstructing CNS sequences... " . $curPos++ . "/$endLine.\r" };
+		my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS);
+						
+		if(@CNSBreakpoints > 2) {
+			if($verbose) { print "PROGRESS: Breaking CNS (" . $curPos ."/ $totalToScreen). Breakpoints: " . join(",", @CNSBreakpoints) . ".......\n"; }
 
-	my $line = <$CNSInputFile>;
-	chomp $line;
-	my ($referenceGenome, $cnsToReconstruct, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/, $line;
+			my @assignedMappings = $mappingDB->assignMappingsToBreakpoints($curCNS, \@CNSBreakpoints);
 
-	if(!defined $positionTable{$cnsToReconstruct} ) { next;}
-	
-	$CNSTable{$cnsToReconstruct} = {
-				'ReferenceGenome' => $referenceGenome,
-				'CNSID' => $cnsToReconstruct,
-				'Locus' => $locus,
-				'Start' => $start,
-				'Length' => $length,
-				'Level' => $level,
-				'SupportingSpecies' => $supportingSpecies,
-				'AncesteralSeq' => $ancesteralSeq,
-	};
+			### Now break the CNSs		
 
-	my %speciesSequencesForCNS = getSpeciesSequencesForCNS($cnsToReconstruct, \%positionTable);
-	$CNSTable{$cnsToReconstruct}{'SupportingSpecies'} = scalar (keys %speciesSequencesForCNS);
+			for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
+				my $breakLen = $CNSBreakpoints[$curBreakpoint+1]- $CNSBreakpoints[$curBreakpoint];
+				my $CNSforBreakpointName = $curCNS->getID() . ".$CNSBreakpoints[$curBreakpoint]";
+				print "PROGRESS: Breaking " . $curCNS->getID() . " to $CNSforBreakpointName.\n";
 
-	if($CNSTable{$cnsToReconstruct}{'SupportingSpecies'} < $minSpeciesForCNS ) { 
-		delete $CNSTable{$cnsToReconstruct};
-		delete $positionTable{$cnsToReconstruct};
-	} else {
-		### Identify the deepest node in the tree - the point of CNS origination
-		my @sharedLeaves = keys %speciesSequencesForCNS;
-		my $lastCommonNode = findDeepestCommonNode($conservatoryAnnotatedTree, \@sharedLeaves);
-		$CNSTable{$cnsToReconstruct}{'Level'} = $lastCommonNode;
+				### Create new sub-CNS
+				my $CNSforBreakpoint = new CNS($curCNS->getRefGenome(), $CNSforBreakpointName, $curCNS->getLocus(), $curCNS->getPos() + $CNSBreakpoints[$curBreakpoint], $breakLen, $curCNS->getConservationLevel(),
+											   substr($curCNS->getSeq(),$CNSBreakpoints[$curBreakpoint], $breakLen), $curCNS->getRegulatorySeqPart());
 
+				$CNSDB->addCNS($CNSforBreakpoint);
 
-		### if this is a merged cns, reconstructed the ancesteral sequence a new
-		## Reconstruct the ancesteral sequence
-		if(index($cnsToReconstruct, $superCNSPrefix) != -1) {
-			$CNSTable{$cnsToReconstruct}{'AncesteralSeq'} = getReconstructedCNSSequence($cnsToReconstruct, $conservatoryTree, \%speciesSequencesForCNS);
+				## Assign the mappings
+				foreach my $curMapping (@assignedMappings) {
+					### If there is an overlap, assign the deep CNS to the new subCNS.
+					if($curMapping->getBreakPoint() == $curBreakpoint) {
+						$mappingDB->linkMappingToCNS($curMapping, $CNSforBreakpoint);
+						$curMapping->setRRP( $curMapping->getRRP() - $CNSBreakpoints[$curBreakpoint]);
+					}
+				}
+
+				### and reconstruct the ancesteral seq
+				my %speciesSeq = getSpeciesSequencesForCNS($CNSforBreakpoint, $mappingDB, $conservatoryTree);
+				if( (scalar %speciesSeq) >= $minSpeciesForCNS) {
+					$CNSforBreakpoint->setSeq( $conservatoryTree->getReconstructedSequence($CNSforBreakpoint, \%speciesSeq))
+				} else {
+					$CNSDB->deleteCNS($CNSforBreakpoint);
+					$mappingDB->deleteCNS($CNSforBreakpoint);
+				}
+
+			}
+			### Finally, delete the original CNS
+			$CNSDB->deleteCNS($curCNS);
+			$mappingDB->deleteCNS($curCNS);
+		} else {
+			### reconstruct ancesteral
+			my %speciesSeq = getSpeciesSequencesForCNS($curCNS, $mappingDB, $conservatoryTree);
+
+			$curCNS->setSeq( $conservatoryTree->getReconstructedSequence($curCNS, \%speciesSeq));
+			if($verbose) { print "PROGRESS: Reconstructed " . $curCNS->getID() . "...\n"; }			
 		}
+	}
+
+	if($curCNS->isAlive()) {
+		my @CNSSpecies = map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($curCNS) };
+		$curCNS->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
+		if($verbose) { print "PROGRESS: Reconstructed " . $curCNS->getID() . "...\n"; }			
 	}
 }
 
-close($CNSInputFile);
-if($verbose) { print "\n"; }
+if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
+
+### Filter low support
+
+$CNSDB->updateNumberOfSupportingSpecies($mappingDB);
+if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
+
+foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {
+	if($curCNS->getSupportingSpeciesNumber() < $minSpeciesForCNS ) { 
+		if($verbose) { print "PROGRESS: Dropping CNS " . $curCNS->getID() . " for low number of species (" . $curCNS->getSupportingSpeciesNumber() . ").\n"; }
+
+		$CNSDB->deleteCNS($curCNS);
+		$mappingDB->deleteCNS($curCNS);
+	}
+}
+
+if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
 
 if($verbose) { print "\nPROGRESS: Done. Output files.\n"; }
 
@@ -241,170 +204,31 @@ if($verbose) { print "\nPROGRESS: Done. Output files.\n"; }
 ## Go back to our working directory
 
 chdir $curDir;
+rmdir $tmpDir;
 ### New CNS files
-open (my $outputCNSFile, ">$outputCNSFileName") || die ("INTERNAL ERROR.\n");
 
-foreach my $curCNS (sort keys %CNSTable) {
-
-	if(defined $positionTable{$curCNS} && $CNSTable{$curCNS}{'CNSID'} eq $curCNS) {  ### The second conditions is to verify that all the CNS in the position file are found in the CNS file.
-																						  ### This only occurs if we partial files in our input
-			print $outputCNSFile join(",",
-					$CNSTable{$curCNS}{'ReferenceGenome'},
-					$curCNS,
-					$CNSTable{$curCNS}{'Locus'},
-					$CNSTable{$curCNS}{'Start'},
-					$CNSTable{$curCNS}{'Length'},
-					$CNSTable{$curCNS}{'Level'},
-					$CNSTable{$curCNS}{'SupportingSpecies'},
-					$CNSTable{$curCNS}{'AncesteralSeq'}) ."\n";
-	
-	}
-}
-
-close($outputCNSFile);
+$CNSDB->writeDatabase($outputCNSFileName);
+$mappingDB->writeDatabase($outputMapFileName);
 
 
 ###########################################################################################################
 ###########
 ###########
 
-sub getSpeciesSequencesForCNS{
-	my ($CNSName, $positionTableRef) = @_;
+sub getSpeciesSequencesForCNS {
+	my ($CNS, $mappingDB, $conservatoryTree) = @_;
 	my %speciesSequencesForCNS;
 
-	foreach my $curPosInCNS (@{ $positionTableRef->{$CNSName}}) {
-		my $speciesName = $curPosInCNS->{'TargetSpecies'};		
+	foreach my $curMapping (@{ $mappingDB->getMappingsForCNS ($CNS) }) {
+		my $speciesName = $curMapping->getSpecies();
 		## replace the dot in species name which makes tree life difficult
 		$speciesName =~ s/\./_/g;
-		if(defined $speciesInTree{ $speciesName }) {
-			if($curPosInCNS->{'Length'} > length($speciesSequencesForCNS{ $curPosInCNS->{'TargetSpecies'} }) ) {
-				$speciesSequencesForCNS{ $speciesName } = $curPosInCNS->{'TargetSequence'};
+		if($conservatoryTree->exists($speciesName)) {
+			if($curMapping->getAbsLen() > length($speciesSequencesForCNS{ $speciesName }) ) {
+				$speciesSequencesForCNS{ $speciesName } = $curMapping->getSeq();
 			}
-		} 
+		}
 	}
-
 	return %speciesSequencesForCNS;
 }
 
-##########################################################################################################
-############
-############ Given a CNS, reconstuct the ancesteral sequence for the CNS
-###########    Accepts CNS Name (for the temporary files), a phylogenetic tree and a hash of the 
-###########     CNS sequences with the species being the key
-
-sub getReconstructedCNSSequence {
-	my ($CNSName, $tree, $speciesSequencesForCNSRef) = @_;
-	my %speciesSequencesForCNS = %$speciesSequencesForCNSRef;
-
-	## Build a species fasta file
-
-	## Set up temporary file names (for MAFFT and fastml)
-	my $tmpOutputFastaFileName = $tmpDir . "/tmp_sp_$CNSName.fasta";
-	my $tmpOutputFastaAlignedFileName = $tmpDir . "/tmp_sp_$CNSName.align.fasta";
-	my $tmpOutputTrimmedTreeFileName = $tmpDir . "/tmp_tree_$CNSName.tree";
-	my $tmpOutputAncesteralSequenceFileName = $tmpDir . "/tmp_as_$CNSName.fasta";
-
-	open(my $tmpOutputFastaFile , ">" , $tmpOutputFastaFileName);
-
-	### Generate fasta file for sequence reconstruction using tree and trim the tree
-	foreach my $curSpecies (keys %speciesSequencesForCNS) {
-		print $tmpOutputFastaFile ">$curSpecies\n" . $speciesSequencesForCNS{$curSpecies} . "\n";
-	}
-	close($tmpOutputFastaFile);
-
-	## Align using MAFFT
-	system("mafft --quiet $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
-
-	## and perform reconstruction
-
-	my $trimmedTree = $tree->clone();
-	my @trimToTheseLeaves = keys %speciesSequencesForCNS;
-	trimTreeToLeaves($trimmedTree, \@trimToTheseLeaves);
-
-	my $trimmedTreeOutput = Bio::TreeIO->new(-file => ">$tmpOutputTrimmedTreeFileName", -format => 'newick');
-	$trimmedTreeOutput->write_tree($trimmedTree);
-			
-	system("$conservatoryDir/scripts/fastml -b -qf -mh -s $tmpOutputFastaAlignedFileName -t $tmpOutputTrimmedTreeFileName -y /dev/null/a -d /dev/null/a -x /dev/null/a -k /dev/null/a -d /dev/null/a -e /dev/null/a -j $tmpOutputAncesteralSequenceFileName > /dev/null");
-	unlink("log.txt"); ### remove the fastml leftover file
-	### Read concensus sequence
-	my $inReconstructionFasta = Bio::SeqIO->new(-file => $tmpOutputAncesteralSequenceFileName, -format => "fasta", -alphabet => "dna");
-	my $reconstructedSequence;
-	while(my $seq = $inReconstructionFasta->next_seq) {
-		if($seq->id eq "N1") { $reconstructedSequence = $seq->seq; }
-	}
-
-	### Filter the sequence based on information content. When little sequence coverage is available, fastml usually just guesses the nucleotide.
-	my $inAlignedFasta = Bio::AlignIO->new(-file => $tmpOutputFastaAlignedFileName,
-							  		 	   -format => "fasta");
-	my $inAligned = $inAlignedFasta->next_aln;
-	my @gappiness = getGappiness($inAligned);
-
-    for my $pos (0..(scalar @gappiness -1 )) {
-	    if ($gappiness[$pos] > ($minSequenceContentToConsiderReconstruction*100)) {
-       		substr($reconstructedSequence, $pos, 1) = "-";
-   		}
-	}
-
-	if(!$keep_tmp) {
-		unlink($tmpOutputAncesteralSequenceFileName);
-		unlink($tmpOutputFastaFileName);
-		unlink($tmpOutputFastaAlignedFileName);
-		unlink($tmpOutputTrimmedTreeFileName);
-	}
-	return($reconstructedSequence);
-}
-
-
-################################################################################################################
-#####
-#####  trim tree - given a tree and a set of leaves, trim the tree to include just these leaves. 
-#####    trim also internal nodes, or nodes with only one child
-####
-####
-sub trimTreeToLeaves {
-	my ($tree, $leavesListRef, $startNode) = @_;
-	my @leavesList = @$leavesListRef;
-	my %leavesMap = map { $_ => 1 } @leavesList;
-
-	if(!defined $startNode) { $startNode = $tree->get_root_node(); }
-
-	if(($startNode == $tree->get_root_node()) && $startNode->is_Leaf()) {
-		die "ERROR: From trimTreeToLeaves: Tree is empty.\n";
-	}
-	## If this is a leaf and not found in our list of leaves to keep, delete
-	if($startNode->is_Leaf()) {
-		if(!defined $leavesMap{$startNode->id()} ) {
-			$tree->remove_Node($startNode);
-		} 
-	} else {
-		### trim the children
-
-		foreach my $curChildNode ($startNode->each_Descendent()) {
-			trimTreeToLeaves($tree, $leavesListRef, $curChildNode);
-		}
-
-		### If we have no children leaf, delete ourselves. If we have just one, delete it and assume it's id
-		my @childrenLeft = $startNode->each_Descendent();
-
-		if(scalar @childrenLeft == 0) {
-			if(! ($startNode == $tree->get_root_node() )  ) {
-				$tree->remove_Node($startNode);
-			} else {
-				print "WARNING: From trimmTreeToLeaves: we have deleted all nodes on the tree.\n";
-			}
-
-		} elsif(scalar @childrenLeft == 1 && $childrenLeft[0]->is_Leaf()) {
-
-			$startNode->id( $childrenLeft[0]->id());
-			$startNode->branch_length( $childrenLeft[0]->branch_length() );
-			$tree->remove_Node( $childrenLeft[0]);
-		} elsif(scalar @childrenLeft ==1) {
-			if($startNode == $tree->get_root_node()) {
-				$tree->set_root_node($childrenLeft[0]);
-			} else {
-				$startNode->ancestor()->add_Descendent($childrenLeft[0]);
-				$tree->remove_Node( $startNode);
-			}
-		}
-	}
-}

@@ -1,37 +1,24 @@
 #!/usr/bin/perl
 use strict;
 use POSIX;
-use Cwd 'abs_path';
-use File::Basename;
-use List::Util qw(min max);
-
-use lib './scripts';
-use ConservatoryUtils;
 
 my $part = $ARGV[0];
 my $outof = $ARGV[1];
+my $tmpDir= $ARGV[2];
 
 $|=1;
 
 if($outof ==0) { $part =1; $outof = 1;}
 
-### Filenames
-
-my $tmpDir= $ARGV[2];
-
-#opendir(my $dh, $tmpDir) or die "Cannot open directory: $!";
-#my @files = grep { /^tmp_.*\.fasta$/i && -f "$tmpDir/$_" && $_ !~ /aligned/} readdir($dh);
-#closedir($dh);
-
 my @files;
-open(my $inFileList, "$tmpDir/tmp_filestoalign.txt") || die ("Cannot file list of files to align: $tmpDir/tmp_filestoalign.txt");
+open(my $inFileList, "$tmpDir/tmp_filestoalign.txt") || die ("ERROR: Cannot file list of files to align: $tmpDir/tmp_filestoalign.txt");
 while(<$inFileList>) {
 	chomp;
 	my ($filename,$anchorCNS)= split /,/;
 	push @files, $filename;
 }
 
-if((scalar @files) ==0) { die "Cannot file files to align\n"; }
+if((scalar @files) ==0) { die "ERROR: Cannot file files to align\n"; }
 
 my $numFiles = scalar @files;
 my $start = floor(($numFiles / $outof) * ($part -1));
@@ -42,11 +29,11 @@ my $curPos=1;
 
 foreach my $inFile (@filesToProcess) {
 	#### build FASTA file for alignment
-	if($inFile ne "") {
+	if($inFile ne "" && -e $inFile) {
 		my $outFile = $inFile;
 		$outFile =~ s/\.fasta$/.aligned.fasta/;
 
 		print "PROGRESS: (" . ($curPos++) . "/$numFiles) Aligning $inFile.\n";
-		system("mafft --quiet --thread -1 --auto $inFile > $outFile");
+		system("mafft --quiet --thread -1 --auto --ep 0.3 --op 7 $inFile > $outFile");
 	}
 }

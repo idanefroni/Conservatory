@@ -35,7 +35,7 @@ tmp_fasta_file=${output_path}/tmpFilteredFasta.fasta
 
 echo "Splitting fasta from $file_name into $splits parts. Using $output_path as output"
 
-awk -F "," 'function abs(v) {return v < 0 ? -v : v} length($15) > 30 && abs($8) < 4000 {printf(">%s\n%s\n",$2,$15)}' $input_file > $tmp_fasta_file
+awk -F "," 'function abs(v) {return v < 0 ? -v : v} length($8) > 30 && abs($4) < 4000 {printf(">%s\n%s\n",$2,$8)}' $input_file > $tmp_fasta_file
 
 # Step 2: Extract header lines from the FASTA file
 grep '^>' $tmp_fasta_file > ${output_path}/headers.txt

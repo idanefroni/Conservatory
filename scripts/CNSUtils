@@ -6,21 +6,30 @@ use Cwd 'abs_path';
 use Getopt::Long;
 use lib './scripts';
 use ConservatoryUtils;
+use CNS;
+use CNSDatabase;
+use Mapping;
+use MappingDatabase;
+
 $|=1;
 
 my $inCNSFileName;
 my $inMapFileName;
 my $outCNSFileName;
+my $outRejectFileName;
 my $outMapFileName;
 my $help =0;
 
 my $filterDeepCNS=0;
 my $filterRepetitive=0;
 my $filterPlastid=0;
-my $verifyPositions=0;
+my $filterLowSupport=0;
+my $fixPositions=0;
 my $sortMapFile;
 
 my $filterRepetitiveCNSCutoff = 0.01; ### Filter the top 0.01%
+my $regionSearchFlank=100;
+
 my $verbose=0;
 
 my $conservatoryDir=abs_path(".");
@@ -31,10 +40,12 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"in-map=s" => \$inMapFileName,
 			"out-cns=s" => \$outCNSFileName,
 			"out-map=s" => \$outMapFileName,
+            "out-reject=s" => \$outRejectFileName,
             "filter-deep-cns" => \$filterDeepCNS,
             "filter-repetitive" => \$filterRepetitive,
             "filter-plastid" => \$filterPlastid,
-            "verify-positions" => \$verifyPositions,
+            "filter-low" => \$filterLowSupport,
+            "fix-positions" => \$fixPositions,
             "sort" => \$sortMapFile,
 			"verbose" => \$verbose,
 			"help" => \$help) or die ("Error in command line arguments\n");
@@ -43,7 +54,7 @@ if($help || $inCNSFileName eq "" || $inMapFileName eq "" || $outCNSFileName eq "
 	print "Conservatory version 2.0.1\n\n";
 
 	print "CNSUtils --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>.\n";
-    print "\t\t[--filter-deep-cns] [--filter-repetitive] [--filter-plastid] [--verifyPositions] [--verbose]\n\n";
+    print "\t\t[--filter-deep-cns] [--filter-repetitive] [--filter-plastid] [--fixPositions] [--verbose]\n\n";
     print "\n\nFilter the merged CNS file based on the following rules:\n";
     print "   - Remove Deep CNS (deeper than node N14) that are only called by one reference\n";
     print "   - Remove highly repetitive sequences\n";
@@ -53,321 +64,181 @@ if($help || $inCNSFileName eq "" || $inMapFileName eq "" || $outCNSFileName eq "
 	exit();
 }
 
-if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filters: $filterDeepCNS $filterRepetitive $filterPlastid $verifyPositions.\n"; }
+if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filters: $filterDeepCNS $filterRepetitive $filterPlastid $filterLowSupport $fixPositions.\n"; }
 
-my $totalPosCount = ( split(" ",qx(wc -l $inMapFileName)  ) )[0];
+### Read CNS file
 
-if($verifyPositions) {
+my $CNSDB = new CNSDatabase($inCNSFileName, $verbose);
+my $mappingDB = new MappingDatabase($inMapFileName, $verbose);
+
+if($fixPositions) {
     my $totalVerifiedPositions=0;
     my $totalFixedPositions=0;
     my $totalRejectedPositions=0;
-    my $regionSearchFlank=100;
 
     my %genomeToFamily;
 
     if($verbose) { print "PROGRESS: Begin verifying positions\n"; }
-    if($verbose) { print "PROGRESS: Loading genome database\n"; }
-
-    my $genomeDatabaseFilename = $conservatoryDir . "/genome_database.csv";
-    die "ERROR: Cannot find file genome database file ($genomeDatabaseFilename)\n" unless -e $genomeDatabaseFilename;
-    open (my $genomeDatabaseFile, "<", $genomeDatabaseFilename);
-    while((my $curgenomeline = <$genomeDatabaseFile>)) {
-    	chomp($curgenomeline);
-    	if(substr($curgenomeline,0,1) ne "#")  {
-		    my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx, $classification) = split /,/, $curgenomeline;
-		    $genomeToFamily{$curgenomeName} = $curgenomeFamily;
-	    }
-    }
-    close($genomeDatabaseFile);
-    if($verbose) { print "PROGRESS: Done loading genome database\n"; }
+    my $genomeDB = new GenomeDatabase($conservatoryDir);
 
     my $curGenome="";
-    my %curGenomeSequence;
+    my $curGenomeSequence;
 
     my $inSortedMapFile;
     if($sortMapFile) {
-        open ($inSortedMapFile,"sort -t',' -k3,3 $inMapFileName |") ||  die "ERROR: Cannot find map file $inMapFileName.\n";
-    } else {
-        open ($inSortedMapFile,$inMapFileName) ||  die "ERROR: Cannot find map file $inMapFileName.\n";
+        $mappingDB->orderMappingByGenome();
+    }
+    my $outMapRejectFile;
+    if(defined $outRejectFileName) {
+        open ($outMapRejectFile ,">" , $outRejectFileName);
     }
 
-    open (my $outMapFile,">", "$outMapFileName") ||  die "ERROR: Cannot create temporary map file $outMapFileName.\n";
-    open (my $outMapRejectFile,">", "$outMapFileName.reject") ||  die "ERROR: Cannot create reject map file $outMapFileName.reject.\n";
-    while(<$inSortedMapFile>) {
-
-    	chomp;
-        my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence, $absChromosome, $absStart, $geneStrand, $name) = split /,/;
-        my $origTargetSequence = $targetSequence;
-
-        if(geneToGenome($targetLocus) ne $curGenome) {
-
+    foreach my $curMapping (@{ $mappingDB->getMappingsByOrder() }) {
+       if(geneToGenome($curMapping->getLocus()) ne $curGenome) {
             clearGeneCooordinateDatabase();
-            $curGenome = geneToGenome($targetLocus);
-            %curGenomeSequence= ();  ### despose of old sequences
-
-            my $genomeFastaFileName = "$conservatoryDir/genomes/" . $genomeToFamily{$curGenome} . "/$curGenome.fasta.gz";
-            if(! (-e $genomeFastaFileName)) { die "ERROR: Cannot find $curGenome fasta file: $genomeFastaFileName.\n"; }
-            
-            open (my $genomeFastaFile, "gunzip -c $genomeFastaFileName |");
-            my $curChr="";
-            while(my $curFastaLine = <$genomeFastaFile>) {
-	            chomp($curFastaLine);	
-	            if(substr($curFastaLine,0,1) eq ">") {
-		            $curChr = cleanChrName($curFastaLine);
-	            } else {
-		            $curGenomeSequence{$curChr} .= uc($curFastaLine);
-                }
-	        }
-            close($genomeFastaFile);
+            $curGenome = geneToGenome($curMapping->getLocus());
+            $curGenomeSequence = $genomeDB->readGenome($curGenome);
         }
 
-        if($verbose) { print "PROGRESS: Processing mappings..." . $totalVerifiedPositions++ . "/$totalPosCount   ($curGenome)....\r" };
+        if($verbose) { print "PROGRESS: Processing mappings..." . $totalVerifiedPositions++ . " ($curGenome)....\r" };
 
-        $targetSequence =~ s/-//g; ## remove the gaps
-        my $revCompTargetSequence = scalar reverse($targetSequence);
-        $revCompTargetSequence =~ tr/ATGCatgc/TACGtacg/;
-
-        if($absStart + length($targetSequence) > length($curGenomeSequence{cleanChrName($absChromosome)})) {
-            print $outMapRejectFile "COORDINATE ERROR: $CNSID,$targetLocus,$targetRelativePosition,$targetStrand,$length,$absChromosome,$absStart,$geneStrand\n";
+        if($curMapping->getAbsEnd() > length($curGenomeSequence->{ cleanChrName($curMapping->getAbsChr()) })) {
+            if(defined $outRejectFileName) {
+                $curMapping->print($outMapRejectFile);
+            }
+            $mappingDB->deleteMapping($curMapping);
             next;
         }
-        my $startCoordBias = min(0,$absStart - $regionSearchFlank);  ### If this is the start of the choromosome and we donot have enough flank sequeuence
-                                                                      ## record where we started
 
-        my $regionSequence = substr($curGenomeSequence{cleanChrName($absChromosome)}, max(0,$absStart - $regionSearchFlank - 1), length($targetSequence)+$regionSearchFlank*2);
+        my $newAbsStart = remap($curMapping, $curGenomeSequence);
 
-        my $searchSequence = $targetSequence;
-        if(($geneStrand eq "-" && $targetStrand eq "+") || ($geneStrand eq "+" && $targetStrand eq "-")) {
-           $searchSequence = $revCompTargetSequence;
+        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping
+            $newAbsStart = remap($curMapping, $curGenomeSequence, 8);
         }
-        
-        my $hitPosition = length($regionSequence);
-        my $curPositionInRegion=0;
-        while( $curPositionInRegion < length($regionSequence) ) {
-            if(compareSequences(substr($regionSequence,$curPositionInRegion, length($searchSequence)), $searchSequence)) {
-                if( abs($curPositionInRegion - $regionSearchFlank) < abs($hitPosition - $regionSearchFlank)  ) {
-                    $hitPosition = $curPositionInRegion;
-                }
-            }
-             $curPositionInRegion++;
+        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping from the other side
+            $newAbsStart = remap($curMapping, $curGenomeSequence, -8);
         }
-    
-        if($hitPosition != length($regionSequence)) { ### If we found our sequence, update the coordiantes
-            my $newAbsStart;
-            $newAbsStart = $absStart - $regionSearchFlank + $hitPosition - $startCoordBias;
 
+
+        if($newAbsStart == -1)  { ## If we failed, try the reverse complement
+            $curMapping->flipKeepStrand();
+            $newAbsStart = remap($curMapping, $curGenomeSequence);
+        }
+
+        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping
+            $newAbsStart = remap($curMapping, $curGenomeSequence, 8);
+        }
+
+        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping from the other side
+            $newAbsStart = remap($curMapping, $curGenomeSequence, -8);
+        }
+
+        if($newAbsStart != -1) {
             ## Get the absolute coordiantes for the gene to update the relative position
-            my %geneCoordinates = getGeneCoordinates($conservatoryDir, $genomeToFamily{geneToGenome($targetLocus)},  geneToGenome($targetLocus), $targetLocus);
-
-            my $newRelativePosition = $targetRelativePosition;
-            if($absStart != $newAbsStart) { $totalFixedPositions++; }
-                
-            if($geneStrand eq "+") {
-                if($targetRelativePosition>=0) {
-                    $newRelativePosition = $newAbsStart - $geneCoordinates{'End'} -1; #OK
-                } else {
-                    $newRelativePosition = $newAbsStart - $geneCoordinates{'Start'};  #OK
-                }
-            } else {
-                if($targetRelativePosition>=0) {
-                    $newRelativePosition = $geneCoordinates{'Start'} - $newAbsStart - length($searchSequence) + 1;
-                } else {
-                    $newRelativePosition = $geneCoordinates{'End'} - $newAbsStart - length($searchSequence) + 1;  # OK
-                }
-            }
-
-
-			print $outMapFile join(",",
-			                    $CNSID,
-				                $targetSpecies,
-				                $targetLocus,
-					            $newRelativePosition,
-					            $targetStrand,
-    					        $referenceRelativePosition,
-					            $length,
-					            $origTargetSequence,
-					            $absChromosome,
-    					        $newAbsStart,
-					            $geneStrand,
-					            $name ) . "\n";
-        } else {
-            print $outMapRejectFile "SEQUENCE NOT FOUND ERROR: $CNSID,$targetLocus,$targetRelativePosition,$targetStrand,$length,$absChromosome,$absStart,$geneStrand,$targetSequence in $regionSequence\n";
+            my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
+            if($curMapping->getAbsPos() != $newAbsStart) { $totalFixedPositions++; }
+            $curMapping->setAbsPos($newAbsStart);
+            $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
+        } else {  ### Else, reject
+            $curMapping->print($outMapRejectFile);
+            $mappingDB->deleteMapping($curMapping);
             $totalRejectedPositions++
         }
     }
-    close($inSortedMapFile);
-    close($outMapRejectFile);
-    close($outMapFile);
+    if(defined $outRejectFileName) {
+        close($outMapRejectFile);
+    }
     if($verbose) { print "PROGRESS: Done verifying positions. Verified $totalVerifiedPositions. Fixed $totalFixedPositions. Rejected $totalRejectedPositions.\n"; } 
-    exit();
 }
-
-
-### Read CNS file
-open (my $inCNSFile,"<", $inCNSFileName) ||  die "ERROR: Cannot find CNS file $inCNSFileName.\n";
-my $curPos=1;
-my $totalCNSNum = ( split(" ",qx(wc -l $inCNSFileName)  ) )[0];
-
-while(<$inCNSFile>) {
-	if($verbose) { print "PROGRESS: Loading CNS table.. " . $curPos++ . "/$totalCNSNum.\r" };
-	chomp;
-	my ($referenceGenome, $CNSID, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/;
-
-    my $multiRefCNS=0;
-    if($referenceGenome eq "Super") {
-        $multiRefCNS=1;
-    }
-	$CNSTable{$CNSID} = {
-				'RefGenome' => $referenceGenome,
-				'Locus' => $locus,
-				'Start' => $start,
-				'Len' => $length,
-				'Level' => $level,
-				'SupportingSpecies' => $supportingSpecies,
-				'AncesteralSeq' => $ancesteralSeq,
-				'multiRefCNS' => $multiRefCNS,
-                'Plastid' => 0,
-                'Filtered' => 0};
-}
-close($inCNSFile);
-print "\n";
-
-### Now read map file
-open (my $inMapFile,"<", $inMapFileName) ||  die "ERROR: Cannot find map file $inMapFileName.\n";
-$curPos=1;
-
-while(<$inMapFile>) {
-	if($verbose) { print "PROGRESS: Loading mappings..." . $curPos++ . "/$totalPosCount\r" };
-	chomp;
-    my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence, $absChromosome, $absStart, $geneStrand, $name) = split /,/;
-	
-    if(defined $CNSTable{$CNSID }) {
-    	push( @{ $CNSTable{$CNSID}{'Positions'} } , {
-				'Species' => $targetSpecies,
-					'Locus' => $targetLocus,
-					'Pos' => $targetRelativePosition,
-					'Strand' => $targetStrand,
-					'RRP' => $referenceRelativePosition,   # ReferenceRelativePosition
-					'Len' => $length,
-					'Seq' => $targetSequence,
-					'AbsChr' => $absChromosome,
-					'AbsPos' => $absStart,
-					'GeneStrand' => $geneStrand,				
-					'Name' => $name} );	
-
-        if($targetSpecies eq "Athaliana" || $targetSpecies eq "MtrunA17r5" || $targetSpecies eq "pgrisea") {
-            my $geneName = $targetLocus;
-            $geneName =~ s/.*-//;
-            if (substr($geneName,0,3) eq "ATC" || substr($geneName,0,3) eq "ATM" ||
-                substr($geneName,0,9) eq "MtrunA17CP" || substr($geneName,0,9) eq "MtrunA17M" ||
-                substr($geneName,0,7) eq "PhygriC" || substr($geneName,0,7) eq "PhygriM") {
-                $CNSTable{$CNSID}{'Plastid'}=1;
-            }
-        }
-    }
-}
-close($inMapFile);
-print "\n";
 
 ### Now Begin filtering
 if($filterPlastid) {
     my $plastidFiltered=0;
 
-    foreach my $curCNS (keys %CNSTable) {
-        if($CNSTable{$curCNS}{'Plastid'}) {
-            $CNSTable{$curCNS}{'Filtered'}=1;
-            $plastidFiltered++;
-        }
+    foreach my $curMapping ( @{ $mappingDB->getMappingsByOrder() }) {
+        if ($curMapping->isPlastid()) { $CNSDB->getCNSByID( $curMapping->getCNSID() )->setComment("PlastidFilter"); }
+        $plastidFiltered++;
     }
-    if($verbose) { print "Plastid Filter: Removed $plastidFiltered of $totalCNSNum\n";}
-    $totalCNSNum -= $plastidFiltered;
+    if($verbose) { print "Plastid Filter: Removed $plastidFiltered CNS\n";}
 }
 
 if($filterDeepCNS) {
-    my $deepCNSFiltered;
-    foreach my $curCNS (keys %CNSTable) {
-        my $nodeLevel = $CNSTable{$curCNS}{'Level'};
+    my $deepCNSFiltered=0;
+    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder()}) {
+        my $nodeLevel = $curCNS->getConservationLevel();
         $nodeLevel =~ s/N//;
 
-        if(!$CNSTable{$curCNS}{'Filtered'} && ($nodeLevel + 0 <=13) && !$CNSTable{$curCNS}{'multiRefCNS'} ) {
+        if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=13) && $curCNS->getRefGenome() ne "Super" ) {
+            $curCNS->setComment("DeepFilter");
             $deepCNSFiltered++;
-            $CNSTable{$curCNS}{'Filtered'}=1;
         }
     }
-    if($verbose) { print "Deep CNS Filter: Removed $deepCNSFiltered of $totalCNSNum\n"; }
-    $totalCNSNum -= $deepCNSFiltered;
+    if($verbose) { print "Deep CNS Filter: Removed $deepCNSFiltered CNS\n"; }
 }
 
 if($filterRepetitive) {
-    my $repetitiveFiltered;
+    my $repetitiveFiltered=0;
     ## First, establish cutoff
     my @posPerCNS;
-    foreach my $curCNS (keys %CNSTable) {
-        push @posPerCNS, scalar @{ $CNSTable{$curCNS}{'Positions'} };
+
+    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder()}) {
+        my $mappingsPerCNS = $mappingDB->getMappingsForCNS( $curCNS->getID());
+        if(defined $mappingsPerCNS) {
+            push @posPerCNS, scalar @{ $mappingsPerCNS };
+        } else {
+            $CNSDB->deleteCNS($curCNS);
+        }
     }
     @posPerCNS = reverse sort { $a <=> $b} @posPerCNS;
     my $filterValue = $posPerCNS[ scalar @posPerCNS * ($filterRepetitiveCNSCutoff/100) ];
 
-    foreach my $curCNS (keys %CNSTable) {
-        if(!$CNSTable{$curCNS}{'Filtered'} && scalar @{ $CNSTable{$curCNS}{'Positions'} } > $filterValue) {
-            $CNSTable{$curCNS}{'Filtered'}=1;
+    foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
+        if(!defined $curCNS->getComment() && scalar @{ $mappingDB->getMappingsForCNS( $curCNS->getID())  } > $filterValue)  {
+            $curCNS->setComment("RepetitiveFilter");
             $repetitiveFiltered++;
         }
     }
-    if($verbose) { print "Filtering highly repetitive CNS (CNS with more than $filterValue positions). Removed $repetitiveFiltered of $totalCNSNum\n"; }
-    $totalCNSNum -= $repetitiveFiltered;    
+    if($verbose) { print "Filtering highly repetitive CNS (CNS with more than $filterValue positions). Removed $repetitiveFiltered CNS\n"; }
+
 }
 
-if($verbose) { print "Finished filtering. Overall left with $totalCNSNum CNS. Writing...\n"; }
+my $lowSupportFiltered=0;
 
-open(my $outCNSFile, ">" , $outCNSFileName) || die ("ERROR: Cannot open output CNS file $outCNSFileName.\n");
-open(my $outMapFile, ">" , $outMapFileName) || die ("ERROR: Cannot open output map file $outMapFileName.\n");
+if($filterLowSupport) {
+    foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
+        if(!defined $curCNS->getSupportingSpecies($mappingDB) ) {
+            $curCNS->setComment("LowSupportFilter");
+            $lowSupportFiltered++;      
+        } elsif( scalar @{ $curCNS->getSupportingSpecies($mappingDB) } < $minSpeciesForCNS) {
+            $curCNS->setComment("LowSupportFilter");
+            $lowSupportFiltered++;
+        }
+    }
+    if($verbose) { print "Filtered $lowSupportFiltered for low support...\n"; }    
+}
 
-foreach my $curCNS (keys %CNSTable) {
-    if(!$CNSTable{$curCNS}{'Filtered'}) {
-			print $outCNSFile join(",",
-					$CNSTable{$curCNS}{'RefGenome'},
-					$curCNS,
-					$CNSTable{$curCNS}{'Locus'},
-					$CNSTable{$curCNS}{'Start'},
-					$CNSTable{$curCNS}{'Len'},
-					$CNSTable{$curCNS}{'Level'},
-					$CNSTable{$curCNS}{'SupportingSpecies'},
-					$CNSTable{$curCNS}{'AncesteralSeq'}) ."\n";
 
-        foreach my $curMapping (@{ $CNSTable{$curCNS}{'Positions'} }) {
-			print $outMapFile join(",",
-					$curCNS,
-					$curMapping->{'Species'},
-					$curMapping->{'Locus'},
-					$curMapping->{'Pos'},
-					$curMapping->{'Strand'},					
-					$curMapping->{'RRP'},
-					$curMapping->{'Len'},
-					$curMapping->{'Seq'},
-					$curMapping->{'AbsChr'},
-					$curMapping->{'AbsPos'},
-					$curMapping->{'GeneStrand'},
-					$curMapping->{'Name'} ) . "\n";	
-		}
+if($verbose) { print "Finished filtering. Writing...\n"; }
+
+## open Reject DB
+my $rejectCNSDB = new CNSDatabase();
+
+foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
+    if(defined $curCNS->getComment()) {
+        $rejectCNSDB->addCNS($curCNS);
+        $CNSDB->deleteCNS($curCNS);
+        $mappingDB->deleteCNS($curCNS);
     }
 }
 
-close($outCNSFile);
-close($outMapFile);
+$CNSDB->writeDatabase($outCNSFileName);
 
-
-sub cleanChrName {
-	my $chr = shift(@_);
-	chomp($chr);
-	if(substr($chr,0,1) eq ">") {
-		$chr = substr($chr,1);
-	}
-	if(index($chr, " ")!= -1 || index($chr, "\t") != -1) {
-		$chr = (split(' ', $chr))[0];
-	}
-	return "C" . $chr;
+if(defined $outRejectFileName && !$fixPositions) {
+    $rejectCNSDB->writeDatabase($outRejectFileName);
 }
+
+$mappingDB->writeDatabase($outMapFileName);
+
 
 sub compareSequences {
     my ($seq1, $seq2) = @_;
@@ -388,4 +259,57 @@ sub compareSequences {
         }
     }
     return 1;
+}
+
+
+sub remap {
+    my ($curMapping, $curGenomeSequence, $partial) = @_;
+
+    my $targetSequence = $curMapping->getSeq();
+    $targetSequence =~ s/-//g; ## remove the gaps
+    my $searchSequence= $targetSequence;
+
+    if($curMapping->getStrandInGenome() eq "-") { 
+        $searchSequence = reverseComplement($searchSequence);
+    }
+    if(defined $partial) {
+        if($partial>0) {
+            $searchSequence = substr($searchSequence, 0, min($partial, length($searchSequence)));
+        } else {
+            $partial = max( $partial, -length($searchSequence));
+            $searchSequence = substr($searchSequence, length($searchSequence) + $partial, abs($partial));
+        }
+    }
+
+    my $startCoordBias = min(0,$curMapping->getAbsPos() - $regionSearchFlank);  ### If this is the start of the choromosome and we donot have enough flank sequeuence
+                                                                     ## record where we started
+
+    my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
+       
+    my $hitPosition = length($regionSequence);
+    my $curPositionInRegion=0;
+    while( $curPositionInRegion < length($regionSequence) ) {
+        if(compareSequences(substr($regionSequence,$curPositionInRegion, length($searchSequence)), $searchSequence)) {
+            if( abs($curPositionInRegion - $regionSearchFlank) < abs($hitPosition - $regionSearchFlank)  ) {
+                $hitPosition = $curPositionInRegion;
+            }
+        }
+        $curPositionInRegion++;
+    }
+    
+    if($hitPosition != length($regionSequence)) { ### If we found our sequence, update the coordiantes
+        my $newAbsStart = $curMapping->getAbsPos() - $regionSearchFlank + $hitPosition - $startCoordBias;
+        ### if it was a partial fit, update the sequence
+        if(defined $partial) {
+            if($partial>0) {
+                $curMapping->setSeq(substr($regionSequence, $hitPosition, $curMapping->getAbsLen()) );
+            } else {
+                $curMapping->setSeq(substr($regionSequence, $hitPosition -$curMapping->getAbsLen() -$partial, $curMapping->getAbsLen()) );
+                $newAbsStart = $newAbsStart - $curMapping->getAbsLen() - $partial;
+            }
+        }
+        return $newAbsStart;
+    } else {
+        return -1;
+    }
 }

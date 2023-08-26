@@ -10,6 +10,8 @@ use Bio::AlignIO;
 use Bio::Tools::GFF;
 use Bio::SeqFeatureI;
 
+use lib './scripts';
+use ConservatoryUtils;
 
 my $lociListFileName;
 my $networkName="myNetwork";
@@ -52,15 +54,14 @@ while(my $curgenomeline = <$genomeDatabase>) {
 		chomp($curgenomeline);
 		my ($curgenomeName, $curgenomeSpecies,  $curgenomeFamily, $curgenomeReference, $upstreamLength, $downstreamLength, $geneNameField, $geneProcessingRegEx, $gene2SpeciesIdentifier, $proteinProcessingRegEx,$classification) = split /,/, $curgenomeline;
 		$genomeDatabase{$curgenomeSpecies}{'Family'} = $curgenomeFamily;
-		$genomeDatabase{$curgenomeSpecies}{'Species'} = $curgenomeSpecies;
 		$genomeDatabase{$curgenomeSpecies}{'Classification'} = $classification;	
 	}
 }
 
 ###### First, assemble the CNS and mapping
 
-my $allCNSMergedFileName = "$conservatoryDir/output/conservatoryV5.final.cns.csv";
-my $allPositionsMergedFileName = "$conservatoryDir/output/conservatoryV5.final.map.csv";
+my $allCNSMergedFileName = "$conservatoryDir/output/conservatoryV6.final.cns.csv";
+my $allPositionsMergedFileName = "$conservatoryDir/output/conservatoryV6.final.map.csv";
 
 my $myLociPositionsFileName = "$conservatoryDir/output/$networkName.map.csv";
 
@@ -68,7 +69,7 @@ my $myLociPositionsFileName = "$conservatoryDir/output/$networkName.map.csv";
 #### Now filter just for the loci we want
 print localtime(). ": Filter loci...\n";
 system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - $allPositionsMergedFileName | cut -d',' -f1 | grep -f - $allPositionsMergedFileName > $myLociPositionsFileName.tmp");
-system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - output/angiospermsOrthologs.csv | cut -d',' -f1 | sort | uniq | grep -f - $myLociPositionsFileName.tmp > $myLociPositionsFileName");
+system("cut -d',' -f1 $conservatoryDir/$lociListFileName | sed 's/.*-.*-//' | grep -f - output/conservatoryOrthologs.csv | cut -d',' -f1 | sort | uniq | grep -f - $myLociPositionsFileName.tmp > $myLociPositionsFileName");
 unlink("$myLociPositionsFileName.tmp");
 ### Build the CNS dictionary hash
 my %cnsDic;
@@ -77,26 +78,19 @@ my %nodesDic;
 my %nodeCNSHistory;
 open(my $allCNSFile, $allCNSMergedFileName) || die ("Internal error");
 
-while(my $cnsLine = <$allCNSFile>) {
-	chomp($cnsLine);
-	my ($referenceGenome, $CNSID, $chromosome, $strand, $start, $end, $locus, $relStart, $relEnd, $level, $supportingSpecies, $orfLength, $orfDir, $omega, $ancesteralSeq) = split /,/, $cnsLine;
+while(<$allCNSFile>) {
+	chomp;
+	my ($referenceGenome, $CNSID, $locus, $start, $length, $level, $supportingSpecies, $ancesteralSeq) = split /,/;
 
 	$cnsDic{$CNSID} = {
-				'ReferenceGenome' => $referenceGenome,
+				'RefGenome' => $referenceGenome,
 				'CNSID' => $CNSID,
-				'Chromosome' => $chromosome,
-				'Strand' => $strand,
-				'Start' => $start,	
-				'End' => $end,
 				'Locus' => $locus,
-				'RelStart' => $relStart,
-				'RelEnd' => $relEnd,
+				'Start' => $start,
+				'Len' => $length,
 				'Level' => $level,
 				'SupportingSpecies' => $supportingSpecies,
-				'ORFLength' => $orfLength,
-				'ORFDir' => $orfDir,
-				'Omega' => $omega,
-				'AncesteralSeq' => $ancesteralSeq
+				'AncesteralSeq' => $ancesteralSeq,
 	};
 	
 	$nodesDic{$CNSID}{'Type'} = "CNS";
@@ -104,13 +98,6 @@ while(my $cnsLine = <$allCNSFile>) {
 	$nodesDic{$CNSID}{'Species'} = $referenceGenome;
 	$nodesDic{$CNSID}{'Family'}="CNS";
 	$nodesDic{$CNSID}{'Level'}=$level;
-	$nodesDic{$CNSID}{'ORF'}= floor( (1+$orfLength)/3);
-	$nodesDic{$CNSID}{'Classification_1'}="";
-	$nodesDic{$CNSID}{'Classification_2'}="";
-	$nodesDic{$CNSID}{'Classification_3'}="";
-	$nodesDic{$CNSID}{'Classification_4'}="";
-	$nodesDic{$CNSID}{'Classification_5'}="";
-	$nodesDic{$CNSID}{'Classification_6'}="";	
 }
 close($allCNSFile);
 
@@ -123,25 +110,20 @@ open(my $outputDictionaryFile, ">$outputDictionaryFileName");
 my %usedCNS;
 
 open (my $nodeFile, $myLociPositionsFileName) || die ("Internal error");
-while(my $curNodeLine = <$nodeFile>) {
-	chomp($curNodeLine);
-	my ($CNSID, $targetGenome, $targetLocus, $targetRelativePosition, $referenceRelativePosition, $length) = split /,/, $curNodeLine;
+while(<$nodeFile>) {
+	chomp;
+	my ($CNSID, $targetSpecies, $targetLocus, $targetRelativePosition, $targetStrand, $referenceRelativePosition, $length, $targetSequence, $absChromosome, $absStart, $geneStrand, $name) = split /,/;
+
 	$usedCNS{$CNSID} =1;	
-	my @classification = split /-/, $genomeDatabase{$targetGenome}{'Classification'};
 
 	$nodesDic{$targetLocus}{'Type'} = "Locus";
-	$nodesDic{$targetLocus}{'Name'} = $targetGenome;	
-	$nodesDic{$targetLocus}{'Species'} = $genomeDatabase{$targetGenome}{'Species'};
-	$nodesDic{$targetLocus}{'Family'} = $genomeDatabase{$targetGenome}{'Family'};
-	$nodesDic{$targetLocus}{'Level'}="";
-	$nodesDic{$targetLocus}{'ORF'}="";
+	$nodesDic{$targetLocus}{'Name'} = geneToGenome($targetLocus);
+	$nodesDic{$targetLocus}{'Species'} = $targetSpecies;
+	$nodesDic{$targetLocus}{'Family'} = $genomeDatabase{geneToGenome($targetLocus)}{'Family'};
+	my @classification = split /-/, $genomeDatabase{geneToGenome($targetLocus)}{'Classification'};
 
-	$nodesDic{$targetLocus}{'Classification_1'}=$classification[0];
-	$nodesDic{$targetLocus}{'Classification_2'}=$classification[1];
-	$nodesDic{$targetLocus}{'Classification_3'}=$classification[2];
-	$nodesDic{$targetLocus}{'Classification_4'}=$classification[3];
-	$nodesDic{$targetLocus}{'Classification_5'}=$classification[4];
-	$nodesDic{$targetLocus}{'Classification_6'}=$classification[5];
+	$nodesDic{$targetLocus}{'Level'}= $classification[3];
+
 	### Remove duplicates
 	if(! (defined $nodeCNSHistory{$targetLocus}{$CNSID})) { 
 		print $outputSIFFile "$targetLocus has $CNSID\n";
@@ -167,14 +149,7 @@ print $outputDictionaryFile join(",",
 				"Name",
 				"Species",
 				"Family",
-				"Level",
-				"ORFLength",
-				"Classification 1",
-				"Classification 2",
-				"Classification 3",
-				"Classification 4",
-				"Classification 5",
-				"Classification 6") . "\n";									
+				"Level") . "\n";									
 
 foreach my $curNode (keys %nodesDic) {
 									
@@ -183,14 +158,7 @@ foreach my $curNode (keys %nodesDic) {
 						  $nodesDic{$curNode}{'Name'},
 						  $nodesDic{$curNode}{'Species'},
 						  $nodesDic{$curNode}{'Family'},
-						  $nodesDic{$curNode}{'Level'},										
-						  $nodesDic{$curNode}{'ORF'},
-						  $nodesDic{$curNode}{'Classification_1'},
-						  $nodesDic{$curNode}{'Classification_2'},
-						  $nodesDic{$curNode}{'Classification_3'},
-						  $nodesDic{$curNode}{'Classification_4'},
-						  $nodesDic{$curNode}{'Classification_5'},
-						  $nodesDic{$curNode}{'Classification_6'}) . "\n";
+						  $nodesDic{$curNode}{'Level'}) . "\n";
 										
 }
 close($nodeFile);

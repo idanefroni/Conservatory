@@ -1,0 +1,560 @@
+#!/usr/bin/perl
+use strict;
+use POSIX;
+use Cwd 'abs_path';
+
+use Array::Utils qw(:all);
+
+use List::Util qw(min max);
+use Set::Scalar;
+use Bio::Root::Root;
+use Bio::SeqIO;
+use Bio::AlignIO;
+use Bio::Seq;
+use Bio::LocatableSeq;
+use Bio::SimpleAlign;
+use Bio::Tools::GFF;
+use Bio::SeqFeatureI;
+use Getopt::Long;
+
+use lib './scripts';
+use ConservatoryUtils;
+use GenomeDatabase;
+use CNSDatabase;
+use MappingDatabase;
+use ConservatoryTree;
+
+$|=1;
+
+### Filenames
+my $conservatoryDir=abs_path(".");
+my $tmpDir= "$conservatoryDir/tmp/";   ## Default temporary directory
+my $CNSFileName="";
+my $mapFileName="";
+my $outputCNSFileName="";
+my $outputMapFileName="";
+my $outputMergedCNSFileName="";
+my $conservatoryTreeFileName;
+
+### Merging parameters
+
+my $minOverlappingSpeciesForMerge=5; ### How many overlapping hits to merge a CNS
+my $minCNSOverlap = 0.1;
+
+my $minSupportingSpeciesToKeepMultipleCNS = 60;
+my $minSpeciesForCNS=5; ### The minimum number of species aligned to a CNS to keep the CNS
+my $minCNSIdentityToMerge=70;
+my $minCNSOverlapToMerge=0.2;
+my $maxMappingsPerCNS=3000;
+my $maxCNSLength=3000;
+my $mergeDeep=0;
+
+my $keep_tmp=0;
+my $outputAnnotatedTree=0;
+
+my %CNSTable;
+my @positionList;
+
+my %positionsForCNS;
+my %CNSForPositions;
+
+my $CNSMerged=0;
+my $CNSDeletedButMappingKept=0;
+my $CNSDeleted=0;
+my $deepCNSMerged=0;
+my $alignCNSProcess=0;
+
+my $verbose=0;
+my $help=0;
+
+GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
+			"in-cns=s" => \$CNSFileName,
+			"in-map=s" => \$mapFileName,
+			"out-cns=s" => \$outputCNSFileName,
+			"out-map=s" => \$outputMapFileName,
+			"verbose" => \$verbose,
+			"min-overlapping" => \$minOverlappingSpeciesForMerge,
+			"min-keep-multiple" => \$minSupportingSpeciesToKeepMultipleCNS,
+			"align-CNS-process" =>\$alignCNSProcess,
+			"merge-deep" => \$mergeDeep,
+			"keep-tmp" => \$keep_tmp,
+			"annotated-tree" => \$outputAnnotatedTree,
+			"tmp-dir=s" => \$tmpDir,
+			"help" => \$help) or die ("Error in command line arguments\n");
+			
+			
+if($help || $CNSFileName eq "" || $mapFileName eq "" || $outputCNSFileName eq "" || $outputMapFileName eq "" ) {
+	print "Conservatory version 2.0.1\n\n";
+	print "mergeCNS --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>.\n\n";
+	
+	exit();
+}
+
+### Load genome and tree
+my $genomeDB = new GenomeDatabase($conservatoryDir);
+my $conservatoryTree = new ConservatoryTree($genomeDB);
+
+##### Read the CNS table
+my $CNSDB = new CNSDatabase($CNSFileName, $verbose);
+
+### Load mappings
+my $mappingDB = new MappingDatabase($mapFileName, $verbose);
+if( $mappingDB->getNumberOfMappings()==0) { die "ERROR: Mapping database is empty.\n"; }
+
+##### Give genome-unique names for the mappings
+$mappingDB->renameMappings($verbose);
+
+if($verbose) { print "PROGRESS: Setting up CNS database..."; }
+##### Find the absolute genome positions for all CNSs
+$CNSDB->findReferenceMappings($genomeDB, $mappingDB);
+
+## Sort the CNS table by the reference mappings
+$CNSDB->orderCNSByReference();
+
+if($verbose) { print "PROGRESS: Done\n"; }
+
+###### Merge family CNS (CNS for the same genome)
+##### Assign CNS to gene based on synteny analysis
+
+my @orderedCNSs = @{ $CNSDB->getCNSByOrder() };
+
+my $lastCNS = $orderedCNSs[0];
+my $curPos =2;
+
+if(!$mergeDeep) {
+foreach my $curCNS (@orderedCNSs[1..(scalar @orderedCNSs-1)]) {
+	if($verbose) { print "PROGRESS: Merging family CNS..." . $curPos++ . "/" . (scalar @orderedCNSs) . ". Merged $CNSMerged. Deleted $CNSDeleted.\r" };
+
+	### If this CNS overlap with last, pick one gene to associate it with (or merge)
+	###
+	if(!defined $curCNS) {next; }
+	my $CNSToDelete;
+
+	if($lastCNS->hasReferenceMapping() && $curCNS->hasReferenceMapping &&  ### Short-circut if the CNS has no absolute coordinates (meaning it is a merged CNS)
+		$lastCNS->getRefGenome() eq $curCNS->getRefGenome() && 
+		$lastCNS->getRefLocus() ne $curCNS->getRefLocus() && 
+		$lastCNS->getRefChr() eq $curCNS->getRefChr() && 
+		$lastCNS->getReferenceMapping->overlap( $curCNS->getReferenceMapping() )) {
+
+			## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
+			my $syntenyComparison = $lastCNS->compareSynteny($curCNS, $mappingDB, $conservatoryTree );
+
+			if($syntenyComparison == 1) { ## If the lastCNS is more conserved that the current CNSID
+				$CNSToDelete = $curCNS;
+				$CNSDeleted++;
+			} elsif($syntenyComparison ==2) { ## If it is the other way around
+				$CNSToDelete = $lastCNS;
+				$CNSDeleted++;
+			} else {   ### If both CNSs have a similar number of supporting species, we have to decide:
+				### If the genes are same orientation and the CNS is in the same part of the regulatory sequence (Up/downstream)
+				###  then associate with the closest gene.
+				if( ($lastCNS->getRegulatorySeqPart() eq $curCNS->getRegulatorySeqPart()) && ($curCNS->getRegulatorySeqPart() eq "Up") &&
+					($lastCNS->getRefStrand() eq $curCNS->getRefStrand()) ) {    #### If both upstream. delete the one further away
+					if($curCNS->getRefEnd() > $lastCNS->getRefEnd() ) {
+						$CNSToDelete = $lastCNS;
+					}
+					else {
+						$CNSToDelete = $curCNS;
+					}
+					$CNSDeleted++;
+				} elsif(($lastCNS->getRegulatorySeqPart() eq $curCNS->getRegulatorySeqPart()) && ($curCNS->getRegulatorySeqPart() eq "Down") &&		
+						( $lastCNS->getRefStrand() ne $curCNS->getRefStrand())) {  ### If both downstream, delete the one further away
+						if($curCNS->getRefPos() < $lastCNS->getRefPos()) {
+							$CNSToDelete = $lastCNS;
+						} else {
+							$CNSToDelete = $curCNS;
+						}
+						$CNSDeleted++;
+				} elsif(( $lastCNS->getRegulatorySeqPart() ne $curCNS->getRegulatorySeqPart())   &&
+						( $lastCNS->getRefStrand() ne $curCNS->getRefStrand() ) ) {   ### If one is upsteam, one downstream on opposite strands, delete the downstream (we assume upstream more likely)
+						if($lastCNS->getRegulatorySeqPart() eq "Down") {
+							$CNSToDelete = $lastCNS;
+						} else {
+							$CNSToDelete = $curCNS;
+						}
+						$CNSDeleted++;
+				} elsif( $lastCNS->getRegulatorySeqPart() eq "Merged" ) {   #### If CNS hits a CNS that was already merged, just delete it
+					$CNSToDelete = $curCNS;
+					$CNSDeleted++;
+				} else { ### If orientation is different then merge into one CNS.
+					#my $diffInCNSPos = $curCNS->getRefPos() - $lastCNS->getRefPos();
+
+					### Pick the longest one
+					my $longestSeqCNS;
+					if( $curCNS->getLen() > $lastCNS->getLen() ) {
+						$longestSeqCNS = $curCNS;
+						$CNSToDelete = $lastCNS;
+					} else {
+						$longestSeqCNS = $lastCNS;
+						$CNSToDelete= $curCNS;
+					}
+
+					## Update all the positions
+
+					### If there is a difference in the stands between the merged CNS, reverse complement the mismatched one
+					if($longestSeqCNS->getRefStrand() ne $CNSToDelete->getRefStrand()) {
+						foreach my $mapping (@{ $mappingDB->getMappingsForCNS($CNSToDelete) }) {
+							$mapping->flip();
+						}
+					}
+					## Now merge the mappings
+					$mappingDB->mergeMappings($longestSeqCNS, $CNSToDelete);
+					$mappingDB->removeDuplicatesForCNS($longestSeqCNS);
+
+					### Merge CNS rel position
+					$longestSeqCNS->setRegulatorySeqPart("Merged");
+
+					$lastCNS = $longestSeqCNS;
+					$CNSMerged++;
+			}
+		}
+	} else {
+		$lastCNS = $curCNS;
+	}
+
+	if(defined $CNSToDelete) {
+		### Delete the CNS. 
+		### One exception. If this is a deeply conserved CNS, maintain a link to the other genes.
+		if($CNSToDelete->getSupportingSpeciesNumber() > $minSupportingSpeciesToKeepMultipleCNS) {
+			$CNSDeletedButMappingKept++;
+			my $CNSToCopyTo = $lastCNS;
+			if($CNSToDelete eq $lastCNS) { $CNSToCopyTo = $curCNS; }
+
+			$mappingDB->mergeMappings($CNSToCopyTo, $CNSToDelete);
+		}
+
+		$CNSDB->deleteCNS( $CNSToDelete );
+		$mappingDB->deleteCNS( $CNSToDelete );		
+
+		if($CNSToDelete eq $lastCNS) { $lastCNS=$curCNS; }
+	}
+}
+
+if($verbose) { print "\n"; }
+}
+
+#######################################################################################
+###### Go to the deeper merge - merge across different references
+
+### Identify different CNSs that align to similar positions in the genomes
+
+### Identify CNS to merge
+my %CNSToMergeMap;
+
+@positionList = @{ $mappingDB->getMappingsByOrder() };
+
+my $totalToScreen = scalar @positionList;
+$curPos=1;
+my $lastMapping = $positionList[0];
+
+if($mergeDeep) {
+	### Scan all the hits to the locus. See if an alignment is hitting Two CNSs. If so, merge them.
+	foreach my $curMapping (@positionList[1..(scalar @positionList - 1)]) {
+	
+		if($verbose) { print "PROGRESS: Identifying deep CNS to merge..." . ($curPos++) . "/$totalToScreen.\r"; }
+	
+		if( $CNSDB->CNSexists( $lastMapping->getCNSID()) && $CNSDB->CNSexists( $curMapping->getCNSID() ) &&
+		    geneToGenome($lastMapping->getLocus()) eq  geneToGenome($curMapping->getLocus()) &&
+		    $lastMapping->getName() eq $curMapping->getName() &&
+			$lastMapping->getCNSID() ne $curMapping->getCNSID() ) {   ## If it is the same genome position, but different CNSs, mark them to be merged
+				$CNSToMergeMap{ $lastMapping->getCNSID() }{ $curMapping->getCNSID() }{ $lastMapping->getSpecies() } =1;
+				$CNSToMergeMap{ $curMapping->getCNSID() }{ $lastMapping->getCNSID() }{ $lastMapping->getSpecies() } =1;			
+		}
+		$lastMapping= $curMapping;
+	}
+	if($verbose) {print "\n";}
+}
+
+my $deletedForLowSupport=0;
+
+### Filter CNS merge events with too few hits
+if($verbose) { print("PROGRESS: Filtering " . (scalar (keys %CNSToMergeMap) ) . " CNSs...\n");  }
+
+foreach my $curCNSA (keys %CNSToMergeMap) {
+	foreach my $curCNSB (keys %{ $CNSToMergeMap{$curCNSA} }) {
+		if( scalar keys %{ $CNSToMergeMap{$curCNSA}{$curCNSB} } < $minOverlappingSpeciesForMerge || $CNSDB->getCNSByID( $curCNSA)->getRegulatorySeqPart() ne $CNSDB->getCNSByID($curCNSB)->getRegulatorySeqPart() ) {
+			delete $CNSToMergeMap{$curCNSA}{$curCNSB};
+			delete $CNSToMergeMap{$curCNSB}{$curCNSA};
+			if((scalar keys %{ $CNSToMergeMap{$curCNSA} }) ==0) { delete $CNSToMergeMap{$curCNSA}; }
+			if((scalar keys %{ $CNSToMergeMap{$curCNSB} }) ==0) { delete $CNSToMergeMap{$curCNSB}; }
+			$deletedForLowSupport++;
+		}
+	}
+}
+
+if($verbose) { print "PROGRESS: Removed $deletedForLowSupport CNS merge events for low support.\n"; }
+
+### Convert Merge table to number of supporting species. Filter out CNS hits that have low identity scores following alignment to avoid merger of CNS that have diverged too far
+$totalToScreen = scalar keys %CNSToMergeMap;
+$curPos=1;
+my $deletedForLowIdentity=0;
+
+#### Filter CNS merge events with low sequence similarity (too divergent)
+
+for my $curCNSA (keys %CNSToMergeMap ) {
+	if($verbose) { print "PROGRESS: Merging overlapping CNS hits and filtering divergent sequences..." . ($curPos++) . "/$totalToScreen. Removed $deletedForLowIdentity CNS merge events.\r"; }
+	for my $curCNSB (keys %{ $CNSToMergeMap{$curCNSA}}) {
+		## Check to see if we have enough similarity between the ancesteral CNSs.
+		my $deleteMergeEvent=0;
+
+		## First, check if we have enough overlap
+		if( (min($CNSDB->getCNSByID($curCNSA)->getLen(), $CNSDB->getCNSByID($curCNSB)->getLen() ) / max($CNSDB->getCNSByID($curCNSA)->getLen(), $CNSDB->getCNSByID($curCNSB)->getLen()) ) > $minCNSOverlapToMerge) {
+			### If we have enough, check for identity
+			my $pairwise = alignPairwise($CNSDB->getCNSByID($curCNSA)->getSeq(), $CNSDB->getCNSByID($curCNSB)->getSeq() );
+			if($pairwise->percentage_identity() < $minCNSIdentityToMerge) {
+				### perhaps the CNS has switch directions?
+				my $rcPairwise = alignPairwise($CNSDB->getCNSByID($curCNSA)->getSeq() , reverseComplement($CNSDB->getCNSByID($curCNSB)->getSeq() ));
+				if($rcPairwise->percentage_identity() >= $minCNSIdentityToMerge) {
+					## We should merge, but first reverse complement the sequence
+					$CNSDB->getCNSByID($curCNSB)->setSeq(reverseComplement( $CNSDB->getCNSByID($curCNSB)->getSeq()) );
+					### and reverse all positions
+					foreach my $curPosition (@{ $mappingDB->getMappingsForCNS($curCNSB)  }) {
+						$curPosition->flip();
+					}
+				} else {
+					$deleteMergeEvent=1;
+				}
+			}
+		} else {
+			$deleteMergeEvent=1;
+		}
+
+		### perform pairwide alignment (NeedlemanWunsch) between the two CNS sequences
+
+		if($deleteMergeEvent) {  ## If the sequences are too disimilar by sequence or by length
+			delete $CNSToMergeMap{$curCNSA}{$curCNSB};
+			delete $CNSToMergeMap{$curCNSB}{$curCNSA};
+			$deletedForLowIdentity++;
+		} 
+	}
+	if((scalar (keys %{ $CNSToMergeMap{$curCNSA} })) < 1) { delete $CNSToMergeMap{$curCNSA}; }	
+}
+if($verbose) { print "\n";}
+
+### Collate CNSs into group. The first one is the anchor CNS and is the key for the superGroup hash
+
+my %superGroups;
+my %alreadyProcessedCNSs;
+
+my $CNSCollated;
+$totalToScreen = scalar (keys %CNSToMergeMap);
+$curPos=1;
+
+for my $curCNSToCollate (keys %CNSToMergeMap) {
+	if($verbose) { print "PROGRESS: Collating CNS..." . $curPos++ . "/$totalToScreen. Found $CNSCollated that can be collated.\r"; }
+
+	if(!defined $alreadyProcessedCNSs{$curCNSToCollate}) {
+		my $collated = collateCNS($curCNSToCollate, \%CNSToMergeMap);
+		$alreadyProcessedCNSs{$curCNSToCollate} = 1;
+		$superGroups{$curCNSToCollate}{$curCNSToCollate} = 1;
+		foreach my $curKeyToCopy ( keys %{ $collated->{'CollatedCNSs'} } ) { $alreadyProcessedCNSs{$curKeyToCopy} =1; $superGroups{$curCNSToCollate}{$curKeyToCopy}=1; }
+		$CNSCollated++;
+	}
+}
+
+if($verbose) { print("\n"); }
+
+### Merge merged CNS
+my $superGroupMerged=0;
+
+$totalToScreen = scalar (keys %superGroups);
+$curPos=1;
+my %CNSGroups;
+
+#### We could have many many files. To avoid overloading the filesystem in clusters, split the files to directories
+### and log their locations
+
+my $curSubDirNum=0;
+my $curFileNumInSubDir=0;
+my $MAX_FILES_IN_ALIGN_DIR=1000;
+
+mkdir "$tmpDir/ALIGN_$curSubDirNum";
+my $filesToAlignListFileName = "$tmpDir/tmp_filestoalign.txt";
+
+open (my $filesToAlignFile, ">", $filesToAlignListFileName);
+
+foreach my $anchorCNSID (keys %superGroups) {
+
+	if($verbose) { print "PROGRESS: Forming super CNS group fasta files...". $curPos++ . "/$totalToScreen.\r"; }
+	my %CNSsInGroup = %{ $superGroups{$anchorCNSID} };
+
+	if((scalar keys %CNSsInGroup) > 1 ) {
+
+		$deepCNSMerged = $deepCNSMerged + (scalar keys %CNSsInGroup);
+		$CNSMerged = $CNSMerged + (scalar keys %CNSsInGroup);
+
+		#determine the reference genome for the superCNS
+		my $mergedRefGenome = $CNSDB->getCNSByID($anchorCNSID)->getRefGenome();
+		foreach my $curCNSID (keys %CNSsInGroup) {
+			if($CNSDB->getCNSByID($curCNSID)->getRefGenome() ne $mergedRefGenome) {
+				$mergedRefGenome = $superCNSPrefix;
+				last;
+			}
+		}
+
+		my $mergedCNSName = "$superCNSPrefix.$anchorCNSID";
+		my $mergedCNS = new CNS($mergedRefGenome, $mergedCNSName, join("|", sort keys %CNSsInGroup), );
+		$CNSDB->addCNS($mergedCNS);
+
+		## Merged mappings for the new CNS and delete individual CNS		
+		for my $curCNS (keys %CNSsInGroup) {
+			foreach my $curMapping (@{ $mappingDB->getMappingsForCNS( $curCNS) }) {
+				$mappingDB->linkMappingToCNS($curMapping, $mergedCNS);
+				$curMapping->stripGaps();
+			}
+			$CNSDB->deleteCNS($curCNS);
+			$mappingDB->deleteCNS($curCNS);
+		}
+
+		$mappingDB->removeDuplicatesForCNS($mergedCNS);  ### removes identical mappings
+		$mappingDB->mergeOverlappingMappingsForCNS($mergedCNS);
+
+		### skip highly repetitive or very long CNSs
+		my $mappingsForCNSNum = scalar @{ $mappingDB->getMappingsForCNS($mergedCNS) };
+		if($mappingsForCNSNum < $maxMappingsPerCNS && $mergedCNS->getLen() < $maxCNSLength) {
+
+			#### build FASTA file for alignment
+			my $tmpOutputSuperCNSFastaFileName = "$tmpDir/ALIGN_$curSubDirNum/tmp_$mergedCNSName.fasta";
+			open(my $tmpOutputSuperCNSFastaFile, ">" , $tmpOutputSuperCNSFastaFileName);
+
+			for my $curMapping ( @{ $mappingDB->getMappingsForCNS($mergedCNS) }) {
+				$curMapping->printFasta($tmpOutputSuperCNSFastaFile);
+			}
+			close($tmpOutputSuperCNSFastaFile);
+
+			print $filesToAlignFile "$tmpOutputSuperCNSFastaFileName,$mergedCNSName\n";
+			if($curFileNumInSubDir++ >= $MAX_FILES_IN_ALIGN_DIR) {
+					$curFileNumInSubDir=0;
+					$curSubDirNum++;
+					mkdir "$tmpDir/ALIGN_$curSubDirNum";
+			}
+		} else {
+			$CNSDB->deleteCNS($mergedCNS);
+			$mappingDB->deleteCNS($mergedCNS);
+		}
+	}
+}
+close($filesToAlignFile);
+
+
+### Now align all the position files
+if(scalar (keys %superGroups) >0) {
+	if($alignCNSProcess) { ## Align using external aligned process (alignCNS)
+		if($verbose) { print "WAITING: for the alignCNSHelper to do the alignments for us...\n"; }
+	} else {
+		print "PROGRESS: Aligning CNSs\n";
+		system("perl $conservatoryDir/scripts/alignCNSHelper 1 1 $tmpDir")
+	}
+}
+
+$curPos=1;
+
+### And then, read the alignments, and build the Super CNS
+open($filesToAlignFile, "<", $filesToAlignListFileName);
+
+while(<$filesToAlignFile>) {
+	chomp;
+	my ($tmpOutputSuperCNSFastaFileName, $mergedCNSID) = split /,/;
+
+	my $tmpOutputSuperCNSFastaAlignedFileName = $tmpOutputSuperCNSFastaFileName;
+	$tmpOutputSuperCNSFastaAlignedFileName =~ s/\.fasta$/.aligned.fasta/;
+	if(-e $tmpOutputSuperCNSFastaFileName && $CNSDB->CNSexists($mergedCNSID)) { ## if we have the alignment file
+
+		### wait for someone to do the alignments for us
+		if(! -e $tmpOutputSuperCNSFastaAlignedFileName) { 
+			sleep 5 while ( !(-e $tmpOutputSuperCNSFastaAlignedFileName) );
+			sleep 5 while ( (-s $tmpOutputSuperCNSFastaAlignedFileName) ==0  );
+			sleep 30; ## If we have just found our file, wait for alignment to finish.
+		}
+
+		if($verbose) { print "PROGRESS: Loading super CNS alignments...". $curPos++ . " (Current: $mergedCNSID).\r"; }
+		my $alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
+											-format => "fasta");
+		my $superCNSAlignment;
+		eval { $superCNSAlignment = $alignedCNSFile->next_aln; };
+
+		if($@ || !defined($superCNSAlignment)) {  ## If there was a error, wait and try again
+			if($verbose) { print "\nERROR In loading $mergedCNSID. Waiting for fixed file.\n"; }
+			my $fastaFileOK=0;
+			while(!$fastaFileOK) {
+				sleep 15;
+				if($verbose) { print "\nERROR: Still can't load $mergedCNSID. Trying self alignment or waiting for the fixed file.\n"; }	
+				$alignedCNSFile = Bio::AlignIO->new(-file => $tmpOutputSuperCNSFastaAlignedFileName,
+											-format => "fasta");
+				eval { $superCNSAlignment = $alignedCNSFile->next_aln; };
+				if(!$@  && defined($superCNSAlignment) ) { $fastaFileOK = 1; }
+				### Something went wrong with the alignment for this file. too big? aborted? Try to do it ourselves
+				system("mafft --quiet --auto --thread -1 --ep 0.3 --op 7 $tmpOutputSuperCNSFastaFileName > $tmpOutputSuperCNSFastaAlignedFileName");			
+			}
+		}
+
+		$CNSDB->getCNSByID($mergedCNSID)->setSeq(uc($superCNSAlignment->consensus_string(50)));  ## Set up the CNS seq as the concensus string. This will change to the ancesteral reconstructed later on.
+
+		## Delete the unaligned mappings
+
+		$mappingDB->deleteCNS($mergedCNSID);
+
+		### and now map the aligned mapping to the merged CNS		
+		foreach my $curMappingAlignment ($superCNSAlignment->each_seq) {
+			my $newMapping = new Mapping ($curMappingAlignment);
+			$newMapping->setCNSID($mergedCNSID);
+			$mappingDB->addMapping($newMapping);
+		}
+
+    	unlink($tmpOutputSuperCNSFastaFileName);
+		unlink($tmpOutputSuperCNSFastaAlignedFileName);	
+	} else {
+		print("WARNING: Cannot find file $tmpOutputSuperCNSFastaFileName.\n");
+	}
+}
+### clean up temporary directores
+close($filesToAlignFile);
+for my $curDirToDelete (0..$curSubDirNum) {
+	rmdir "$tmpDir/ALIGN_$curDirToDelete"; 
+}
+unlink($filesToAlignListFileName);
+
+if($verbose) { print "\n"; }
+
+if($verbose) { print "\nPROGRESS: Done. Output files.\n"; }
+
+########### Output files
+### New CNS files
+$CNSDB->updateNumberOfSupportingSpecies($mappingDB);
+
+$CNSDB->writeDatabase($outputCNSFileName);
+
+$mappingDB->writeDatabase($outputMapFileName);
+
+##########
+
+print "END: Deleted $CNSDeleted duplicated CNSs, of which $CNSDeletedButMappingKept mapping kept; Merged $CNSMerged CNSs, of which " . $deepCNSMerged . " were deep CNSs, collated into $CNSCollated grouped CNSs.\n";
+
+
+#########################################################################################################
+#### Recurive function to identify all overlapping CNSs
+#### format: collateCNS(<Name of CNS>, <hash of CNS-CNS overlaps>, <list of overlapping CNS>)
+####
+####   usage:
+####   my $overlappingCNSs = collateCNS($CNS, $CNSMergeMap)
+####
+sub collateCNS {
+	my ($cnsName, $map, $collatedCNSObject) = @_;
+	my %collatedCNSs;  ## This is the list of CNSs that make up this superCNS
+	if(defined $collatedCNSObject) {
+		%collatedCNSs = %{ $collatedCNSObject->{'CollatedCNSs'} };
+	} 	$collatedCNSs{$cnsName} =1;
+
+	my @CNSsToScan = keys %{ $map->{$cnsName} };
+	foreach my $curCNSToScan (@CNSsToScan) {
+		### If we didn't scan this CNS already
+		if(!defined %collatedCNSs{$curCNSToScan}) {
+			my $scanResults = collateCNS($curCNSToScan, $map, { "CollatedCNSs" => \%collatedCNSs});
+			## and copy scan results to main hash
+			foreach my $curCNSToCopy (keys %{ $scanResults->{'CollatedCNSs'}}) { $collatedCNSs{$curCNSToCopy} =1;}
+		}
+	}
+	foreach my $curCNSToScan (@CNSsToScan) { $collatedCNSs{$curCNSToScan} = 1; }
+	
+	return { "CollatedCNSs" => \%collatedCNSs };
+}

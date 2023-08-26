@@ -1,8 +1,0 @@
-#!/bin/bash
-while read file; do 
-grep "ID=cds" "$file".genes.gff3|awk -F'[;]' '{OFS="\t"}{for(i=3;i<=NF;i++){if($i~/^protein_id/){a=$i}} print $2,a}'|sort -k1,1 -k2,2 -u |sed 's/Parent=//g;s/protein_id=//g'>"$file".genesvsProteinsNameList.txt
-awk 'FNR==NR{a[$1]=$2; next}($2 in a) && /^>/{print ">"a[$2]; next}1' "$file".genesvsProteinsNameList.txt FS="[> ]"  "$file".cds.fasta >"$file".cds.fasta.fixed
-
-mv "$file".cds.fasta "$file".cds.fasta.bk
-mv "$file".cds.fasta.fixed "$file".cds.fasta
-done

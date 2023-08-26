@@ -8,26 +8,32 @@ use File::Temp qw /tempfile/;
 
 use Statistics::Basic qw(:all nofill);
 use Bio::SimpleAlign;
+use Algorithm::NeedlemanWunsch;
 
 use Exporter;
 
-our @ISA= qw( Exporter );
-our @EXPORT = qw (overlap reverseComplement alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase findDeepestCommonNode multipleAlignment);
 
 
 ##############################################################################
 ##### CNS Splitting Parameters
 
-my $standardDeviationsToSplit = 3; ## The number of standard deviation in number of aligned species to trigger a CNS split
-my $minSpeciesToSplitCNS=5;  ### Minimal number of species to consider a split of the CNS
-my $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported by atleast this number of species
+our $standardDeviationsToSplit = 3; ## The number of standard deviation in number of aligned species to trigger a CNS split
+our $minSpeciesToSplitCNS=5;  ### Minimal number of species to consider a split of the CNS
+our $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported by atleast this number of species
 									 ## To avoid spliting of very highly conserved CNSs
-my $minIdentityToKeepBreakpoint	=50;
-my $minSpeciesToKeepBreakpoint	= 5;
-my $minSequenceContentInAlignment = 0.5; 
-
+our $minIdentityToKeepBreakpoint	=50;
+our $minSpeciesToKeepBreakpoint	= 5;
+our $minSequenceContentInAlignment = 0.5;
+our $minCNSLength=8;
+our $minSpeciesForCNS=4;
+our $minCNSCoverageAfterSplit=0.3; 
+our $superCNSPrefix="Super";
 my %footprintDatabase;   ### Database of footprints for the getGeneCoordiantes function
 
+our @ISA= qw( Exporter );
+our @EXPORT = qw (overlap reverseComplement flipStrand alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments 
+				  getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase findDeepestCommonNode multipleAlignment cleanChrName trimTreeToLeaves
+				  $minCNSLength $minCNSCoverageAfterSplit  $minSequenceContentInAlignment $minSpeciesForCNS $superCNSPrefix $standardDeviationsToSplit $minSpeciesToSplitCNS $maxSpeciesToInitiateCNSSplit);
 
 #############################################################################
 ### Returns the reverse complement of a DNA sequence
@@ -96,6 +102,19 @@ sub overlap {
 	}
 }
 
+
+##################################################################################
+# Flip Strand (turn from - to plus and vice versa)
+
+sub flipStrand {
+	my ($strand) = @_;
+	if($strand eq "+") {
+		return "-";
+	} else {
+		return "+";
+	}
+}
+
 ##################################################################################
 # Returns species or genome name from the name of a gene
 
@@ -152,6 +171,22 @@ sub dropAsterixFromProtein {
 	$seqObj->seq($seq);
 	return $seqObj;
 }
+
+#################################################################
+### Returns a chromosome name that we can work with (without embelshiment and making sure its not a number)
+
+sub cleanChrName {
+	my $chr = shift(@_);
+	chomp($chr);
+	if(substr($chr,0,1) eq ">") {
+		$chr = substr($chr,1);
+	}
+	if(index($chr, " ")!= -1 || index($chr, "\t") != -1) {
+		$chr = (split(' ', $chr))[0];
+	}
+	return "C" . $chr;
+}
+
 
 #################################################################
 ### Find all occurances of a string in another string
@@ -352,7 +387,7 @@ sub getCNSbreakpoints {
 		 ($pos - $lastBreakpointPos > $minCNSLength && ($CNSLength - $pos) > $minCNSLength ) ) {
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
-#			print "DEBUG: Break at $pos because " . $CNSdelta[$pos] . ". from " . $CNSCoverageSmooth[$pos-1] . " to " . $CNSCoverageSmooth[$pos] . "to" . $CNSCoverageSmooth[$pos+1]  . "\n";
+			print "DEBUG: Break at $pos because " . $CNSdelta[$pos] . ". from " . $CNSCoverageSmooth[$pos-1] . " to " . $CNSCoverageSmooth[$pos] . "to" . $CNSCoverageSmooth[$pos+1]  . "\n";
 		}
 	}
 	# Add start and end points
@@ -388,6 +423,7 @@ sub polishCNSAlignments {
 		for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
 			### if the hit overlaps the sub CNS
 
+#      print "DEBUG: polishing. $curBreakpoint  (" . $breakpoints[$curBreakpoint] . "-" . $breakpoints[$curBreakpoint+1] .") ($start - $end).\n";
 			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $start, $end)) {
 
 				### distance from breakpoint start
@@ -457,8 +493,10 @@ sub polishCNSAlignments {
 	for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
 
 		my $alignedBP = multipleAlignment($alignmentsForBreakpoints{$curBreakpoint});
-
-		if( $alignedBP->percentage_identity() < $minIdentityToKeepBreakpoint || $alignedBP->num_sequences < $minSpeciesToKeepBreakpoint ) {
+   
+     if(!defined $alignedBP) {
+			$breakpointsToDelete{$curBreakpoint}=1;
+    } elsif( $alignedBP->percentage_identity() < $minIdentityToKeepBreakpoint || $alignedBP->num_sequences < $minSpeciesToKeepBreakpoint ) {
 			$breakpointsToDelete{$curBreakpoint}=1;
 		} else {
 			## update sequences for BP
@@ -483,6 +521,8 @@ sub polishCNSAlignments {
 		}
 	}
 
+  print "deleting breakpoints:" . join(",", keys %breakpointsToDelete) . "\n";
+  
 	my @splitAndPolishedAlignmentsFiltered;
 	foreach my $curAlignment (@splitAndPolishedAlignments) {
 		if(!defined $breakpointsToDelete{ $curAlignment->{'Breakpoint'} }) {
@@ -677,14 +717,72 @@ sub multipleAlignment {
 	foreach my $seq ($inAlign->each_seq) { $out->write_seq($seq); }
 
 	## perform the alignment
-	system("mafft --quiet --thread -1 --auto $tempFileName > $tempFileName.align.fasta");
+	system("mafft --quiet --thread -1 --auto --ep 0.3 --op 7 $tempFileName > $tempFileName.align.fasta");
 
 	## Now read the fasta file
 	my $alignedCNSFile = Bio::AlignIO->new(-file => "$tempFileName.align.fasta",
 										-format => "fasta");
 	my $outAlign = $alignedCNSFile->next_aln;
-#	unlink($tempFileName);
-#	unlink("$tempFileName.align.fasta");
+	unlink($tempFileName);
+	unlink("$tempFileName.align.fasta");
 	return $outAlign;
 }
+
+
+################################################################################################################
+#####
+#####  trim tree - given a tree and a set of leaves, trim the tree to include just these leaves. 
+#####    trim also internal nodes, or nodes with only one child
+####
+####
+sub trimTreeToLeaves {
+	my ($tree, $leavesListRef, $startNode) = @_;
+	my @leavesList = @$leavesListRef;
+	my %leavesMap = map { $_ => 1 } @leavesList;
+
+	if(!defined $startNode) { $startNode = $tree->get_root_node(); }
+
+	if(($startNode == $tree->get_root_node()) && $startNode->is_Leaf()) {
+		die "ERROR: From trimTreeToLeaves: Tree is empty.\n";
+	}
+	## If this is a leaf and not found in our list of leaves to keep, delete
+	if($startNode->is_Leaf()) {
+		if(!defined $leavesMap{$startNode->id()} ) {
+			$tree->remove_Node($startNode);
+		} 
+	} else {
+		### trim the children
+
+		foreach my $curChildNode ($startNode->each_Descendent()) {
+			trimTreeToLeaves($tree, $leavesListRef, $curChildNode);
+		}
+
+		### If we have no children leaf, delete ourselves. If we have just one, delete it and assume it's id
+		my @childrenLeft = $startNode->each_Descendent();
+
+		if(scalar @childrenLeft == 0) {
+			if(! ($startNode == $tree->get_root_node() )  ) {
+				$tree->remove_Node($startNode);
+			} else {
+				print "WARNING: From trimmTreeToLeaves: we have deleted all nodes on the tree.\n";
+			}
+
+		} elsif(scalar @childrenLeft == 1 && $childrenLeft[0]->is_Leaf()) {
+
+			$startNode->id( $childrenLeft[0]->id());
+			$startNode->branch_length( $childrenLeft[0]->branch_length() );
+			$tree->remove_Node( $childrenLeft[0]);
+		} elsif(scalar @childrenLeft ==1) {
+			if($startNode == $tree->get_root_node()) {
+				$tree->set_root_node($childrenLeft[0]);
+			} else {
+				$startNode->ancestor()->add_Descendent($childrenLeft[0]);
+				$tree->remove_Node( $startNode);
+			}
+		}
+	}
+}
+
 1;
+
+
