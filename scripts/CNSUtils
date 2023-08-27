@@ -69,7 +69,8 @@ if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filter
 ### Read CNS file
 
 my $CNSDB = new CNSDatabase($inCNSFileName, $verbose);
-my $mappingDB = new MappingDatabase($inMapFileName, $verbose);
+#my $mappingDB = new MappingDatabase($inMapFileName, $verbose);
+my $mappingDB = new MappingDatabase($inMapFileName, 0);
 
 if($fixPositions) {
     my $totalVerifiedPositions=0;

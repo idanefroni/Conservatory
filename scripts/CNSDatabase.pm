@@ -88,6 +88,16 @@ sub findReferenceMappings {
     }
 }
 
+sub verify {
+    my ($self, $mappingDB, $conservatoryTree) = @_;
+    foreach my $curCNS ( values %{ $self->{_CNSTable}}) {
+        if(!$conservatoryTree->exists($curCNS->getConservationLevel()) ) {
+            $self->deleteCNS($curCNS);
+            $mappingDB->deleteCNS($curCNS);
+        }
+    }
+}
+
 sub updateNumberOfSupportingSpecies {
     my ($self, $mappingDB) = @_;
     foreach my $curCNS (values %{ $self->{_CNSTable} }) {

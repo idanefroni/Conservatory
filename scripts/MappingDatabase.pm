@@ -100,7 +100,9 @@ sub orderMappingByPosition {
 
     @mappingDBDeref = sort { geneToGenome($a->getLocus()) cmp geneToGenome($b->getLocus()) ||
 				  		   $a->getAbsChr() cmp $b->getAbsChr() ||
-				  		   $a->getAbsPos() <=>  $b->getAbsPos() } @mappingDBDeref;
+				  		   $a->getAbsPos() <=>  $b->getAbsPos() ||
+                           $a->getLocus() <=>  $b->getLocus()} @mappingDBDeref;
+                           
     $self->{_MappingDB} = \@mappingDBDeref;
 
 }

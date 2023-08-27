@@ -106,6 +106,8 @@ $mappingDB->renameMappings($verbose);
 
 if($verbose) { print "PROGRESS: Setting up CNS database..."; }
 ##### Find the absolute genome positions for all CNSs
+#$CNSDB->verify($mappingDB, $conservatoryTree);
+
 $CNSDB->findReferenceMappings($genomeDB, $mappingDB);
 
 ## Sort the CNS table by the reference mappings
@@ -129,6 +131,7 @@ foreach my $curCNS (@orderedCNSs[1..(scalar @orderedCNSs-1)]) {
 	###
 	if(!defined $curCNS) {next; }
 	my $CNSToDelete;
+
 
 	if($lastCNS->hasReferenceMapping() && $curCNS->hasReferenceMapping &&  ### Short-circut if the CNS has no absolute coordinates (meaning it is a merged CNS)
 		$lastCNS->getRefGenome() eq $curCNS->getRefGenome() && 
@@ -500,6 +503,9 @@ while(<$filesToAlignFile>) {
 			$newMapping->setCNSID($mergedCNSID);
 			$mappingDB->addMapping($newMapping);
 		}
+		# find CNS age
+		my @CNSSpecies = map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($mergedCNSID) };
+		$CNSDB->getCNSByID($mergedCNSID)->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
 
     	unlink($tmpOutputSuperCNSFastaFileName);
 		unlink($tmpOutputSuperCNSFastaAlignedFileName);	

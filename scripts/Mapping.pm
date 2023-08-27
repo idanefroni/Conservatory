@@ -164,7 +164,8 @@ sub identical {
     my ($self, $other) = @_;
     if($self->getAbsPos() == $other->getAbsPos() &&
        $self->getAbsChr() eq $other->getAbsChr() &&
-       $self->getAbsLen() eq $other->getAbsLen()) {
+       $self->getAbsLen() eq $other->getAbsLen() &&
+       $self->getLocus() eq $other->getLocus()) {
         return 1;
     } else {
         return 0;
