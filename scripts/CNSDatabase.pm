@@ -127,7 +127,7 @@ sub orderCNSByName {
     $self->{_Ordered} = 1;
 }
 
-sub CNSexists {
+sub exists {
     my ($self, $CNSID) = @_;
     if(defined $self->{_CNSTable}->{$CNSID}) { 
         return 1;

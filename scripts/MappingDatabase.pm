@@ -100,8 +100,7 @@ sub orderMappingByPosition {
 
     @mappingDBDeref = sort { geneToGenome($a->getLocus()) cmp geneToGenome($b->getLocus()) ||
 				  		   $a->getAbsChr() cmp $b->getAbsChr() ||
-				  		   $a->getAbsPos() <=>  $b->getAbsPos() ||
-                           $a->getLocus() <=>  $b->getLocus()} @mappingDBDeref;
+				  		   $a->getAbsPos() <=>  $b->getAbsPos()} @mappingDBDeref;
                            
     $self->{_MappingDB} = \@mappingDBDeref;
 
@@ -122,11 +121,6 @@ sub getMappingsByOrder {
 }
 sub renameMappings {
     my ($self, $verbose) = @_;
-
-    if($verbose) { print "PROGRESS: Sorting mappings..."; }
-    ## deref
-    $self->orderMappingByPosition();
-    if($verbose) { print "Done.\n"; }
 
     my @mappingDBDeref = @{ $self->{_MappingDB} };
     my $lastMapping = $mappingDBDeref[0];

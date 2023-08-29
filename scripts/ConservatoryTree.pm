@@ -71,7 +71,10 @@ sub findDeepestCommonNode {
 	my @leavesList = @$leavesListRef;
 
 	my $anchorLeafNode = $self->{_AnnotatedTree}->find_node( ($leavesList[0] =~ s/\./_/gr) );
-	if(!defined $anchorLeafNode) { die "ERROR in findDeepestCommonNode: Cannot find deepest node $leavesList[0] in tree.\n"; }
+	if(!defined $anchorLeafNode) { 
+		#die "ERROR in findDeepestCommonNode: Cannot find deepest node $leavesList[0] in tree.\n";
+		return "";
+	}
 	my %anchorLeafPath;
 	my $node = $anchorLeafNode;
 	my $deepestNode = $node->id;

@@ -25,6 +25,8 @@ my $filterRepetitive=0;
 my $filterPlastid=0;
 my $filterLowSupport=0;
 my $fixPositions=0;
+my $gffOutputFileName;
+my $makegffReference;
 my $sortMapFile;
 
 my $filterRepetitiveCNSCutoff = 0.01; ### Filter the top 0.01%
@@ -46,20 +48,23 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
             "filter-plastid" => \$filterPlastid,
             "filter-low" => \$filterLowSupport,
             "fix-positions" => \$fixPositions,
+            "make-gff=s" => \$gffOutputFileName,
+            "gff-reference=s" => \$makegffReference,
             "sort" => \$sortMapFile,
 			"verbose" => \$verbose,
 			"help" => \$help) or die ("Error in command line arguments\n");
 						
-if($help || $inCNSFileName eq "" || $inMapFileName eq "" || $outCNSFileName eq "" || $outMapFileName eq "" ) {
+if($help || $inCNSFileName eq "" || $inMapFileName eq "") {
 	print "Conservatory version 2.0.1\n\n";
 
-	print "CNSUtils --in-cns <cnsFile> --in-map <cnsPositionMapFile> --out-cns <cnsFile> --out-map <cnsPositionMapFile>.\n";
-    print "\t\t[--filter-deep-cns] [--filter-repetitive] [--filter-plastid] [--fixPositions] [--verbose]\n\n";
+	print "CNSUtils --in-cns <cnsFile> --in-map <cnsPositionMapFile> [--out-cns <cnsFile>] [--out-map <cnsPositionMapFile>].\n";
+    print "\t\t[--filter-deep-cns] [--filter-repetitive] [--filter-plastid] [--fix-positions] [--make-gff <output gff filename>] [--verbose]\n\n";
     print "\n\nFilter the merged CNS file based on the following rules:\n";
     print "   - Remove Deep CNS (deeper than node N14) that are only called by one reference\n";
     print "   - Remove highly repetitive sequences\n";
     print "   - Remove plastid CNS\n\n";
-    print "   - Verify (and correct if needed) the positions of the CNS in all genomes\n";
+    print "   - Fix positions Verify (and correct if needed) the positions of the CNS in all genomes\n";
+    print "   - Make GFF - create a GFF file";
 	
 	exit();
 }
@@ -69,7 +74,6 @@ if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filter
 ### Read CNS file
 
 my $CNSDB = new CNSDatabase($inCNSFileName, $verbose);
-#my $mappingDB = new MappingDatabase($inMapFileName, $verbose);
 my $mappingDB = new MappingDatabase($inMapFileName, 0);
 
 if($fixPositions) {
@@ -219,7 +223,6 @@ if($filterLowSupport) {
 }
 
 
-if($verbose) { print "Finished filtering. Writing...\n"; }
 
 ## open Reject DB
 my $rejectCNSDB = new CNSDatabase();
@@ -232,13 +235,48 @@ foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
     }
 }
 
-$CNSDB->writeDatabase($outCNSFileName);
+if(defined $outCNSFileName) {
+    $CNSDB->writeDatabase($outCNSFileName);
+}
 
-if(defined $outRejectFileName && !$fixPositions) {
+if(defined $outRejectFileName && !$fixPositions && $rejectCNSDB->getNumberOfCNSs()>0) {
     $rejectCNSDB->writeDatabase($outRejectFileName);
 }
 
-$mappingDB->writeDatabase($outMapFileName);
+if(defined $outMapFileName) {
+    $mappingDB->writeDatabase($outMapFileName);
+}
+
+if(defined $gffOutputFileName) {
+    if(!defined $makegffReference) { die "ERROR: No reference provided for GFF.\n";}
+
+    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
+        $mappingDB->removeDuplicatesForCNS($curCNS);
+    }
+
+    open(my $gffOutputFile, ">$gffOutputFileName");
+    foreach my $curMapping ( @{ $mappingDB->getMappingsByOrder() }) {
+
+        if(geneToGenome($curMapping->getLocus()) eq $makegffReference &&  $CNSDB->exists($curMapping->getCNSID())) {
+            print $gffOutputFile join("\t", $curMapping->getAbsChr(),
+                                            "Conservatory2",
+                                            "CNS",
+                                            $curMapping->getAbsPos(),
+                                            $curMapping->getAbsPos() + $curMapping->getAbsLen(),
+                                            ".",
+                                            $curMapping->getStrandInGenome(),
+                                            ".",
+                                            "Name=" . $curMapping->getCNSID() . ";Species=" . $CNSDB->getCNSByID($curMapping->getCNSID())->getSupportingSpeciesNumber() . 
+                                            ";Node=" . $CNSDB->getCNSByID($curMapping->getCNSID())->getConservationLevel()) . "\n";
+        }
+    }
+    close($gffOutputFile);
+}
+
+
+##################################################################################################################
+##################################################################################################################
+##################################################################################################################
 
 
 sub compareSequences {

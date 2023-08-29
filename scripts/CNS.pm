@@ -12,9 +12,7 @@ use Mapping;
 
 my $minSyntenyBiasToAssignCNS= 3; ### The minimum number of species differences between syntenic coding and non-coding region to delete the less
 									# syntenic one
-
-
-
+                                    
 sub new {
     my $class = shift;
     # we can initialize CNS from either a file, a string, or a parameters

@@ -119,6 +119,7 @@ if($verbose) { print "PROGRESS: Processing $totalToScreen CNSs...\n"; }
 foreach my $curCNS (@CNSList[$startLine..$endLine]) {
 	### If its a super CNS, see if we can split it	
 	$curPos++;
+
 	if($curCNS->isMerged()) {
 
 		my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS);
@@ -136,8 +137,10 @@ foreach my $curCNS (@CNSList[$startLine..$endLine]) {
 				print "PROGRESS: Breaking " . $curCNS->getID() . " to $CNSforBreakpointName.\n";
 
 				### Create new sub-CNS
+#				my $CNSforBreakpoint = new CNS($curCNS->getRefGenome(), $CNSforBreakpointName, $curCNS->getLocus(), $curCNS->getPos() + $CNSBreakpoints[$curBreakpoint], $breakLen, $curCNS->getConservationLevel(),
+#											   substr($curCNS->getSeq(),$CNSBreakpoints[$curBreakpoint], $breakLen), $curCNS->getRegulatorySeqPart());
 				my $CNSforBreakpoint = new CNS($curCNS->getRefGenome(), $CNSforBreakpointName, $curCNS->getLocus(), $curCNS->getPos() + $CNSBreakpoints[$curBreakpoint], $breakLen, $curCNS->getConservationLevel(),
-											   substr($curCNS->getSeq(),$CNSBreakpoints[$curBreakpoint], $breakLen), $curCNS->getRegulatorySeqPart());
+											   "", $curCNS->getRegulatorySeqPart());
 
 				$CNSDB->addCNS($CNSforBreakpoint);
 
@@ -153,7 +156,10 @@ foreach my $curCNS (@CNSList[$startLine..$endLine]) {
 				### and reconstruct the ancesteral seq
 				my %speciesSeq = getSpeciesSequencesForCNS($CNSforBreakpoint, $mappingDB, $conservatoryTree);
 				if( (scalar %speciesSeq) >= $minSpeciesForCNS) {
-					$CNSforBreakpoint->setSeq( $conservatoryTree->getReconstructedSequence($CNSforBreakpoint, \%speciesSeq))
+					$CNSforBreakpoint->setSeq( $conservatoryTree->getReconstructedSequence($CNSforBreakpoint, \%speciesSeq));
+					my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($CNSforBreakpoint) };
+					$CNSforBreakpoint->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
+
 				} else {
 					$CNSDB->deleteCNS($CNSforBreakpoint);
 					$mappingDB->deleteCNS($CNSforBreakpoint);
@@ -166,17 +172,17 @@ foreach my $curCNS (@CNSList[$startLine..$endLine]) {
 		} else {
 			### reconstruct ancesteral
 			my %speciesSeq = getSpeciesSequencesForCNS($curCNS, $mappingDB, $conservatoryTree);
-
 			$curCNS->setSeq( $conservatoryTree->getReconstructedSequence($curCNS, \%speciesSeq));
-			if($verbose) { print "PROGRESS: Reconstructed " . $curCNS->getID() . "...\n"; }			
+
 		}
 	}
 
 	if($curCNS->isAlive()) {
-		my @CNSSpecies = map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($curCNS) };
+		my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($curCNS) };
 		$curCNS->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
 		if($verbose) { print "PROGRESS: Reconstructed " . $curCNS->getID() . "...\n"; }			
 	}
+
 }
 
 if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
