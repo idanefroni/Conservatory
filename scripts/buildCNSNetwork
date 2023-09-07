@@ -60,8 +60,8 @@ while(my $curgenomeline = <$genomeDatabase>) {
 
 ###### First, assemble the CNS and mapping
 
-my $allCNSMergedFileName = "$conservatoryDir/output/conservatoryV6.final.cns.csv";
-my $allPositionsMergedFileName = "$conservatoryDir/output/conservatoryV6.final.map.csv";
+my $allCNSMergedFileName = "$conservatoryDir/output/conservatoryV7.final.cns.csv";
+my $allPositionsMergedFileName = "$conservatoryDir/output/conservatoryV7.final.map.csv";
 
 my $myLociPositionsFileName = "$conservatoryDir/output/$networkName.map.csv";
 

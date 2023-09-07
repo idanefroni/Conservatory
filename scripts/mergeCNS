@@ -47,7 +47,7 @@ my $minSupportingSpeciesToKeepMultipleCNS = 60;
 my $minSpeciesForCNS=5; ### The minimum number of species aligned to a CNS to keep the CNS
 my $minCNSIdentityToMerge=70;
 my $minCNSOverlapToMerge=0.2;
-my $maxMappingsPerCNS=5000;
+my $maxMappingsPerCNS=100000;
 my $maxCNSLength=2000;
 my $mergeDeep=0;
 
@@ -285,7 +285,7 @@ if($verbose) { print("PROGRESS: Filtering " . (scalar (keys %CNSToMergeMap) ) . 
 
 foreach my $curCNSA (keys %CNSToMergeMap) {
 	foreach my $curCNSB (keys %{ $CNSToMergeMap{$curCNSA} }) {
-		if( scalar keys %{ $CNSToMergeMap{$curCNSA}{$curCNSB} } < $minOverlappingSpeciesForMerge || $CNSDB->getCNSByID( $curCNSA)->getRegulatorySeqPart() ne $CNSDB->getCNSByID($curCNSB)->getRegulatorySeqPart() ) {
+		if( scalar keys %{ $CNSToMergeMap{$curCNSA}{$curCNSB} } < $minOverlappingSpeciesForMerge ) {
 			delete $CNSToMergeMap{$curCNSA}{$curCNSB};
 			delete $CNSToMergeMap{$curCNSB}{$curCNSA};
 
@@ -406,7 +406,7 @@ foreach my $anchorCNSID (keys %superGroups) {
 
 		my $mergedCNSName = "$superCNSPrefix.$anchorCNSID";
 		my $mergedCNS = new CNS($mergedRefGenome, $mergedCNSName, join("|", sort keys %CNSsInGroup), );
-		$CNSDB->addCNS($mergedCNS);
+		$CNSDB->add($mergedCNS);
 
 		## Merged mappings for the new CNS and delete individual CNS		
 		for my $curCNS (keys %CNSsInGroup) {
@@ -419,6 +419,7 @@ foreach my $anchorCNSID (keys %superGroups) {
 
 		### skip highly repetitive or very long CNSs
 		my $mappingsForCNSNum = scalar @{ $mappingDB->getMappingsForCNS($mergedCNS) };
+#		print "Mappings: $mergedCNS $mappingsForCNSNum.\n";
 		if($mappingsForCNSNum < $maxMappingsPerCNS && $mergedCNS->getLen() < $maxCNSLength) {
 			$deepCNSMerged = $deepCNSMerged + (scalar keys %CNSsInGroup);
 			$CNSMerged = $CNSMerged + (scalar keys %CNSsInGroup);
@@ -510,7 +511,7 @@ while(<$filesToAlignFile>) {
 		foreach my $curMappingAlignment ($superCNSAlignment->each_seq) {
 			my $newMapping = new Mapping ($curMappingAlignment);
 			$newMapping->setCNSID($mergedCNSID);
-			$mappingDB->addMapping($newMapping);
+			$mappingDB->add($newMapping);
 		}
 		# find CNS age
 		#my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($mergedCNSID) };

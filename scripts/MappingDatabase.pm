@@ -12,7 +12,7 @@ use Statistics::Basic qw(:all nofill);
 use Mapping;
 
 sub new {
-    my ($class, $MappingDBFileName, $verbose) = @_;
+    my ($class, $MappingDBFileName, $verbose, $genome) = @_;
     if(!defined $verbose) { $verbose =0; }
     my @mappingDB =();
     my %mappingCNSIndex;
@@ -27,9 +27,11 @@ sub new {
         open(my $MappingInputFile, $MappingDBFileName) || die "ERROR: Cannot open mapping database file $MappingDBFileName.\n";
         while(<$MappingInputFile>) {
             chomp;
-	        if($verbose) { print "PROGRESS: Reading Mappings..." . ($curPos++) . ".\r" };
-
             my $newMapping = new Mapping($_);
+
+            if(defined $genome && geneToGenome($newMapping->getLocus) ne $genome) { next; }
+
+	        if($verbose) { print "PROGRESS: Reading Mappings..." . ($curPos++) . ".\r" };
             push(@mappingDB, $newMapping);
             push( @{ $mappingCNSIndex{ $newMapping->getCNSID() } } , $newMapping);
         }
@@ -47,6 +49,7 @@ sub new {
 
 sub getMappingsForCNS {
     my ($self, $CNSID) = @_;
+    if(!defined $CNSID) { die "ERROR: getMappingForCNS needs a CNS.\n"; }
     if(ref($CNSID) eq 'CNS') { $CNSID = $CNSID->getID(); }
     if(defined $self->{_mappingCNSIndex}->{$CNSID}) {
         return $self->{_mappingCNSIndex}->{$CNSID};
@@ -55,15 +58,74 @@ sub getMappingsForCNS {
         return \@dummy;
     }
 }
+sub getSpeciesForCNS {
+    my ($self, $CNSID) = @_;
+    if(!defined $CNSID) { die "ERROR: getSpeciesForCNS needs a CNS.\n"; }    
+    if(ref($CNSID) eq 'CNS') { $CNSID = $CNSID->getID(); }
+    my %species;
+    if(defined $self->{_mappingCNSIndex}->{$CNSID}) {
+        foreach my $curMapping (@{ $self->getMappingsForCNS($CNSID) }) {
+            $species{$curMapping->getSpecies()}=1;
+        }
+        return keys %species;
+    } else {
+        return ();
+    }
+}
+
+sub getGenomesForCNS {
+    my ($self, $CNSID) = @_;
+    if(!defined $CNSID) { die "ERROR: getGenomesForCNS needs a CNS.\n"; }        
+    if(ref($CNSID) eq 'CNS') { $CNSID = $CNSID->getID(); }
+    my %genomes;
+    if(defined $self->{_mappingCNSIndex}->{$CNSID}) {
+        foreach my $curMapping (@{ $self->getMappingsForCNS($CNSID) }) {
+            $genomes{$curMapping->getGenome()}=1;
+        }
+        return keys %genomes;
+    } else {
+        return ();
+    }
+}
+
+sub getSpeciesSequencesForCNS {
+    my ($self, $CNS) = @_;
+    if(ref($CNS) ne 'CNS') { die "ERROR: getSpeciesSequencesForCNS must accept CNS object.\n"; }
+    my %speciesSeq;
+    if(defined $self->{_mappingCNSIndex}->{$CNS->getID() }) {
+        foreach my $curMapping (@{ $self->getMappingsForCNS( $CNS) }) {
+            my $fastaToMerge = ('-' x $curMapping->getRRP()) . $curMapping->getCNSSeq() . ('-' x ($CNS->getLen() - length($curMapping->getCNSSeq()) - $curMapping->getRRP()) );
+            if(!defined $speciesSeq{$curMapping->getSpecies()}) {
+                $speciesSeq{$curMapping->getSpecies()}= $fastaToMerge;
+            } else {
+                $speciesSeq{$curMapping->getSpecies()}= mergeFastaSequences($speciesSeq{$curMapping->getSpecies()}, $fastaToMerge,0);
+                $speciesSeq{$curMapping->getSpecies()} =~ s/N/-/g;
+            }
+        }
+
+        return %speciesSeq;
+    } else {
+        return undef;
+    }
+}
 sub getNumberOfMappings {
     my ($self) = @_;
     return scalar @{ $self->{_MappingDB} };
 }
-sub addMapping {
+sub add {
     my ($self, $newMapping) = @_;
-    if(!defined $newMapping->getCNSID() ) { die "ERROR: No CNSID for mapping. Cannot assign to database.\n"; }
-    push @{ $self->{_MappingDB} }, $newMapping;
-    push @{ $self->{_mappingCNSIndex}->{$newMapping->getCNSID()} }, $newMapping;
+
+    if(ref($newMapping) eq "Mapping") {
+        if(!defined $newMapping->getCNSID() ) { die "ERROR: No CNSID for mapping. Cannot assign to database.\n"; }
+        push @{ $self->{_MappingDB} }, $newMapping;
+        push @{ $self->{_mappingCNSIndex}->{$newMapping->getCNSID()} }, $newMapping;
+    } elsif(ref($newMapping) eq "MappingDatabase") {
+        foreach my $curMapping (@{ $newMapping->getMappingsByOrder()}) {
+            $self->add($curMapping);
+        }
+    } else {
+        die "ERROR: MappingDatabase add can only accept a Mapping or MappingDatabase object. Instead got " . ref($newMapping). ".\n";
+    }
 }
 
 sub linkMappingToCNS {
@@ -178,17 +240,8 @@ sub mergeOverlappingMappingsForCNS {
     if(scalar @mappingsForCNS >1) {
         foreach my $curMapping (@mappingsForCNS[1..(scalar @mappingsForCNS-1)]) {
             if($curMapping->isAlive() && $lastMapping->overlap($curMapping)) {
- #               if($curMapping->getSpecies() eq "Atauschii") {
- #                   print "Merging:\n";
-  #                  $lastMapping->print;
-   #                 $curMapping->print;
-    #            }
+                ## Try to merge.
                 $lastMapping->merge($curMapping);
-     #           if($curMapping->getSpecies() eq "Atauschii") {
-      #              print "Merged:\n";
-       #             $lastMapping->print;
-        #        }
-
                 $self->deleteMapping($curMapping);
             } else {
                 $lastMapping = $curMapping;
@@ -297,16 +350,19 @@ sub assignMappingsToBreakpoints {
 
 			if( $curMapping->overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1])) {
                 my $subsetSeq = $curMapping->getSubsetSeq($breakpoints[$curBreakpoint],$breakpoints[$curBreakpoint+1] );
+
                 ### count internal gaps. First remove leading and trailing
                 $subsetSeq =~ s/^(-+)//;
                 $subsetSeq =~ s/(-+)$//;                
                 my $numOfInternalGaps = () = ($subsetSeq =~ /-/g);
                 ### Only include the hit of the coverage is sufficient and if its not too gappy
+                
 				if((length($subsetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSCoverageAfterSplit && length($subsetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subsetSeq)) < $minSequenceContentInAlignment ) {
 
                     my $breakpointMapping = $curMapping->createSubSetMapping( $breakpoints[$curBreakpoint],$breakpoints[$curBreakpoint+1] , $CNS->getLen());
                     $breakpointMapping->setBreakpoint($curBreakpoint);
                     $self->linkMappingToCNS($breakpointMapping, $CNS);
+
                     push(@assignedMappings, $breakpointMapping);
                 }
             }
@@ -322,9 +378,10 @@ sub assignMappingsToBreakpoints {
 
 
 sub writeDatabase {
-    my ($self, $outputFileName) = @_;
+    my ($self, $outputFileName, $CNSDB) = @_;
     open(my $outputFile, ">", $outputFileName);
     foreach my $curCNS ( keys %{ $self->{_mappingCNSIndex} }) {
+        if(defined $CNSDB && ! $CNSDB->exists($curCNS)) { next;}
         $self->removeDuplicatesForCNS($curCNS);
         foreach my $curMapping (@{ $self->{_mappingCNSIndex}->{$curCNS} }) {
             $curMapping->print($outputFile);
@@ -333,5 +390,18 @@ sub writeDatabase {
     close($outputFile);
 }
 
+
+sub updateAbsoluteCoordinates {
+    my ($self, $genomeDB) = @_;
+    my $curGenome="";
+    $self->orderMappingByGenome();
+ 	foreach my $curMapping ( @{ $self->getMappingsByOrder() } ) {
+        if($curGenome eq "") { $curGenome = $curMapping->getGenome(); }
+        if($curGenome ne $curMapping->getGenome()) { 
+            clearGeneCooordinateDatabase();
+        }
+        $curMapping->fillAbsoluteCoordiantes($genomeDB);
+	}
+}
 
 1;

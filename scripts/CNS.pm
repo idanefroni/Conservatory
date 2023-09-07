@@ -29,13 +29,15 @@ sub new {
         ($refGenome, $CNSID, $locus, $pos, $length, $conservationLevel, $supportingSpecies, $ancesteralSeq) = split /,/, $firstparam;
     } else {
         ($refGenome, $CNSID, $locus, $pos, $length, $conservationLevel, $supportingSpecies, $ancesteralSeq, $regulatorySeqPart) = @_;
+        if(!defined $ancesteralSeq) { $ancesteralSeq = 'N' x $length; }
     }
 
     if(!defined $pos) { $pos=""; }
     if(!defined $conservationLevel) { $conservationLevel=""; } 
+    if(!defined $supportingSpecies) { $supportingSpecies=0; }     
 
     if($pos ne "" && !defined $regulatorySeqPart) {
-        if($pos<0) { $regulatorySeqPart = "Up"; } else { $regulatorySeqPart = "Down"; }
+        if($pos<0) { $regulatorySeqPart = "U"; } else { $regulatorySeqPart = "D"; }
     }
 
     my $self = {
@@ -130,10 +132,6 @@ sub getSeq {
     return $self->{_AncesteralSeq};
 }
 
-sub getPos {
-    my ($self) = @_;
-    return $self->{_Pos};
-}
 
 sub setSeq {
     my ($self, $seq) = @_;
@@ -195,6 +193,11 @@ sub getReferenceMapping {
     return $self->{_ReferenceMapping};
 }
 
+sub getPos {
+    my ($self) = @_;
+    return $self->{_Pos};
+}
+
 sub hasReferenceMapping {
     my ($self) = @_;
     if(defined $self->{_ReferenceMapping}) {
@@ -222,6 +225,7 @@ sub kill {
     my ($self) = @_;
     $self->{_Alive} =0;
 }
+
 
 #########################################################################################################
 #### Compare synteny of a CNS to two genes

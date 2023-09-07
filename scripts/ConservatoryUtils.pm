@@ -3,7 +3,7 @@ package ConservatoryUtils;
 use POSIX;
 use strict;
 use warnings;
-use List::Util qw(min max);
+use List::Util qw(min max sum);
 use File::Temp qw /tempfile/;
 
 use Statistics::Basic qw(:all nofill);
@@ -26,18 +26,49 @@ our $minSpeciesToKeepBreakpoint	= 5;
 our $minSequenceContentInAlignment = 0.5;
 our $minCNSLength=8;
 our $minSpeciesForCNS=4;
-our $minCNSCoverageAfterSplit=0.3; 
+our $minCNSCoverageAfterSplit=0; 
 our $superCNSPrefix="Super";
+our $minSequenceContentToConsiderReconstruction = 0.33; ## how many of the sequences in the alignment has to be informative (non-gap)
+													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
+													  # this is to avoid reconstructing sequences based on small number of samples.
+
+#### Sequence Filtering and parameters
+our $homoPolymerFilterLength = 8;         ### Filter homopolymer of this length
+our $homoPolymerFuzzyFilterLength = 12;   ### Filter homopolymer with one variant of this length
+our $atRichRegionFilterLength = 10;       ### Filter atrich regions of this length
+our $atRichRegionFilterFlankLength = 2;   ###   when filtering atrich, leave flanks of this length
+our $dimerPolymerFilterLength = 5;        ### Filter repeating dimers of these many repeats
+my $filterCharacter = 'X';
+
+
 my %footprintDatabase;   ### Database of footprints for the getGeneCoordiantes function
 
 our @ISA= qw( Exporter );
-our @EXPORT = qw (overlap reverseComplement flipStrand alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments 
-				  getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase findDeepestCommonNode multipleAlignment cleanChrName trimTreeToLeaves
-				  $minCNSLength $minCNSCoverageAfterSplit  $minSequenceContentInAlignment $minSpeciesForCNS $superCNSPrefix $standardDeviationsToSplit $minSpeciesToSplitCNS $maxSpeciesToInitiateCNSSplit);
+our @EXPORT = qw( overlap reverseComplement flipStrand alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments 
+				  getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase multipleAlignment cleanChrName trimTreeToLeaves
+				  $minCNSLength $minCNSCoverageAfterSplit  $minSequenceContentInAlignment $minSpeciesForCNS $superCNSPrefix $standardDeviationsToSplit $minSpeciesToSplitCNS $maxSpeciesToInitiateCNSSplit $minSequenceContentToConsiderReconstruction
+				  $homoPolymerFilterLength $homoPolymerFuzzyFilterLength $atRichRegionFilterLength $atRichRegionFilterFlankLength $dimerPolymerFilterLength
+				  generateLastzCommandLine extractFastaToFile getMAFQuality fuzzyFilterHomopolymers fuzzyFilterDimers fuzzyFilterATRich mergeFastaSequences);
+
+
+######################################################################
+
+sub generateLastzCommandLine {
+	my ($genomeDB, $laxAlignment) = @_;
+	my $minIdentity, my $minHSPthreshold;
+
+	if($laxAlignment) {
+		$minIdentity = $genomeDB->getMinDeepIdentity();
+		$minHSPthreshold = $genomeDB->getMinDeepThreshold();
+	} else {
+		$minIdentity = $genomeDB->getMinFamilyIdentity();
+		$minHSPthreshold = $genomeDB->getMinFamilyThreshold();
+	}
+	 return "lastz --format=maf --gap=200,100 --nochain --noytrim --seed=match4 --gapped --strand=both --step=1 --ambiguous=iupac --identity=$minIdentity --ydrop=1000 --hspthreshold=$minHSPthreshold --gappedthresh=$minHSPthreshold";
+}
 
 #############################################################################
 ### Returns the reverse complement of a DNA sequence
-
 
 sub reverseComplement {
 	my ($seq) = @_;
@@ -326,212 +357,28 @@ sub getRandomORFLength {
 	return $randomORFLength;
 }
 
-############################################################################################################3
-#### CNS processing functions
 
-### Accepts CNS length, an array of hits hashes and returns the breakpoints to sub CNSs.
-###
-###  sub CNS are created where there is a drop of >3 standard deviations in the number of alignments (and atleast 5) for the nucleotide, as long as the CNS is larger than minCNSLength.
-###
+###################################################################################
+####
+#### Returns the overall quality score for a MAF alignment
+####  accepts a MAF filename
+####
+####   returns total alignmetn quality
+####
 
+sub getMAFQuality {
+	my ($MAFFileName) = @_;
 
-sub getCNSbreakpoints {
-	my ($CNSLength, $hitsRef, $minCNSLength) = @_;
-
-	my @hits = @$hitsRef;
-	my @CNSCoverage = (0) x $CNSLength;
-	my @CNSCoverageSmooth = (0) x $CNSLength;
-
-	foreach my $curHit (@hits) {
-		my $start = $curHit->{'RRP'};
-		my $end = $start + $curHit->{'Len'};
-
-		foreach my $pos ($start..$end) {
-			my $curNucleotide = substr($curHit->{'Seq'}, ($pos-$start),1);
-			if($curNucleotide ne "-" && $curNucleotide ne "N") {
-				$CNSCoverage[$pos]++;
-			}
-		}
+	open (my $m, $MAFFileName);
+	my $maf = Bio::AlignIO->new(-fh => $m, -format => 'maf');
+	my $quality =0;
+	while(my $aln = $maf->next_aln()) {
+		$quality = $quality + $aln->score;
 	}
-	### Smooth the coverage vector to avoid spliting on very small gaps
-	foreach my $pos (0..($CNSLength-4)) {
-		$CNSCoverageSmooth[$pos] = mean(@CNSCoverage[($pos)..($pos+3)])
-	}
-	## The last positions cannot be smoothed
-	foreach my $pos (($CNSLength-4)..($CNSLength-1)) {
-		$CNSCoverageSmooth[$pos] = $CNSCoverage[$pos];
-	}
-
-	### Change point detection. Our data is generally well behaved with few outliers (if any)
-	### we do a simple change detection algorithm. 
-	#####  1. Calculate delta between points. 2. Find the stdev of the delta. 3. Identify places where delta is high 
-	#####    Don't break if creating too small of a fragment (<$minCNSLength)
-
-	#### Calculate the dX
-	my @CNSdelta = (0) x $CNSLength;
-	foreach my $pos (0..((scalar @CNSCoverageSmooth)-2)) {
-		$CNSdelta[$pos+1] = $CNSCoverageSmooth[$pos+1] - $CNSCoverageSmooth[$pos];
-	}
-	
-	my $deltaSD = stddev(@CNSdelta);
-
-	## Now identify breakpoints.
-	###
-	my @breakpoints;
-	my $lastBreakpointPos=0;
-
-	foreach my $pos (0..(scalar @CNSdelta -1)) {
-		### split CNS if larger than minCNSlength and high variability. But don't split CNS if its too short, has too many species
-		## or if the split point is not well supported
-		if((abs($CNSdelta[$pos]) > $deltaSD * $standardDeviationsToSplit) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNSLength) &&
-		 ($pos - $lastBreakpointPos > $minCNSLength && ($CNSLength - $pos) > $minCNSLength ) ) {
-			push @breakpoints, $pos;
-			$lastBreakpointPos = $pos;
-			print "DEBUG: Break at $pos because " . $CNSdelta[$pos] . ". from " . $CNSCoverageSmooth[$pos-1] . " to " . $CNSCoverageSmooth[$pos] . "to" . $CNSCoverageSmooth[$pos+1]  . "\n";
-		}
-	}
-	# Add start and end points
-	@breakpoints = (0, @breakpoints , $CNSLength);
-
-	return @breakpoints;
+	close($m);
+	return $quality;
 }
 
-
-########################################################################################################################################
-########
-########  Given a set of hits and breakpoints, split the hits so they will be aligned to the breakpoints as closely as possible
-########   filter out leftover hits that have low identity
-########
-########
-
-sub polishCNSAlignments {
-	my ($breakpointRef, $alignmentMapRef, $minCNSConservationAfterSplit, $minCNSLength) = @_;
-	my @breakpoints = @$breakpointRef;
-	my @alignmentMap = @$alignmentMapRef;
-	my @splitAndPolishedAlignments;
-
-	### set up the alignment summary
-	my %alignmentsForBreakpoints;
-	for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
-		$alignmentsForBreakpoints{$curBreakpoint} = Bio::SimpleAlign->new();
-	}
-
-	foreach my $curHit (@alignmentMap) {
-		my $start =  $curHit->{'RRP'};
-		my $end = $start + length( $curHit->{'Seq'});
-
-		for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
-			### if the hit overlaps the sub CNS
-
-#      print "DEBUG: polishing. $curBreakpoint  (" . $breakpoints[$curBreakpoint] . "-" . $breakpoints[$curBreakpoint+1] .") ($start - $end).\n";
-			if( overlap($breakpoints[$curBreakpoint], $breakpoints[$curBreakpoint+1], $start, $end)) {
-
-				### distance from breakpoint start
-				my $positionInCNS = max($breakpoints[$curBreakpoint], $curHit->{'RRP'});
-				my $positionInSubCNS = max(0, $curHit->{'RRP'}- $breakpoints[$curBreakpoint]);
-				my $subCNSSeqStart = max(0,$breakpoints[$curBreakpoint] - $start);
-				my $subCNSSeqLength = min(length($curHit->{'Seq'}), ($breakpoints[$curBreakpoint+1]-$breakpoints[$curBreakpoint])-$positionInSubCNS );
-				my $subCNSTargetSeq = substr($curHit->{'Seq'}, $subCNSSeqStart , $subCNSSeqLength);
-
-				my $referenceSequence = $curHit->{'Seq'}; 
-				my $newReferenceSeq = $subCNSTargetSeq;  ## Default value for reference sequence is the current sequence
-				if(defined $curHit->{'RefSeq'}) {
-					$referenceSequence = $curHit->{'RefSeq'};
-					$newReferenceSeq = substr($curHit->{'RefSeq'}, $subCNSSeqStart , $subCNSSeqLength);
-				}
-
-				### remove trailing and leading gaps
-				my $numOfTrailingGaps = $subCNSTargetSeq =~ s/-+$//;
-       
-				my $numOfLeadingGaps = $subCNSTargetSeq =~ s/^-+//;
-				$positionInSubCNS += $numOfLeadingGaps;
-
-				my $numOfInternalGaps = () = ($subCNSTargetSeq =~ /-/g);
-
-				### Only include the hit of the coverage is sufficient and if its not too gappy
-				if((length($subCNSTargetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSConservationAfterSplit && length($subCNSTargetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subCNSTargetSeq)) < $minSequenceContentInAlignment ) {
-
-					## update the target coordinates
-					my $newTargetPosition= shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart+$numOfLeadingGaps, length($subCNSTargetSeq));
-
-					my $newAbsolutePosition=0;
-					if(defined $curHit->{'AbsPos'}) {
-						$newAbsolutePosition = shiftTargetCoordinate($curHit->{'AbsPos'}, $curHit->{'GeneStrand'}, $curHit->{'Seq'}, $referenceSequence, $subCNSSeqStart+$numOfLeadingGaps, length($subCNSTargetSeq));
-					}
-					# remove internal gaps
-					$subCNSTargetSeq =~ s/-//g;
-    
-					### Log the alignment to the breakpointlist
-					push (@splitAndPolishedAlignments, {
-							'Species' => $curHit->{'Species'},
-							'Locus' => $curHit->{'Locus'},
-							'Strand' => $curHit->{'Strand'},
-							'Len' => length($subCNSTargetSeq),
-							'RefUpDown' => $curHit->{'RefUpDown'},
-							'Seq' => $subCNSTargetSeq,
-							'RefSeq' => $newReferenceSeq,
-							'RRP' => $positionInSubCNS+$numOfLeadingGaps,
-							'Pos' => $newTargetPosition,
-							'AbsChr' => $curHit->{'AbsChr'},
-							'AbsPos' => $newAbsolutePosition,
-							'GeneStrand' => $curHit->{'GeneStrand'},
-							'Name' => $curHit->{'Name'},
-							'Breakpoint' => $curBreakpoint
-					});
-
-					my $seq = Bio::LocatableSeq->new(-seq => $subCNSTargetSeq,
-													 -start => 1,
-													 -end => length($subCNSTargetSeq),
-												     -id => $curHit->{'Locus'} . $newTargetPosition);
-					$alignmentsForBreakpoints{$curBreakpoint}->add_seq($seq);
-				}
-			}
-		}
-	}
-
-	my %breakpointsToDelete;
-	for my $curBreakpoint (0..(scalar @breakpoints - 2) ) {
-
-		my $alignedBP = multipleAlignment($alignmentsForBreakpoints{$curBreakpoint});
-   
-     if(!defined $alignedBP) {
-			$breakpointsToDelete{$curBreakpoint}=1;
-    } elsif( $alignedBP->percentage_identity() < $minIdentityToKeepBreakpoint || $alignedBP->num_sequences < $minSpeciesToKeepBreakpoint ) {
-			$breakpointsToDelete{$curBreakpoint}=1;
-		} else {
-			## update sequences for BP
-			foreach my $curHit (@splitAndPolishedAlignments) {
-				if($curHit->{'Breakpoint'} == $curBreakpoint) {
-					my $alignedSeq = $alignedBP->get_seq_by_id($curHit->{'Locus'} . $curHit->{'Pos'});
-					if(!defined $alignedSeq) { print "ERR: Can't find ID " . $curHit->{'Locus'} . $curHit->{'Pos'} . "\n"; }
-					my $newAlignedSeq = uc($alignedSeq->seq());
-					### remove leading and trailing gaps
-					$newAlignedSeq =~ s/-+$//; # remove trailing
-					my $numOfLeadingGaps = $newAlignedSeq =~ s/^-+//;  ## and leading
-					$curHit->{'Seq'} = $newAlignedSeq;
-					$curHit->{'Len'} = length($newAlignedSeq =~ s/-//gr);
-					## and update the positions
-					$curHit->{'RRP'} += $numOfLeadingGaps;
-					$curHit->{'Pos'} = shiftTargetCoordinate($curHit->{'Pos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $curHit->{'RefSeq'}, $numOfLeadingGaps, length($curHit->{'Seq'}));
-					if(defined $curHit->{'AbsPos'}) {
-						$curHit->{'AbsPos'} = shiftTargetCoordinate($curHit->{'AbsPos'}, $curHit->{'Strand'}, $curHit->{'Seq'}, $curHit->{'RefSeq'}, $numOfLeadingGaps, length($curHit->{'Seq'}));
-					}					
-				}
-			}
-		}
-	}
-
-  print "deleting breakpoints:" . join(",", keys %breakpointsToDelete) . "\n";
-  
-	my @splitAndPolishedAlignmentsFiltered;
-	foreach my $curAlignment (@splitAndPolishedAlignments) {
-		if(!defined $breakpointsToDelete{ $curAlignment->{'Breakpoint'} }) {
-			push(@splitAndPolishedAlignmentsFiltered, $curAlignment);
-		}
-	}
-
-	return @splitAndPolishedAlignmentsFiltered;
-}
 
 ###################################################################################
 ####
@@ -608,7 +455,7 @@ sub translateRealtiveToAbsoluteCoordinates {
 			}
 		} else {
 			if($start <0) { ## if it is upstream
-				$absStart = $absGeneEnd - $start - $coord->{'Len'} + 1 ;
+				$absStart = $absGeneEnd - $start - $coord->{'Len'} +1;
 			} else {
 				$absStart = $absGeneStart - $start - $coord->{'Len'};
 			}
@@ -660,43 +507,47 @@ sub shiftTargetCoordinate {
 	return $newTargetPosition;	
 }
 
-##########################################################################################################
-####
-####  Given a tree and a set of nodes on the tree, findDeepestCommonNode returns the name of the deepest node
-####   shared by all leaves. This can be used to identify the evolutionary origin of a CNS
-###
+####################################################################################################################################
+#### Extract sequence for locus from a compressed fasta file, filter for low-information sequence and output to a seperate fasta file
+####    and return the filtered sequence
 
-sub findDeepestCommonNode {
-	my ($tree, $leavesListRef) = @_;
-	my @leavesList = @$leavesListRef;
+sub extractFastaToFile {
+	(my $fastaFile, my $locus, my $outputFastaFile) = @_;
 
-	my $anchorLeafNode = $tree->find_node( ($leavesList[0] =~ s/\./_/gr) );
-	if(!defined $anchorLeafNode) { die "ERROR in findDeepestCommonNode: Cannot find deepest node $leavesList[0] in tree.\n"; }
-	my %anchorLeafPath;
-	my $node = $anchorLeafNode;
-	my $deepestNode = $node->id;
-	$anchorLeafPath{$deepestNode}=0;
-
-	my $deepness=1;
-	while($node->ancestor) {
-		$node = $node->ancestor;
-		$anchorLeafPath{$node->id} = $deepness++;
+	open (my $inFasta, "samtools faidx $fastaFile $locus |");
+	my $fastaHeader = <$inFasta>;
+	chomp($fastaHeader);
+	my $seq;
+	my @seqLines;
+	while(my $curLine = <$inFasta>) {
+		chomp($curLine);
+		push @seqLines, uc($curLine);
 	}
+	close($inFasta);
+	$seq = join("", @seqLines);
 
-	foreach my $leaf (@leavesList) {
-		my $node = $tree->find_node( -id => $leaf=~ s/\./_/gr );
-		if(! defined $node) { next;}
-		while($node->ancestor) {
-			$node = $node->ancestor;
-			if(defined $anchorLeafPath{$node->id}) {  ### This is where the path intersect. Check if this is the deepest we found
-				if( $anchorLeafPath{$node->id} > $anchorLeafPath{$deepestNode}) {
-					$deepestNode = $node->id;
-				}
-				last;
-			}
-		}
-	}
-	return $deepestNode;
+	my $origSeq = $seq;
+	### Now mask homopolymers and AT rich regions
+	$seq = fuzzyFilterHomopolymers($seq,$homoPolymerFilterLength,0);  
+	$seq = fuzzyFilterATRich($seq,$atRichRegionFilterLength,0, $atRichRegionFilterFlankLength); 
+	$seq = fuzzyFilterDimers($seq, $dimerPolymerFilterLength,0);
+
+	### and repeating common trimers
+	$seq =~ s/([C|G|A]TT){4}/XXXXXXXXXXXX/g;
+	$seq =~ s/([C|G|A]AA){4}/XXXXXXXXXXXX/g;
+	$seq =~ s/([C|G|A]AT){4}/XXXXXXXXXXXX/g;
+
+	#### and repeating tetramers
+	$seq =~ s/(TCTA){4}/XXXXXXXXXXXXXXXX/g;
+	### and ambigious sequences
+	$seq =~ s/N/$filterCharacter/g;
+
+	## and write to file
+	open(my $outFasta, ">$outputFastaFile");
+	print $outFasta "$fastaHeader\n$seq\n";
+	close($outFasta);
+
+	return ($seq);
 }
 
 ##########################################################################################################
@@ -781,6 +632,150 @@ sub trimTreeToLeaves {
 			}
 		}
 	}
+}
+
+
+################################################################################
+###### utility filtering functions #######################################################
+
+##### Fuzzy filter homopolymers
+
+### fuzziness is the number of mismatch positions allowed (either 0 or 1)
+sub fuzzyFilterHomopolymers {
+	my ($inSeq, $polymerLength, $fuzziness) = @_;
+	my @inSeqArr = split //, $inSeq;
+	my @polymers = ('A' x $polymerLength,
+					'T' x $polymerLength,
+					'C' x $polymerLength,
+					'G' x $polymerLength);
+
+	my $fuzzySearchString="(?=($polymers[1]";
+	my @replacementArr = ($filterCharacter) x $polymerLength;
+
+	for my $curPolymer (@polymers) {
+		if($fuzziness == 1) {
+			for my $curNuc (1..$polymerLength) {
+				my $curSearch = $curPolymer;
+				substr($curSearch,$curNuc-1,1) = ".";
+				$fuzzySearchString .= "|$curSearch"
+			}
+		} else {
+			$fuzzySearchString .= "|$curPolymer";
+		}
+	}
+	$fuzzySearchString .= "))";
+	
+	my @polymerOccurences;
+	$_ = $inSeq;
+
+	while(/$fuzzySearchString/g) {
+		push @polymerOccurences, pos();
+	}
+	foreach my $curPos (@polymerOccurences) {
+		@inSeqArr[$curPos..($curPos+($polymerLength-1))] = @replacementArr;
+	}
+
+	return join("", @inSeqArr);
+}
+
+##### Fuzzy filter for repeating dimers sequences
+## Fuzziness is 0 or 1 (number of mismatches accepted)
+sub fuzzyFilterDimers {
+	my ($inSeq, $polymerLength, $fuzziness) = @_;
+	my @inSeqArr = split //, $inSeq;
+	my @replacementArr = ($filterCharacter) x ($polymerLength * 2);
+	my @dimerPolymers;
+
+	for my $nuca ( ('A','T','C','G')) {
+		for my $nucb ( ('A','T','C','G')) {
+			if($nuca ne $nucb) {
+				push @dimerPolymers, ("$nuca$nucb" x $polymerLength);
+			}
+		}
+	}
+
+	my $fuzzySearchString="(?=($dimerPolymers[1]";
+
+	for my $curPolymer (@dimerPolymers) {
+		if($fuzziness==1) {
+			for my $curNuc (1..($polymerLength*2-1)) {
+				my $curSearch = $curPolymer;
+				substr($curSearch,$curNuc-1,1) = ".";
+				$fuzzySearchString .= "|$curSearch"
+			}
+		} else {
+				$fuzzySearchString .= "|$curPolymer"
+		}
+	}
+	$fuzzySearchString .= "))";
+
+	## Now collected all the places where there is a match (accepting overlapping regions)
+	my @dimerOccurences;
+	$_ = $inSeq;
+
+	while(/$fuzzySearchString/g) {
+		push @dimerOccurences, pos();
+	}
+
+	## Now mask Seq
+	foreach my $curPos (@dimerOccurences) {
+		@inSeqArr[$curPos..($curPos+($polymerLength*2-1))] = @replacementArr;
+	}
+
+	return join("", @inSeqArr);
+}
+
+########################################################################################
+### Fuzzy filter AT rich regions
+###
+
+sub fuzzyFilterATRich {
+	my ($inSeq, $ATrichLength, $fuzziness, $flanklength) = @_;
+	my @replacementArr = ($filterCharacter) x ($ATrichLength - $flanklength*2);
+
+	my $translatedInSeq = $inSeq;
+	$translatedInSeq =~ tr/ATWCGRYSKMBDHVNX/0001111111111111/;
+
+	my @inSeqArr = split //, $inSeq;
+	my @inSeqTrArr = split //, $translatedInSeq;
+	my $seqLength = (scalar @inSeqArr)-$ATrichLength-1;
+	my @ATrichPos;
+
+	## Look for AT rich positions
+	foreach my $curPos (0..$seqLength) {
+		if(sum(@inSeqTrArr[$curPos..($curPos+$ATrichLength-1)])<=$fuzziness) {
+			push @ATrichPos, $curPos;
+		}
+	}
+	## Now mask Seq
+	foreach my $curPos (@ATrichPos) {
+		@inSeqArr[($curPos+$flanklength)..($curPos+$ATrichLength-1-$flanklength)] = @replacementArr;
+	}
+
+	return join("", @inSeqArr);
+
+	return($inSeq);
+}
+
+sub mergeFastaSequences {
+	my ($originalSequence, $sequenceToAdd, $startCoordinate) = @_;
+
+	$sequenceToAdd =~ s/-/N/g;
+
+	my $mergedSequence = $originalSequence;
+
+	# If we are not overriding anything, just place the sequence in the right place
+
+	if(substr($originalSequence, $startCoordinate, length($sequenceToAdd)) eq ('N' x length($sequenceToAdd) ) ) {
+		substr($mergedSequence, $startCoordinate, length($sequenceToAdd)) = $sequenceToAdd;
+	} elsif( substr($originalSequence, $startCoordinate, length($sequenceToAdd)) ne $sequenceToAdd ) { ### if there is already sequence there (that is different than the one we want to add), merge the sequences
+		for my $curNucleotidePos ($startCoordinate .. ($startCoordinate + length($sequenceToAdd)-1)) {
+			if(substr($mergedSequence, $curNucleotidePos, 1) eq "N") { ## If we have no data, put the merged one
+				substr($mergedSequence, $curNucleotidePos,1) = substr($sequenceToAdd, $curNucleotidePos - $startCoordinate,1);
+			}
+		}
+	}
+	return $mergedSequence;
 }
 
 1;

@@ -8,7 +8,6 @@ use Cwd 'abs_path';
 use List::Util qw(min max);
 use Getopt::Long;
 
-
 use lib './scripts';
 use ConservatoryUtils;
 use ConservatoryTree;
@@ -26,17 +25,18 @@ my $CNSFileName;
 my $mapFileName;
 my $outputCNSFileName;
 my $outputMapFileName;
+my $CNSSubsetFile;
 
 my $keep_tmp=0;
 
 ## Filtering parameters
 
-
-my $totalSplits;
-my $splitNum;
 my $verbose=0;
 my $help=0;
 my $totalToScreen;
+
+my $break=0;
+my $reconstruct=0;
 
 GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"in-cns=s" => \$CNSFileName,
@@ -44,8 +44,8 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"out-cns=s" => \$outputCNSFileName,
 			"out-map=s" => \$outputMapFileName,
 			"verbose" => \$verbose,
-			"split=i" => \$splitNum,
-			"total-splits=i" => \$totalSplits,
+			"break" => \$break,
+			"reconstruct" => \$reconstruct,
 			"tmp-dir=s" => \$tmpDirRoot,
 			"help" => \$help) or die ("Error in command line arguments\n");
 			
@@ -64,7 +64,7 @@ my $conservatoryTree = new ConservatoryTree($genomeDB);
 
 if(!defined $tmpDirRoot) { $tmpDirRoot = $genomeDB->getTemporaryDir(); }
 
-my $tmpDir = $tmpDirRoot . "/S" . $splitNum . "/";
+my $tmpDir = $tmpDirRoot . "/S" . $$ . "/";
 mkdir $tmpDir;
 $genomeDB->setTemporaryDir($tmpDir);
 
@@ -74,36 +74,17 @@ print "PROGRESS: Reading CNS from $CNSFileName.\n";
 my $CNSDB = new CNSDatabase($CNSFileName);
 $CNSDB->orderCNSByName();
 
-my @CNSList = @{ $CNSDB->getCNSByOrder() };
-my $startLine=0;
-my $endLine= $CNSDB->getNumberOfCNSs();
-
-if($totalSplits>1) {
-	$startLine = floor(( $CNSDB->getNumberOfCNSs() /$totalSplits) * ($splitNum-1));
-	$endLine = ceil( ( $CNSDB->getNumberOfCNSs() /$totalSplits) * ($splitNum));
-	$outputCNSFileName = $outputCNSFileName . "_" . $splitNum;
-	$outputMapFileName = $outputMapFileName . "_" . $splitNum;	
-}
-
-$endLine = min($endLine, $CNSDB->getNumberOfCNSs() -1 );
-if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
-
-#### subset CNS database
-my @CNSsubset = @CNSList[$startLine..$endLine];
-$CNSDB = $CNSDB->createSubsetCNSDatabase(\@CNSsubset);
-if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
-
 open (my $tmpCNSToReconstructFile , ">$tmpCNSToReconstructFileName") || die ("ERROR: Cannot open temporary file $tmpCNSToReconstructFileName.\n");
 
-print "PROGRESS: Compiling CNS list ($startLine - $endLine)\n";
-foreach my $curCNS (@CNSList[$startLine..$endLine]) {
+print "PROGRESS: Compiling CNS list...\n";
+foreach my $curCNS (@{ $CNSDB->getCNSByOrder() } ) {
 	print $tmpCNSToReconstructFile $curCNS->getID() ."\n";
 }
 close($tmpCNSToReconstructFile);
 
 ### Load just the relevant mappings for the CNSs we are working with
-my $mappingDB = new MappingDatabase("grep -f $tmpCNSToReconstructFileName $mapFileName |");
 
+my $mappingDB = new MappingDatabase("grep -f $tmpCNSToReconstructFileName $mapFileName |");
 unlink($tmpCNSToReconstructFileName);
 my $curPos=1;
 
@@ -113,76 +94,78 @@ my $curPos=1;
 my $curDir = getcwd();
 chdir $tmpDir;
 $curPos=0;
-$totalToScreen = $endLine - $startLine+1;
+$totalToScreen = $CNSDB->getNumberOfCNSs();
 
 if($verbose) { print "PROGRESS: Processing $totalToScreen CNSs...\n"; }
-foreach my $curCNS (@CNSList[$startLine..$endLine]) {
+foreach my $curCNS (@{ $CNSDB->getCNSByOrder() } ) {
 	### If its a super CNS, see if we can split it	
 	$curPos++;
 
 	if($curCNS->isMerged()) {
-
-		my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS);
+		if($break) {
+			my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS);
 						
-		if(@CNSBreakpoints > 2) {
-			if($verbose) { print "PROGRESS: Breaking CNS (" . $curPos ."/ $totalToScreen). Breakpoints: " . join(",", @CNSBreakpoints) . ".......\n"; }
+			if(@CNSBreakpoints > 2) {
+				if($verbose) { print "PROGRESS: Breaking CNS (" . $curPos ."/ $totalToScreen). Breakpoints: " . join(",", @CNSBreakpoints) . ".......\n"; }
+				my @assignedMappings = $mappingDB->assignMappingsToBreakpoints($curCNS, \@CNSBreakpoints);
+				### Now break the CNSs		
+				for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
+					my $breakLen = $CNSBreakpoints[$curBreakpoint+1]- $CNSBreakpoints[$curBreakpoint];
+					my $CNSforBreakpointName = $curCNS->getID() . ".$CNSBreakpoints[$curBreakpoint]";
+					print "PROGRESS: Breaking " . $curCNS->getID() . " to $CNSforBreakpointName.\n";
+					### Create new sub-CNS
+					my $CNSforBreakpoint = new CNS($curCNS->getRefGenome(), $CNSforBreakpointName, $curCNS->getLocus(), $curCNS->getPos() + $CNSBreakpoints[$curBreakpoint], $breakLen, $curCNS->getConservationLevel(),
+												   $curCNS->getSupportingSpeciesNumber(), substr($curCNS->getSeq(),$CNSBreakpoints[$curBreakpoint], $breakLen), $curCNS->getRegulatorySeqPart());
+					$CNSDB->add($CNSforBreakpoint);
 
-			my @assignedMappings = $mappingDB->assignMappingsToBreakpoints($curCNS, \@CNSBreakpoints);
+					## Assign the mappings
+					foreach my $curMapping (@assignedMappings) {
+						### If there is an overlap, assign the deep CNS to the new subCNS.
+						if($curMapping->getBreakPoint() == $curBreakpoint) {
+							$mappingDB->linkMappingToCNS($curMapping, $CNSforBreakpoint);
+							$curMapping->setRRP( $curMapping->getRRP() - $CNSBreakpoints[$curBreakpoint]);
+						}
+					}
 
-			### Now break the CNSs		
-
-			for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
-				my $breakLen = $CNSBreakpoints[$curBreakpoint+1]- $CNSBreakpoints[$curBreakpoint];
-				my $CNSforBreakpointName = $curCNS->getID() . ".$CNSBreakpoints[$curBreakpoint]";
-				print "PROGRESS: Breaking " . $curCNS->getID() . " to $CNSforBreakpointName.\n";
-
-				### Create new sub-CNS
-#				my $CNSforBreakpoint = new CNS($curCNS->getRefGenome(), $CNSforBreakpointName, $curCNS->getLocus(), $curCNS->getPos() + $CNSBreakpoints[$curBreakpoint], $breakLen, $curCNS->getConservationLevel(),
-#											   substr($curCNS->getSeq(),$CNSBreakpoints[$curBreakpoint], $breakLen), $curCNS->getRegulatorySeqPart());
-				my $CNSforBreakpoint = new CNS($curCNS->getRefGenome(), $CNSforBreakpointName, $curCNS->getLocus(), $curCNS->getPos() + $CNSBreakpoints[$curBreakpoint], $breakLen, $curCNS->getConservationLevel(),
-											   "", $curCNS->getRegulatorySeqPart());
-
-				$CNSDB->addCNS($CNSforBreakpoint);
-
-				## Assign the mappings
-				foreach my $curMapping (@assignedMappings) {
-					### If there is an overlap, assign the deep CNS to the new subCNS.
-					if($curMapping->getBreakPoint() == $curBreakpoint) {
-						$mappingDB->linkMappingToCNS($curMapping, $CNSforBreakpoint);
-						$curMapping->setRRP( $curMapping->getRRP() - $CNSBreakpoints[$curBreakpoint]);
+					### and reconstruct the ancesteral seq
+					my %speciesSeq = getSpeciesSequencesForCNS($CNSforBreakpoint, $mappingDB, $conservatoryTree);
+					if( (scalar %speciesSeq) >= $minSpeciesForCNS) {
+						if($reconstruct) {
+							$CNSforBreakpoint->setSeq( $conservatoryTree->getReconstructedSequence($CNSforBreakpoint, \%speciesSeq, $minSequenceContentToConsiderReconstruction*100));
+							my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($CNSforBreakpoint) };
+							$CNSforBreakpoint->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
+						}
+					} else {
+						$CNSDB->deleteCNS($CNSforBreakpoint);
+						$mappingDB->deleteCNS($CNSforBreakpoint);
 					}
 				}
-
-				### and reconstruct the ancesteral seq
-				my %speciesSeq = getSpeciesSequencesForCNS($CNSforBreakpoint, $mappingDB, $conservatoryTree);
-				if( (scalar %speciesSeq) >= $minSpeciesForCNS) {
-					$CNSforBreakpoint->setSeq( $conservatoryTree->getReconstructedSequence($CNSforBreakpoint, \%speciesSeq));
-					my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($CNSforBreakpoint) };
-					$CNSforBreakpoint->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
-
-				} else {
-					$CNSDB->deleteCNS($CNSforBreakpoint);
-					$mappingDB->deleteCNS($CNSforBreakpoint);
+				### Finally, delete the original CNS
+				$CNSDB->deleteCNS($curCNS);
+				$mappingDB->deleteCNS($curCNS);
+			} else {
+				### reconstruct ancesteral
+				if($reconstruct) {
+					my %speciesSeq = getSpeciesSequencesForCNS($curCNS, $mappingDB, $conservatoryTree);
+					$curCNS->setSeq( $conservatoryTree->getReconstructedSequence($curCNS, \%speciesSeq,$minSequenceContentToConsiderReconstruction*100));
 				}
-
 			}
-			### Finally, delete the original CNS
-			$CNSDB->deleteCNS($curCNS);
-			$mappingDB->deleteCNS($curCNS);
-		} else {
-			### reconstruct ancesteral
+		} elsif($reconstruct) {
 			my %speciesSeq = getSpeciesSequencesForCNS($curCNS, $mappingDB, $conservatoryTree);
-			$curCNS->setSeq( $conservatoryTree->getReconstructedSequence($curCNS, \%speciesSeq));
-
+			$curCNS->setSeq( $conservatoryTree->getReconstructedSequence($curCNS, \%speciesSeq, $minSequenceContentToConsiderReconstruction*100));
+			my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($curCNS) };
+			$curCNS->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 			
 		}
 	}
 
 	if($curCNS->isAlive()) {
-		my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($curCNS) };
-		$curCNS->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
-		if($verbose) { print "PROGRESS: Reconstructed " . $curCNS->getID() . "...\n"; }			
+		if($reconstruct) {
+			my @CNSSpecies = sort map { $_->getSpecies() } @{ $mappingDB->getMappingsForCNS($curCNS) };
+			$curCNS->setConservationLevel( $conservatoryTree->findDeepestCommonNode( \@CNSSpecies) ); 
+		}
 	}
 
+	if($verbose) { print "PROGRESS: Reconstructed $curPos/$totalToScreen...\r"; }			
 }
 
 if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }

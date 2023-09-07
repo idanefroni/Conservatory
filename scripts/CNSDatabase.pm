@@ -143,7 +143,7 @@ sub deleteCNS {
     delete $self->{_CNSTable}->{$CNSID};
 }
 
-sub addCNS {
+sub add {
     my ($self, $CNS) = @_;
     $self->{_CNSTable}->{ $CNS->getID() } = $CNS;
     $self->{_Ordered} = 0;
@@ -156,13 +156,21 @@ sub getNumberOfCNSs {
 
 sub writeDatabase {
     my ($self, $outputFileName) = @_;
-    open(my $outputFile, ">", $outputFileName);
+    my $outputFile;
+
+    if(defined $outputFileName) {
+        open($outputFile, ">", $outputFileName);
+    } else {
+        $outputFile = \*STDOUT;
+    }
     foreach my $curCNS (values %{ $self->{_CNSTable} }) {
         if($curCNS->isAlive()) {
             $curCNS->print($outputFile);
         }
     }
-    close($outputFile);
+    if(defined $outputFileName) {
+        close($outputFile);
+    }
 }
 
 1;

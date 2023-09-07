@@ -25,12 +25,13 @@ my $filterRepetitive=0;
 my $filterPlastid=0;
 my $filterLowSupport=0;
 my $fixPositions=0;
+my $fixGenome;
 my $gffOutputFileName;
 my $makegffReference;
 my $sortMapFile;
 
 my $filterRepetitiveCNSCutoff = 0.01; ### Filter the top 0.01%
-my $regionSearchFlank=100;
+my $regionSearchFlank=20;
 
 my $verbose=0;
 
@@ -48,6 +49,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
             "filter-plastid" => \$filterPlastid,
             "filter-low" => \$filterLowSupport,
             "fix-positions" => \$fixPositions,
+            "fix-genome=s" => \$fixGenome,
             "make-gff=s" => \$gffOutputFileName,
             "gff-reference=s" => \$makegffReference,
             "sort" => \$sortMapFile,
@@ -74,6 +76,66 @@ if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filter
 ### Read CNS file
 
 my $CNSDB = new CNSDatabase($inCNSFileName, $verbose);
+
+if(defined $gffOutputFileName) {
+    if(!defined $makegffReference) { die "ERROR: No reference provided for GFF.\n";}
+    my $mappingDB = new MappingDatabase("grep $makegffReference $inMapFileName |", 1, $makegffReference);
+
+    open(my $gffOutputFile, ">$gffOutputFileName");
+    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
+        my $locusMerge="";
+        my @mappings = @{ $mappingDB->getMappingsForCNS($curCNS) };
+
+        if (scalar @mappings >0) {
+            my @mappingsInRef;
+            foreach my $curMapping (@mappings) {
+                if(geneToGenome($curMapping->getLocus()) eq $makegffReference) {
+                    push @mappingsInRef, $curMapping;
+                    my $newLocus = geneToLocus($curMapping->getLocus());
+                    if(index($locusMerge, $newLocus) == -1) {
+                        $locusMerge = $locusMerge . $newLocus . "|";
+                    }
+                }
+            }
+
+            if(scalar @mappingsInRef >0) {
+                $locusMerge = substr($locusMerge, 0, length($locusMerge)-1);
+                my $node = $curCNS->getConservationLevel();
+                my $conservationLevel = nodeToLevel($node);
+
+                @mappingsInRef = reverse sort { $a->getAbsChr() cmp $b->getAbsChr() ||
+                                                $a->getAbsPos() cmp $b->getAbsPos() } @mappingsInRef;
+
+                my $lastMapping;
+                foreach my $curMapping (@mappingsInRef) {
+                    if(defined $lastMapping && $lastMapping->overlap($curMapping)) { next; }
+
+                    print $gffOutputFile join("\t", $curMapping->getAbsChr(),
+                                         "Conservatory2",
+                                            "CNS",
+                                            $curMapping->getAbsPos(),
+                                            $curMapping->getAbsPos() + $curMapping->getAbsLen() -1,
+                                            ".",
+                                            $curMapping->getStrandInGenome(),
+                                            ".",
+                                            "Syntenic_loci=" . $locusMerge .
+                                            ";Name=" . $curCNS->getID() . ";Species=" . $curCNS->getSupportingSpeciesNumber() . 
+                                            ";Node=" . $node . 
+                                            ";Level=" . $conservationLevel . 
+                                            ";Original_CNS=" . $curCNS->getLocus() .
+                                            ";Ancesteral=" . $curCNS->getSeq() .  "\n");
+
+                    $lastMapping= $curMapping;
+                }
+            }
+        }
+    }
+
+    close($gffOutputFile);
+    die;
+}
+
+
 my $mappingDB = new MappingDatabase($inMapFileName, 0);
 
 if($fixPositions) {
@@ -99,6 +161,9 @@ if($fixPositions) {
     }
 
     foreach my $curMapping (@{ $mappingDB->getMappingsByOrder() }) {
+       
+       if(defined $fixGenome && ($curMapping->getGenome() ne $fixGenome)) { next; }
+
        if(geneToGenome($curMapping->getLocus()) ne $curGenome) {
             clearGeneCooordinateDatabase();
             $curGenome = geneToGenome($curMapping->getLocus());
@@ -117,34 +182,24 @@ if($fixPositions) {
 
         my $newAbsStart = remap($curMapping, $curGenomeSequence);
 
-        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping
-            $newAbsStart = remap($curMapping, $curGenomeSequence, 8);
-        }
-        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping from the other side
-            $newAbsStart = remap($curMapping, $curGenomeSequence, -8);
-        }
-
-
         if($newAbsStart == -1)  { ## If we failed, try the reverse complement
             $curMapping->flipKeepStrand();
             $newAbsStart = remap($curMapping, $curGenomeSequence);
         }
 
-        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping
-            $newAbsStart = remap($curMapping, $curGenomeSequence, 8);
-        }
-
-        if($newAbsStart == -1)  {         ## If we failed, try a partial mapping from the other side
-            $newAbsStart = remap($curMapping, $curGenomeSequence, -8);
-        }
 
         if($newAbsStart != -1) {
             ## Get the absolute coordiantes for the gene to update the relative position
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
-            if($curMapping->getAbsPos() != $newAbsStart) { $totalFixedPositions++; }
+            if($curMapping->getAbsPos() != $newAbsStart) {
+                $totalFixedPositions++; 
+                $curMapping->print;
+                print "newAbs: $newAbsStart\n";
+            }
             $curMapping->setAbsPos($newAbsStart);
             $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
         } else {  ### Else, reject
+            $curMapping->flipKeepStrand(); ## Flip back.
             $curMapping->print($outMapRejectFile);
             $mappingDB->deleteMapping($curMapping);
             $totalRejectedPositions++
@@ -153,6 +208,7 @@ if($fixPositions) {
     if(defined $outRejectFileName) {
         close($outMapRejectFile);
     }
+
     if($verbose) { print "PROGRESS: Done verifying positions. Verified $totalVerifiedPositions. Fixed $totalFixedPositions. Rejected $totalRejectedPositions.\n"; } 
 }
 
@@ -161,8 +217,10 @@ if($filterPlastid) {
     my $plastidFiltered=0;
 
     foreach my $curMapping ( @{ $mappingDB->getMappingsByOrder() }) {
-        if ($curMapping->isPlastid()) { $CNSDB->getCNSByID( $curMapping->getCNSID() )->setComment("PlastidFilter"); }
-        $plastidFiltered++;
+        if ($curMapping->isPlastid() && $CNSDB->exists($curMapping->getCNSID())) {
+            $CNSDB->getCNSByID( $curMapping->getCNSID() )->setComment("PlastidFilter");
+            $plastidFiltered++;
+        }
     }
     if($verbose) { print "Plastid Filter: Removed $plastidFiltered CNS\n";}
 }
@@ -222,14 +280,20 @@ if($filterLowSupport) {
     if($verbose) { print "Filtered $lowSupportFiltered for low support...\n"; }    
 }
 
-
-
 ## open Reject DB
 my $rejectCNSDB = new CNSDatabase();
 
 foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
     if(defined $curCNS->getComment()) {
-        $rejectCNSDB->addCNS($curCNS);
+        $rejectCNSDB->add($curCNS);
+    }
+}
+if(defined $outRejectFileName && !$fixPositions && $rejectCNSDB->getNumberOfCNSs()>0) {
+    $rejectCNSDB->writeDatabase($outRejectFileName);
+}
+
+foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
+    if(defined $curCNS->getComment()) {
         $CNSDB->deleteCNS($curCNS);
         $mappingDB->deleteCNS($curCNS);
     }
@@ -239,39 +303,11 @@ if(defined $outCNSFileName) {
     $CNSDB->writeDatabase($outCNSFileName);
 }
 
-if(defined $outRejectFileName && !$fixPositions && $rejectCNSDB->getNumberOfCNSs()>0) {
-    $rejectCNSDB->writeDatabase($outRejectFileName);
-}
 
 if(defined $outMapFileName) {
     $mappingDB->writeDatabase($outMapFileName);
 }
 
-if(defined $gffOutputFileName) {
-    if(!defined $makegffReference) { die "ERROR: No reference provided for GFF.\n";}
-
-    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
-        $mappingDB->removeDuplicatesForCNS($curCNS);
-    }
-
-    open(my $gffOutputFile, ">$gffOutputFileName");
-    foreach my $curMapping ( @{ $mappingDB->getMappingsByOrder() }) {
-
-        if(geneToGenome($curMapping->getLocus()) eq $makegffReference &&  $CNSDB->exists($curMapping->getCNSID())) {
-            print $gffOutputFile join("\t", $curMapping->getAbsChr(),
-                                            "Conservatory2",
-                                            "CNS",
-                                            $curMapping->getAbsPos(),
-                                            $curMapping->getAbsPos() + $curMapping->getAbsLen(),
-                                            ".",
-                                            $curMapping->getStrandInGenome(),
-                                            ".",
-                                            "Name=" . $curMapping->getCNSID() . ";Species=" . $CNSDB->getCNSByID($curMapping->getCNSID())->getSupportingSpeciesNumber() . 
-                                            ";Node=" . $CNSDB->getCNSByID($curMapping->getCNSID())->getConservationLevel()) . "\n";
-        }
-    }
-    close($gffOutputFile);
-}
 
 
 ##################################################################################################################
@@ -304,21 +340,7 @@ sub compareSequences {
 sub remap {
     my ($curMapping, $curGenomeSequence, $partial) = @_;
 
-    my $targetSequence = $curMapping->getSeq();
-    $targetSequence =~ s/-//g; ## remove the gaps
-    my $searchSequence= $targetSequence;
-
-    if($curMapping->getStrandInGenome() eq "-") { 
-        $searchSequence = reverseComplement($searchSequence);
-    }
-    if(defined $partial) {
-        if($partial>0) {
-            $searchSequence = substr($searchSequence, 0, min($partial, length($searchSequence)));
-        } else {
-            $partial = max( $partial, -length($searchSequence));
-            $searchSequence = substr($searchSequence, length($searchSequence) + $partial, abs($partial));
-        }
-    }
+    my $searchSequence = $curMapping->getGenomeSeq();
 
     my $startCoordBias = min(0,$curMapping->getAbsPos() - $regionSearchFlank);  ### If this is the start of the choromosome and we donot have enough flank sequeuence
                                                                      ## record where we started
@@ -334,21 +356,38 @@ sub remap {
             }
         }
         $curPositionInRegion++;
-    }
-    
+    }  
+
     if($hitPosition != length($regionSequence)) { ### If we found our sequence, update the coordiantes
         my $newAbsStart = $curMapping->getAbsPos() - $regionSearchFlank + $hitPosition - $startCoordBias;
         ### if it was a partial fit, update the sequence
-        if(defined $partial) {
-            if($partial>0) {
-                $curMapping->setSeq(substr($regionSequence, $hitPosition, $curMapping->getAbsLen()) );
-            } else {
-                $curMapping->setSeq(substr($regionSequence, $hitPosition -$curMapping->getAbsLen() -$partial, $curMapping->getAbsLen()) );
-                $newAbsStart = $newAbsStart - $curMapping->getAbsLen() - $partial;
-            }
-        }
         return $newAbsStart;
     } else {
         return -1;
     }
+}
+
+
+
+sub nodeToLevel {
+    my ($node) = @_;
+
+    my @ancientNodes = ("N1","N2","N3","N4","N5","N6","N7","N8");
+    my @tracheophyteNodes = ("N9","N10","N11");
+    my @angiospermsNodes = ("N12","N13","N14");
+    my @dicotNodes = ("N15","N16","N17","N18");
+    my @rosidNodes = ("N19","N20");
+    my @asteridNodes = ("N167","N168");
+    my @monocotNodes = ("N226","N227","N228","N269","N228","229");
+
+    my $conservationLevel = "Order/Family";
+    if( grep( /^$node$/, @ancientNodes) ) { $conservationLevel = "Ancient"; }
+    if( grep( /^$node$/, @tracheophyteNodes) ) { $conservationLevel = "Tracheophytes"; }
+    if( grep( /^$node$/, @angiospermsNodes) ) { $conservationLevel = "Angiosperms"; }
+    if( grep( /^$node$/, @dicotNodes) ) { $conservationLevel = "Dicots"; }
+    if( grep( /^$node$/, @monocotNodes) ) { $conservationLevel = "Monocots"; }
+    if( grep( /^$node$/, @rosidNodes) ) { $conservationLevel = "Rosides"; }
+    if( grep( /^$node$/, @asteridNodes) ) { $conservationLevel = "Asterids"; }
+
+    return $conservationLevel;
 }

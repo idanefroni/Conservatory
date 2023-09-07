@@ -11,10 +11,6 @@ use Bio::TreeIO;
 use Bio::SeqIO;
 use Bio::AlignIO;
 
-my $minSequenceContentToConsiderReconstruction = 0.33; ## how many of the sequences in the alignment has to be informative (non-gap)
-													  # for the nucleotide to be considered for ancesteral seq reconstruction. 
-													  # this is to avoid reconstructing sequences based on small number of samples.
-
 sub new {
     my ($class, $genomeDB, $treeFileName, $annotatedTreeFileName, $treeNodeAgesFileName) = @_;
 
@@ -108,7 +104,7 @@ sub findDeepestCommonNode {
 ###########    Accepts CNS Name (for the temporary files) and CNS sequences with the species being the key
 
 sub getReconstructedSequence {
-    my ($self, $CNS, $sequencesHashRef) = @_;
+    my ($self, $CNS, $sequencesHashRef, $minInfoContent) = @_;
     my %sequencesHash = %$sequencesHashRef;
     if(ref($CNS) eq 'CNS') { $CNS = $CNS->getID(); }
 
@@ -157,7 +153,7 @@ sub getReconstructedSequence {
 	my @gappiness = getGappiness($inAligned);
 
     for my $pos (0..(scalar @gappiness -1 )) {
-	    if ($gappiness[$pos] > ($minSequenceContentToConsiderReconstruction*100)) {
+	    if ($gappiness[$pos] > (100-$minInfoContent)) {
        		substr($reconstructedSequence, $pos, 1) = "-";
    		}
 	}

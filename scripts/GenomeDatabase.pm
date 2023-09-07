@@ -45,8 +45,8 @@ sub new {
             $speciesToFamilyHash{$curSpecies} = $curFamily;
             $speciesDatabaseHash{$curSpecies}{$curGenomeName}=1;
 
-		    $regUpstreamLengthHash{$curGenomeName}{'upstreamLength'} = $upstreamLength * 1000;
-		    $regDownstreamLengthHash{$curGenomeName}{'downstreamLength'} = $downstreamLength * 1000;
+		    $regUpstreamLengthHash{$curGenomeName} = $upstreamLength * 1000;
+		    $regDownstreamLengthHash{$curGenomeName} = $downstreamLength * 1000;
 		    $classificationsHash{$curSpecies} = $classification;	
 	    }
     }
@@ -59,10 +59,52 @@ sub new {
     $self->{ _regDownstreamLengthHash } = \%regDownstreamLengthHash;
     $self->{ _classificationsHash } = \%classificationsHash;
     $self->{_TmpDir} = $self->{_conservatoryDirectory} . "/tmp/";
+    $self->{_minFamilyThreshold} = 2000;
+    $self->{_minFamilyIdentity} = 70;    
+
+    $self->{_minDeepThreshold} = 1600;
+    $self->{_minDeepIdentity} = 70;    
+
+    $self->{_minOrthologQuality} = 1000;
 
     bless $self, $class;
     return $self;
 }
+sub genomeExists {
+    my ($self, $genome) = @_;
+    if(defined $self->{_genomeToSpeciesHash}->{$genome}) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+sub getSpeciesForFamily {
+    my ($self, $family) = @_;
+    my @speciesForFamily;
+    foreach my $curSpecies (keys %{ $self->{_speciesToFamilyHash} }) {
+        if($self->{_speciesToFamilyHash}->{$curSpecies} eq $family) {
+            push @speciesForFamily, $curSpecies;
+        }
+    }
+    return @speciesForFamily;
+}
+sub getGenomeNames {
+    my ($self) = @_;
+    return sort keys %{ $self->{ _genomeToSpeciesHash }};
+}
+
+sub getGenomeNamesInFamily {
+    my ($self, $family) = @_;
+    my @genomesInFamily;
+    foreach my $curGenome (keys %{ $self->{ _genomeToSpeciesHash } }) {
+        if($self->genomeToFamily($curGenome) eq $family) {
+            push @genomesInFamily, $curGenome;
+        }
+    }
+    return sort @genomesInFamily;
+}
+
 sub speciesToFamily {
     my ($self, $species) = @_;
     return $self->{_speciesToFamilyHash}->{$species};
@@ -97,7 +139,6 @@ sub readGenome {
 	    }
     close($genomeFastaFile);
     return \%genomeSeq;
-
 }
 
 sub getConservatoryDir {
@@ -115,4 +156,69 @@ sub setTemporaryDir {
     $self->{_TmpDir} = $tmpDir;
 }
 
+sub getUpstreamLength {
+    my ($self, $genome) = @_;
+    return $self->{ _regUpstreamLengthHash }->{$genome};
+}
+sub getDownstreamLength {
+    my ($self, $genome) = @_;
+    return $self->{ _regDownstreamLengthHash }->{$genome};
+}
+sub getClassification {
+    my ($self, $genome) = @_;
+    return $self->{ _classificationsHash }->{$genome};
+}
+sub getUpstreamFastaFileName {
+    my ($self, $genome) = @_;
+    return $self->getConservatoryDir() . "/genomes/" . $self->genomeToFamily($genome) . "/$genome.upstream.fasta.gz";
+}
+sub getDownstreamFastaFileName {
+    my ($self, $genome) = @_;
+    return $self->getConservatoryDir() . "/genomes/" . $self->genomeToFamily($genome) . "/$genome.downstream.fasta.gz";
+}
+
+sub getLocusFullName {
+    my ($self, $genome, $locus) = @_;
+    return $self->genomeToSpecies($genome) . "-$genome-$locus";
+}
+sub getMinFamilyIdentity {
+    my ($self) = @_;
+    return $self->{_minFamilyIdentity};
+}
+sub getMinFamilyThreshold {
+    my ($self) = @_;
+    return $self->{_minFamilyThreshold};
+}
+
+sub getMinDeepIdentity {
+    my ($self) = @_;
+    return $self->{_minDeepIdentity};
+}
+sub getMinDeepThreshold {
+    my ($self) = @_;
+    return $self->{_minDeepThreshold};
+}
+
+sub setMinFamilyThreshold {
+    my ($self, $threshold) = @_;
+    $self->{_minFamilyThreshold} = $threshold;
+}
+sub setMinFamilyIdentity {
+    my ($self, $identity) = @_;
+    $self->{_minFamilyIdentity} = $identity;
+}
+
+sub setMinDeepThreshold {
+    my ($self, $threshold) = @_;
+    $self->{_minDeepThreshold} = $threshold;
+}
+sub setMinDeepIdentity {
+    my ($self, $identity) = @_;
+    $self->{_minDeepIdentity} = $identity;
+}
+
+sub getMinOrthologQuality {
+    my ($self) = @_;
+    return $self->{_minOrthologQuality};
+}
 1;
