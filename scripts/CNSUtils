@@ -31,7 +31,7 @@ my $makegffReference;
 my $sortMapFile;
 
 my $filterRepetitiveCNSCutoff = 0.01; ### Filter the top 0.01%
-my $regionSearchFlank=20;
+my $regionSearchFlank=50;
 
 my $verbose=0;
 
@@ -162,7 +162,7 @@ if($fixPositions) {
 
     foreach my $curMapping (@{ $mappingDB->getMappingsByOrder() }) {
        
-       if(defined $fixGenome && ($curMapping->getGenome() ne $fixGenome)) { next; }
+       if( (defined $fixGenome && ($curMapping->getGenome() ne $fixGenome)) ||  !$curMapping->hasAbsCoordiantes() ) { next; }
 
        if(geneToGenome($curMapping->getLocus()) ne $curGenome) {
             clearGeneCooordinateDatabase();
@@ -187,14 +187,13 @@ if($fixPositions) {
             $newAbsStart = remap($curMapping, $curGenomeSequence);
         }
 
-
         if($newAbsStart != -1) {
             ## Get the absolute coordiantes for the gene to update the relative position
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
             if($curMapping->getAbsPos() != $newAbsStart) {
                 $totalFixedPositions++; 
-                $curMapping->print;
-                print "newAbs: $newAbsStart\n";
+#                $curMapping->print;
+ #               print "newAbs: $newAbsStart\n";
             }
             $curMapping->setAbsPos($newAbsStart);
             $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
@@ -327,7 +326,7 @@ sub compareSequences {
     for (my $i = 0; $i < $len; $i++) {
         my $charSeq1 = substr($seq1, $i, 1);
         my $charSeq2 = substr($seq2, $i, 1);
-        next if ($charSeq2 eq 'X');
+        next if ($charSeq1 eq 'X' || $charSeq2 eq 'X' || $charSeq1 eq 'N' || $charSeq2 eq 'N');
 
         if ($charSeq1 ne $charSeq2) {
             return 0;
@@ -338,29 +337,32 @@ sub compareSequences {
 
 
 sub remap {
-    my ($curMapping, $curGenomeSequence, $partial) = @_;
+    my ($curMapping, $curGenomeSequence) = @_;
 
-    my $searchSequence = $curMapping->getGenomeSeq();
+    my $searchSequence = $curMapping->getTargetSeqInGenome();
 
     my $startCoordBias = min(0,$curMapping->getAbsPos() - $regionSearchFlank);  ### If this is the start of the choromosome and we donot have enough flank sequeuence
                                                                      ## record where we started
 
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
-       
-    my $hitPosition = length($regionSequence);
-    my $curPositionInRegion=0;
-    while( $curPositionInRegion < length($regionSequence) ) {
-        if(compareSequences(substr($regionSequence,$curPositionInRegion, length($searchSequence)), $searchSequence)) {
-            if( abs($curPositionInRegion - $regionSearchFlank) < abs($hitPosition - $regionSearchFlank)  ) {
-                $hitPosition = $curPositionInRegion;
-            }
-        }
-        $curPositionInRegion++;
-    }  
 
-    if($hitPosition != length($regionSequence)) { ### If we found our sequence, update the coordiantes
-        my $newAbsStart = $curMapping->getAbsPos() - $regionSearchFlank + $hitPosition - $startCoordBias;
-        ### if it was a partial fit, update the sequence
+    my @searchPositions = (0);
+    foreach my $curFlankPos (1..$regionSearchFlank) {
+        push @searchPositions, $curFlankPos;
+        push @searchPositions, -$curFlankPos;        
+    }
+    my $hitPosition = -1 ;
+    my $foundHit=0;
+    foreach my $curSearchPosition (@searchPositions) {
+        if(compareSequences(substr($regionSequence, $regionSearchFlank + $searchPositions[$curSearchPosition], length($searchSequence)), $searchSequence) ) { 
+            $hitPosition = $curSearchPosition;
+            last;
+        }
+    }
+
+    if($hitPosition != -1) { ### If we found our sequence, update the coordiantes
+        my $newAbsStart = $curMapping->getAbsPos() + $searchPositions[$hitPosition] - $startCoordBias;
+
         return $newAbsStart;
     } else {
         return -1;

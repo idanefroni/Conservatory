@@ -70,7 +70,7 @@ my $minCNSCoverageFinal=0.5; ## The coverage a final CNS must have to be conside
 
 #### Alignment filtering parameters
 my @minSpeciesPerConservationLevel= (200,125,100,80,30,10); ## Must have atleast these many alignments to support level assignment
-my @minSpeciesAtConservationLevel= (1,1,1,3,5,6); ## Must have atleast these many species from each level to support level assignment
+#my @minSpeciesAtConservationLevel= (1,1,1,3,5,6); ## Must have atleast these many species from each level to support level assignment
 
 my $minHSPthresholdFamily=2000;
 my $minHSPthresholdGlobal=1600;
@@ -387,10 +387,6 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 					$mappingForCNS->setCNSID($CNSID);
 					$mappingForCNS->setRRP( $mappingForCNS->getRRP() - $newCNS->getPos());
 					$mappingDB->add($mappingForCNS);
-					if($mappingForCNS->getStrand() eq "-") {
-						print $CNSLength . ":" . $mappingForCNS->getLocus() . ":" . $mappingForCNS->getRRP() . ":" . $mappingForCNS->getStrand() .":" . (("-" x $mappingForCNS->getRRP()) . $mappingForCNS->getCNSSeq()) . ":" . $mappingForCNS->getRefCNSSeq() . "\n";
-						$flag=1;
-					}
 
 					if(!defined $cnsSeqs{$curMapping->getSpecies()}) {
 						$cnsSeqs{$curMapping->getSpecies()} = ("-" x $mappingForCNS->getRRP()) . $mappingForCNS->getCNSSeq();
@@ -403,10 +399,7 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 				}
 			}
 		}
-		if($flag) {
-			print join("\n", keys %cnsSeqs) . "\n";
-			print join("\n", values %cnsSeqs) . "\n";
-		}
+
 		if(scalar %cnsSeqs >= $minSpeciesForCNS) {
 			delete $cnsSeqs{'Paralogs'};
 			$newCNS->setSeq($conservatoryTree->getReconstructedSequence($newCNS, \%cnsSeqs,0));
@@ -461,8 +454,8 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 	foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {
 		my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS);
 					
-		if(@CNSBreakpoints > 200) {
-#		if(@CNSBreakpoints > 2) {
+#		if(@CNSBreakpoints > 200) {
+		if(@CNSBreakpoints > 2) {
 			if($verbose) { print "PROGRESS: Breaking CNS " . $curCNS->getID() . ". Breakpoints: " . join(",", @CNSBreakpoints) . "...\n"; }
 			my @assignedMappings = $mappingDB->assignMappingsToBreakpoints($curCNS, \@CNSBreakpoints);
 			for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
@@ -478,8 +471,9 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 				foreach my $curMapping (@assignedMappings) {
 					### If there is an overlap, assign the deep CNS to the new subCNS.
 					if($curMapping->getBreakPoint() == $curBreakpoint) {
-						$mappingDB->linkMappingToCNS($curMapping, $CNSforBreakpoint);
 						$curMapping->setRRP( $curMapping->getRRP() - $CNSBreakpoints[$curBreakpoint]);
+						$curMapping->setCNSID( $CNSforBreakpointName);						
+						$mappingDB->add($curMapping);
 					}
 				}
 				### Filtering the sub CNS
@@ -517,41 +511,40 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 		}
 	}
 	##### Filter CNS that are too distant without sufficient support
-#	$CNSDB->updateNumberOfSupportingSpecies($mappingDB);
+	$CNSDB->updateNumberOfSupportingSpecies($mappingDB);
 
-#	foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {
- # 		my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
-#		my @referenceClassification = split /-/, $genomeDB->getClassification($referenceGenome);
-#  	    #### Now calculate conservation levels
- # 		foreach my $curGenome ($mappingDB->getGenomesForCNS($curCNS)) {
-  #	  		my @classification = split /-/ , $genomeDB->getClassification($curGenome);
-   # 		foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
-    #	 		if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
-    #	 			$CNSConservationLevel[$curClassificationLevel]++;
-	#			}
-    #	 	}
-	#	}
+	foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {
+  		my @CNSConservationLevel= ( (0) x $CLASSIFICATION_CLASSES_NUM );	 
+		my @referenceClassification = split /-/, $genomeDB->getClassification($referenceGenome);
+  	    #### Now calculate conservation levels
+  		foreach my $curGenome ($mappingDB->getGenomesForCNS($curCNS)) {
+  	  		my @classification = split /-/ , $genomeDB->getClassification($curGenome);
+    		foreach my $curClassificationLevel (0..($CLASSIFICATION_CLASSES_NUM-1)) {	
+    	 		if($referenceClassification[$curClassificationLevel] ne $classification[$curClassificationLevel]) {
+    	 			$CNSConservationLevel[$curClassificationLevel]++;
+				}
+    	 	}
+		}
 
-	#	foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-1)) {
-   	 # 		if(($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1)
-	  #	  	     || $curCNS->getSupportingSpeciesNumber() < $minSpeciesPerConservationLevel[$levelToCheck]
-		#  		 || $CNSConservationLevel[$levelToCheck] < $minSpeciesAtConservationLevel[$levelToCheck]) {
-   	  	 # 		if($verbose && $CNSConservationLevel[$levelToCheck]>0) { print "PROGRESS: Found possible sporious alignment for " . $curCNS->getID() . " at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n"; }
-#
+		foreach my $levelToCheck ( 1..($CLASSIFICATION_CLASSES_NUM-1)) {
+   	  		if($curCNS->getSupportingSpeciesNumber() < $minSpeciesPerConservationLevel[$levelToCheck] ||
+			($CNSConservationLevel[$levelToCheck] == $CNSConservationLevel[$levelToCheck+1] && $CNSConservationLevel[$levelToCheck]==1)) {
+#		  		 || $CNSConservationLevel[$levelToCheck] < $minSpeciesAtConservationLevel[$levelToCheck]) {
+
  # 	  	  		if($verbose && ($curCNS->getSupportingSpeciesNumber() < $minSpeciesPerConservationLevel[$levelToCheck] && $CNSConservationLevel[$levelToCheck]>0)) {
 #					print "PROGRESS: Number of species (" . $curCNS->getSupportingSpeciesNumber(). ") too low to support alignments at level " . ($CLASSIFICATION_CLASSES_NUM-$levelToCheck) . ".\n";
 #				}
- # 	  	  		### Remove the misalignments
-#				foreach my $curMapping (@{ $mappingDB->getMappingsForCNS($curCNS) }) {
-#		  	  		my @classification = split /-/ , $genomeDB->getClassification($curMapping->getGenome());
-#		  	  		if($classification[$levelToCheck] ne $referenceClassification[$levelToCheck]) {
- # 	  	  	  			if($verbose) { print "PROGRESS: Removing alignment of " . $curMapping->getLocus() . "\n"; }
-#						$mappingDB->deleteMapping($curMapping);
-#					}
-#				}
-#		  	}
- # 	  	}
-#	}
+  	  	  		### Remove the misalignments
+				foreach my $curMapping (@{ $mappingDB->getMappingsForCNS($curCNS) }) {
+		  	  		my @classification = split /-/ , $genomeDB->getClassification($curMapping->getGenome());
+		  	  		if($classification[$levelToCheck] ne $referenceClassification[$levelToCheck]) {
+  	 	  	  			if($verbose) { print "PROGRESS: Removing alignment of " . $curMapping->getLocus() . " at $levelToCheck. because $classification[$levelToCheck] ne $referenceClassification[$levelToCheck]. (SpNum:" . $curCNS->getSupportingSpeciesNumber() .")\n"; }
+						$mappingDB->deleteMapping($curMapping);
+					}
+				}
+		  	}
+ 	  	}
+	}
 
 	$CNSDB->updateNumberOfSupportingSpecies($mappingDB);
 	foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {

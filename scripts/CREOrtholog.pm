@@ -61,7 +61,7 @@ sub new {
 
 sub removeTemporaryFiles {
     my ($self) = @_;
-#    unlink($self->{_tmpMAFUpFileName});
+    unlink($self->{_tmpMAFUpFileName});
     unlink($self->{_tmpMAFDownFileName});
 }
 

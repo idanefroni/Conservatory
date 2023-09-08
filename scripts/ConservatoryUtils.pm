@@ -449,7 +449,7 @@ sub translateRealtiveToAbsoluteCoordinates {
 
 		if($geneStrand eq "+") {
 			if($start <0) { ## if it is upstream
-				$absStart = $absGeneStart + $start;
+				$absStart = $absGeneStart + $start +1;
 			} else {
 				$absStart = $absGeneEnd + $start;
 			}

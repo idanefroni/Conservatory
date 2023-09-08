@@ -47,7 +47,7 @@ sub new {
 
 		    $regUpstreamLengthHash{$curGenomeName} = $upstreamLength * 1000;
 		    $regDownstreamLengthHash{$curGenomeName} = $downstreamLength * 1000;
-		    $classificationsHash{$curSpecies} = $classification;	
+		    $classificationsHash{$curGenomeName} = $classification;	
 	    }
     }
     close($genomeDatabaseFile);

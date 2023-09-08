@@ -149,7 +149,7 @@ sub setRelPosFromAbs {
 
 sub getAbsEnd {
     my ($self) = @_;
-    return $self->{_AbsPos} + $self->getAbsLen();
+    return $self->getAbsPos() + $self->getAbsLen();
 }
 
 sub getAbsStrand {
@@ -203,16 +203,21 @@ sub getSeq {
     return $self->{_Seq};
 }
 #######################################
-sub getGenomeSeq {
+sub getTargetSeqInGenome {
     my ($self) = @_;
-    my $genomeSeq = $self->{_Seq};
-    $genomeSeq =~ s/-//g;
-    if($self->getStrandInGenome() eq "-") {
-        return reverseComplement($genomeSeq);
-    } else {
-        return $genomeSeq;
-    }
 
+    if($self->getStrandInGenome() eq "-") {
+        return reverseComplement($self->getTargetSeq());
+    } else {
+        return $self->getTargetSeq();
+    }
+}
+#######################################
+sub getTargetSeq {
+    my ($self) = @_;
+    my $targetSeq = $self->{_Seq};
+    $targetSeq =~ s/-//g;
+    return $targetSeq;
 }
 
 ### returns the sequence in CNS space.
@@ -540,11 +545,10 @@ sub _countGaps {
 }
 sub _translateCNSSpaceToReferenceSpace {
     my ($self, $start, $end) = @_;
-    my $seqToStart = substr($self->{_RefSeq}, 0, $start);
-    my $seqToEnd = substr($self->{_RefSeq}, 0, $end);
-
-    my $refSpaceStart = $start + ($seqToStart =~ tr/-//);
-    my $refSpaceEnd = $end + ($seqToEnd =~ tr/-//);    
+    my $startGaps = _countGaps($self->getRefSeq(), $start);
+    my $endGaps = _countGaps($self->getRefSeq(), $end); 
+    my $refSpaceStart = $start + $startGaps;
+    my $refSpaceEnd = $end + $endGaps;    
     return ($refSpaceStart, $refSpaceEnd);
 }
 
@@ -557,24 +561,12 @@ sub merge {
         die "ERROR: Trying to merge two mappings from different genomes: " . $self->getLocus() . " and " . $other->getLocus() . "\n";
     }
 
-#    if( $self->getSpecies() eq "Boleraceacapitata") {
- #       print "Merging:";
-  #      $self->print;
-   #     $other->print;
-    #}
-   if($self->getStrandInGenome() ne $other->getStrandInGenome()) {
+   if($self->getStrand() ne $other->getStrand()) {
         $other->flip();
    }
-#   if($self->getStrand() ne $other->getStrand()) {
-#        $other->flip();
-#   }
 
-    my $mySeq = $self->getSeq();
-    my $otherSeq = $other->getSeq();
-
-    # remove gaps
-    $mySeq =~ s/-//g;
-    $otherSeq =~ s/-//g;
+    my $mySeq = $self->getTargetSeq();
+    my $otherSeq = $other->getTargetSeq();
 
     my $combinedSequence = '-' x (max( $self->getAbsEnd(), $other->getAbsEnd()) - min($self->getAbsPos(), $other->getAbsPos())+ $maxBias);
     my $combinedSeqStart = min($self->getAbsPos(), $other->getAbsPos());
@@ -616,11 +608,6 @@ sub merge {
         }
     }
 
-    if( $self->getSpecies() eq "Boleraceacapitata") {
-        $combinedSequence =~ s/-+$//;
-        print "RESULT: $rejectMerge: $combinedSequence\n";
-    }
-
     if(!$rejectMerge) {
 
         $self->setAbsPos($combinedSeqStart);
@@ -648,17 +635,16 @@ sub _findMergeBias {
 ### Get absolute coordiantes for locus, if we don't have them
 sub fillAbsoluteCoordiantes {
     my ($self, $genomeDB) = @_;
-    if($self->{_AbsChr} eq "") {
-		my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir() , $genomeDB->genomeToFamily( $self->getGenome() ),  $self->getGenome(), $self->getLocus());
 
-		my %relativeCoordinate = ('Start' => $self->{_Pos}, 'Len' => $self->getLen());
+	my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir() , $genomeDB->genomeToFamily( $self->getGenome() ),  $self->getGenome(), $self->getLocus());
+	my %relativeCoordinate = ('Start' => $self->{_Pos}, 'Len' => $self->getAbsLen());
 
-		my %absGeneCoord = translateRealtiveToAbsoluteCoordinates( \%relativeCoordinate, $geneCoordinates{'Start'}, $geneCoordinates{'End'}, $geneCoordinates{'Strand'}, $self->{_Strand} );
-		$self->{_AbsChr}  = $geneCoordinates{'Chr'};
-		$self->{_AbsStrand} = $geneCoordinates{'Strand'};
-		$self->{_AbsPos} = $absGeneCoord{'Start'};
-	}
+	my %absGeneCoord = translateRealtiveToAbsoluteCoordinates( \%relativeCoordinate, $geneCoordinates{'Start'}, $geneCoordinates{'End'}, $geneCoordinates{'Strand'}, $self->getStrand() );
+	$self->{_AbsChr}  = $geneCoordinates{'Chr'};
+	$self->{_AbsStrand} = $geneCoordinates{'Strand'};
+	$self->{_AbsPos} = $absGeneCoord{'Start'};
 }
+
 sub isAlive {
     my ($self) = @_;
     if($self->{_CNS} eq "CNSDELETED") {
