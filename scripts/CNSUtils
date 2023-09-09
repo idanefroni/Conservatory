@@ -192,8 +192,6 @@ if($fixPositions) {
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
             if($curMapping->getAbsPos() != $newAbsStart) {
                 $totalFixedPositions++; 
-#                $curMapping->print;
- #               print "newAbs: $newAbsStart\n";
             }
             $curMapping->setAbsPos($newAbsStart);
             $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
@@ -308,11 +306,9 @@ if(defined $outMapFileName) {
 }
 
 
-
 ##################################################################################################################
 ##################################################################################################################
 ##################################################################################################################
-
 
 sub compareSequences {
     my ($seq1, $seq2) = @_;
@@ -340,10 +336,8 @@ sub remap {
     my ($curMapping, $curGenomeSequence) = @_;
 
     my $searchSequence = $curMapping->getTargetSeqInGenome();
-
     my $startCoordBias = min(0,$curMapping->getAbsPos() - $regionSearchFlank);  ### If this is the start of the choromosome and we donot have enough flank sequeuence
                                                                      ## record where we started
-
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
 
     my @searchPositions = (0);
@@ -351,7 +345,7 @@ sub remap {
         push @searchPositions, $curFlankPos;
         push @searchPositions, -$curFlankPos;        
     }
-    my $hitPosition = -1 ;
+    my $hitPosition = -1;
     my $foundHit=0;
     foreach my $curSearchPosition (@searchPositions) {
         if(compareSequences(substr($regionSequence, $regionSearchFlank + $searchPositions[$curSearchPosition], length($searchSequence)), $searchSequence) ) { 
@@ -362,7 +356,6 @@ sub remap {
 
     if($hitPosition != -1) { ### If we found our sequence, update the coordiantes
         my $newAbsStart = $curMapping->getAbsPos() + $searchPositions[$hitPosition] - $startCoordBias;
-
         return $newAbsStart;
     } else {
         return -1;

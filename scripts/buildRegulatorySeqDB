@@ -47,7 +47,7 @@ while(my $curLine = <$genomeFastaFile>) {
 	if(substr($curLine,0,1) eq ">") {
 		$curChr = cleanChrName($curLine);
 	} else {
-		$chromosomes{$curChr} .= $curLine;
+		$chromosomes{$curChr} .= uc($curLine);
 	}
 }
 

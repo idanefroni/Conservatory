@@ -392,7 +392,9 @@ sub writeDatabase {
 
 
 sub updateAbsoluteCoordinates {
-    my ($self, $genomeDB) = @_;
+    my ($self, $genomeDB, $verbose) = @_;
+    if(!defined $verbose) { $verbose = 0; }
+    
     my $curGenome="";
     $self->orderMappingByGenome();
  	foreach my $curMapping ( @{ $self->getMappingsByOrder() } ) {
@@ -401,6 +403,7 @@ sub updateAbsoluteCoordinates {
             clearGeneCooordinateDatabase();
         }
         $curMapping->fillAbsoluteCoordiantes($genomeDB);
+        if($verbose) { print "."; }
 	}
 }
 

@@ -470,7 +470,7 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 					### If there is an overlap, assign the deep CNS to the new subCNS.
 					if($curMapping->getBreakPoint() == $curBreakpoint) {
 						$curMapping->setRRP( $curMapping->getRRP() - $CNSBreakpoints[$curBreakpoint]);
-						$curMapping->setCNSID($CNSforBreakpointName);						
+						$curMapping->setCNSID($CNSforBreakpointName);		
 						$mappingDB->add($curMapping);
 					}
 				}
@@ -546,7 +546,7 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 		$curCNS->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@CNSSpecies ));
 	}
 	if($verbose) { print "PROGRESS: Updating absolute coordinates..."; }
-	$mappingDB->updateAbsoluteCoordinates($genomeDB);
+	$mappingDB->updateAbsoluteCoordinates($genomeDB, $verbose);
 	if($verbose) { print "Done\n"; }		
 
 	if($verbose) { print "PROGRESS: Writing output files..."; }
@@ -716,7 +716,6 @@ sub loadMAF {
 		if($alignmentLengthFilter==0 || $referenceSequenceLength >= $alignmentLengthFilter*$referenceSequenceMaxLength ) {
 			my $mapping = new Mapping($referenceLocus, geneToSpecies($targetLocus), $targetLocus, $targetRelativePosition, $targetAlignmentStrand, $referenceRelativePosition, $targetSequence, $referenceSequence);
 			$mappings->add($mapping);
-#			if($mapping->getLocus() eq "Camplexicaulis-Camplexicaulis-Caamp.0095s1139") { $mapping->print; }
 			# Merge the aligned sequences
 			$MSARef->{$targetSpecies} = mergeFastaSequences($MSARef->{$targetSpecies}, $mapping->getCNSSeq(), $referenceAlignment->start()-1);
 		} else {
@@ -763,12 +762,6 @@ sub loadMAFforCNSs {
 
 		my $targetAlignmentStrand = $targetAlignment->strand();
 		if($targetAlignmentStrand == -1 ) { $targetAlignmentStrand = "-"; } else {$targetAlignmentStrand = "+"; }
-		if($targetAlignmentStrand eq "-") {  ### Start coordinate should always be the start of the sequence
-			my $targetSequenceNoGaps = $targetSequence;
-			$targetSequenceNoGaps =~ s/-//g;
-			$targetRelativePosition += length($targetSequenceNoGaps) -1; 
-		}
-
 
 		if($CNSDB->exists($referenceLocus) && (($upOrDownDictionary[$curAlnIndex] eq "U" && $CNSDB->getCNSByID($referenceLocus)->getPos() < 0) || ($upOrDownDictionary[$curAlnIndex] eq "D" && $CNSDB->getCNSByID($referenceLocus)->getPos() >= 0) )) {
 			my $mapping = new Mapping($referenceLocus, $targetSpecies, $targetLocus, $targetRelativePosition, $targetAlignmentStrand, $referenceRelativePosition, $targetSequence, $referenceSequence);

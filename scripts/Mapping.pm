@@ -331,6 +331,11 @@ sub setName {
 sub flip {
     my ($self) = @_;
     $self->{_Seq} = reverseComplement($self->{_Seq});
+    if($self->getStrand() eq "+") {
+        $self->setPos( $self->getPos() + $self->getAbsLen());
+    } else {
+        $self->setPos( $self->getPos() - $self->getAbsLen());
+    }
     $self->{_Strand} = flipStrand($self->{_Strand});
 
 }
@@ -392,7 +397,6 @@ sub overlap {
     if (($startOne <= $startTwo && $endOne <= $startTwo) || ($startOne >= $endTwo) || ($startTwo >= $endOne)) {
 		return 0;
 	} else {
-#	    return (min($endOne, $endTwo) - max($startOne, $startTwo))/ max( $endOne-$startOne, $endTwo-$startTwo);
         my $overlapStart = ($startOne > $startTwo) ? $startOne : $startTwo;
         my $overlapEnd = ($endOne < $endTwo) ? $endOne : $endTwo;
         my $overlap = $overlapEnd - $overlapStart;

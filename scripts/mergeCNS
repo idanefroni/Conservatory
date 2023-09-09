@@ -419,7 +419,7 @@ foreach my $anchorCNSID (keys %superGroups) {
 
 		### skip highly repetitive or very long CNSs
 		my $mappingsForCNSNum = scalar @{ $mappingDB->getMappingsForCNS($mergedCNS) };
-#		print "Mappings: $mergedCNS $mappingsForCNSNum.\n";
+
 		if($mappingsForCNSNum < $maxMappingsPerCNS && $mergedCNS->getLen() < $maxCNSLength) {
 			$deepCNSMerged = $deepCNSMerged + (scalar keys %CNSsInGroup);
 			$CNSMerged = $CNSMerged + (scalar keys %CNSsInGroup);
@@ -548,7 +548,7 @@ $CNSDB->updateNumberOfSupportingSpecies($mappingDB);
 
 $CNSDB->writeDatabase($outputCNSFileName);
 
-$mappingDB->writeDatabase($outputMapFileName);
+$mappingDB->writeDatabase($outputMapFileName, $CNSDB);
 
 ##########
 
