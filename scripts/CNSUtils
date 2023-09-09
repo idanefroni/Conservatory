@@ -31,7 +31,7 @@ my $makegffReference;
 my $sortMapFile;
 
 my $filterRepetitiveCNSCutoff = 0.01; ### Filter the top 0.01%
-my $regionSearchFlank=50;
+my $regionSearchFlank=75;
 
 my $verbose=0;
 
@@ -161,7 +161,7 @@ if($fixPositions) {
     }
 
     foreach my $curMapping (@{ $mappingDB->getMappingsByOrder() }) {
-       
+        
        if( (defined $fixGenome && ($curMapping->getGenome() ne $fixGenome)) ||  !$curMapping->hasAbsCoordiantes() ) { next; }
 
        if(geneToGenome($curMapping->getLocus()) ne $curGenome) {

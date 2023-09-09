@@ -449,7 +449,7 @@ sub translateRealtiveToAbsoluteCoordinates {
 
 		if($geneStrand eq "+") {
 			if($start <0) { ## if it is upstream
-				$absStart = $absGeneStart + $start +1;
+				$absStart = $absGeneStart + $start;
 			} else {
 				$absStart = $absGeneEnd + $start;
 			}
@@ -457,17 +457,10 @@ sub translateRealtiveToAbsoluteCoordinates {
 			if($start <0) { ## if it is upstream
 				$absStart = $absGeneEnd - $start - $coord->{'Len'} +1;
 			} else {
-				$absStart = $absGeneStart - $start - $coord->{'Len'};
+				$absStart = $absGeneStart - $start - $coord->{'Len'} +1;
 			}
 		}
 		
-		if($segementStrand eq "-") {
-			if($geneStrand eq "+") {
-				$absStart -= $coord->{'Len'};
-			} else {
-				$absStart += $coord->{'Len'};
-			}
-		}
 		### Now copy the hash
 		my %absCoordiantesHash;
 		foreach my $curKey (keys %$coord) {

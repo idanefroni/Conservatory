@@ -132,13 +132,13 @@ sub setRelPosFromAbs {
     my $newRelativePosition;
 
     if($geneCoordinates->{'Strand'} eq "+") {
-        if($self->{_Pos}>=0) {
-            $newRelativePosition = $absPos - $geneCoordinates->{'End'} -1; 
+        if($self->getPos()>=0) {
+            $newRelativePosition = $absPos - $geneCoordinates->{'End'}; 
         } else {
             $newRelativePosition = $absPos - $geneCoordinates->{'Start'}; 
         }
     } else {
-        if($self->{_Pos}>=0) {
+        if($self->getPos()>=0) {
             $newRelativePosition = $geneCoordinates->{'Start'} - $absPos - $self->getAbsLen() + 1;
         } else {
             $newRelativePosition = $geneCoordinates->{'End'} - $absPos - $self->getAbsLen() + 1; 
@@ -233,12 +233,6 @@ sub getCNSSeq {
 		$cnsSeq =~ s/Z//g;   ## Remove the insertions from the target and reference sequences to keep the frame of reference as the reference sequence only
     }
     return $cnsSeq;
-
-#    if($self->getStrand() eq "+") {
- #       
-  #  } else {
-   #     return reverseComplement($cnsSeq); 
-    #}
 }
 
 sub getRefCNSSeq {
@@ -247,14 +241,6 @@ sub getRefCNSSeq {
 
     $refSeq =~ s/-//g;
     return($refSeq);
-}
-
-### returns the sequence in genome space.
-sub getTargetSeq {
-    my ($self) = @_;
-    my $seqNoGaps = $self->getSeq();
-    $seqNoGaps =~ s/-//g;
-    return $seqNoGaps;
 }
 
 sub getSeqBP {
@@ -491,6 +477,7 @@ sub createSubSetMapping {
 
 
     (my $startInTargetSpace, my $endInTargetSpace) = $self->_translateCNSSpaceToTargetSpace($startInCNSSpace, $endInCNSSpace);
+    (my $startInTargetGenomeSpace, my $endInTargetGenomeSpace) = $self->_translateCNSSpaceToGenomeSpace($startInCNSSpace, $endInCNSSpace);
     (my $startInReferenceSpace, my $endInReferenceSpace) = $self->_translateCNSSpaceToReferenceSpace($startInCNSSpace, $endInCNSSpace);
 
     my $subMapping = new Mapping($self);
@@ -503,17 +490,13 @@ sub createSubSetMapping {
     }
 
     $subMapping->setRRP(max($start, $self->getRRP()));
+    $subMapping->setPos($subMapping->getPos() + $startInTargetGenomeSpace);
 
-    if($subMapping->getStrand() eq "+") {
-        $subMapping->setPos($subMapping->getPos() + $startInTargetSpace);
-    } else {
-        $subMapping->setPos($subMapping->getPos() + $endInTargetSpace - $self->getAbsLen() );
-    }
     if($subMapping->hasAbsCoordiantes()) {
         if($subMapping->getAbsStrand eq "+") {
-            $subMapping->setAbsPos($subMapping->getAbsPos() + $startInTargetSpace);
+            $subMapping->setAbsPos($subMapping->getAbsPos() + $startInTargetGenomeSpace);
         } else {
-            $subMapping->setAbsPos($subMapping->getAbsPos() + $self->getAbsLen() - $endInTargetSpace );
+            $subMapping->setAbsPos($subMapping->getAbsPos() + $self->getAbsLen() - $endInTargetGenomeSpace );
         }
     }
     return $subMapping;
@@ -522,12 +505,37 @@ sub createSubSetMapping {
 ### Takes a coordinate in CNS space and translate to target genome space
 sub _translateCNSSpaceToTargetSpace {
     my ($self, $start, $end) = @_;
+    if(!defined $start || !defined $end) { die "ERROR: _translateCNSSpaceToTargetSpace must accept start and end coordiantes.\n"; }
     my $startGaps = _countGaps($self->getRefSeq(), $start);
     my $endGaps = _countGaps($self->getRefSeq(), $end); 
     my $targetSpaceStart = $start + $startGaps;
     my $targetSpaceEnd = $end + $endGaps; 
+    return ($start, $end);
+}
 
-    return ($targetSpaceStart, $targetSpaceEnd);
+sub _translateCNSSpaceToGenomeSpace { 
+    my ($self, $start, $end) = @_;
+
+    ($start,$end) = $self->_translateCNSSpaceToTargetSpace($start,$end);
+    my $seqToStart;
+    my $seqToEnd;
+    if($self->getStrand() eq "+") {
+        $seqToStart = substr($self->getSeq(), 0,$start);    
+        $seqToEnd = substr($self->getSeq(), 0,$end);
+    } else {
+        $seqToStart = substr($self->getSeq(), $end);
+        $seqToEnd = substr($self->getSeq(), $start);
+    }
+    my $startGaps = $seqToStart =~ tr/-//;
+    my $endGaps = $seqToEnd =~ tr/-//;
+    $start -= $startGaps;
+    $end -= $endGaps; 
+
+    if($self->getStrand() eq "+") {
+        return ($start, $end );
+    } else {
+        return ($self->getLen() - $end, $self->getLen() - $start);
+    }
 }
 
 sub _countGaps {
@@ -545,11 +553,11 @@ sub _countGaps {
 }
 sub _translateCNSSpaceToReferenceSpace {
     my ($self, $start, $end) = @_;
-    my $startGaps = _countGaps($self->getRefSeq(), $start);
-    my $endGaps = _countGaps($self->getRefSeq(), $end); 
-    my $refSpaceStart = $start + $startGaps;
-    my $refSpaceEnd = $end + $endGaps;    
-    return ($refSpaceStart, $refSpaceEnd);
+ #   my $startGaps = _countGaps($self->getRefSeq(), $start);
+  #  my $endGaps = _countGaps($self->getRefSeq(), $end); 
+   # my $refSpaceStart = $start + $startGaps;
+   # my $refSpaceEnd = $end + $endGaps;    
+    return $self->_translateCNSSpaceToTargetSpace($start,$end);
 }
 
 ### Merge two mappings. must be from the same genome.
@@ -679,7 +687,7 @@ sub print {
 					$self->{_Locus},
 					$self->{_Pos},
 					$self->{_Strand},
-					$self->{_RRP},
+					$self->{_RRP},                                        
 					$self->{_Seq},
 					$self->{_RefSeq},                    
 					$self->{_AbsChr},
