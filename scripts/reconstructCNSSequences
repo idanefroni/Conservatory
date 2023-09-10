@@ -168,12 +168,8 @@ foreach my $curCNS (@{ $CNSDB->getCNSByOrder() } ) {
 	if($verbose) { print "PROGRESS: Reconstructed $curPos/$totalToScreen...\r"; }			
 }
 
-if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
-
 ### Filter low support
-
 $CNSDB->updateNumberOfSupportingSpecies($mappingDB);
-if($verbose) { print "\nPROGRESS: Done. We now have " . $CNSDB->getNumberOfCNSs() . " CNSs...\n"; }
 
 foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {
 	if($curCNS->getSupportingSpeciesNumber() < $minSpeciesForCNS ) { 

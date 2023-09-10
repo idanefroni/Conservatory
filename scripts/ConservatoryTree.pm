@@ -65,7 +65,11 @@ sub new {
 sub findDeepestCommonNode {
 	my ($self, $leavesListRef) = @_;
 	my @leavesList = @$leavesListRef;
-
+	if(scalar @leavesList ==0) {
+		print "WARNING: No species provided for findDeepestCommonNode.\n"; 
+		return "NA";
+	}
+	
 	my $anchorLeafNode = $self->{_AnnotatedTree}->find_node( ($leavesList[0] =~ s/\./_/gr) );
 	if(!defined $anchorLeafNode) { 
 		#die "ERROR in findDeepestCommonNode: Cannot find deepest node $leavesList[0] in tree.\n";
@@ -125,8 +129,8 @@ sub getReconstructedSequence {
 	close($tmpOutputFastaFile);
 
 	## Align using MAFFT
-#	system("mafft --quiet --auto --thread -1 --auto --ep 0.3 --op 7 $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
-	system("mafft --quiet --auto --thread -1 --auto $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
+	system("mafft --quiet --auto --thread -1 --ep 0.3 --op 7 $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
+#	system("mafft --quiet --auto --thread -1 --auto $tmpOutputFastaFileName > $tmpOutputFastaAlignedFileName");
 
 	## and perform reconstruction
 

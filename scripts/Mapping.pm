@@ -226,10 +226,9 @@ sub getCNSSeq {
     my $genomeSeq = $self->{_Seq};
     my $refSeq = $self->{_RefSeq};
     my $cnsSeq = $genomeSeq;
-
-    if($refSeq ne "") {
+    if(defined $refSeq && $refSeq ne "") {
         my @insertionInReference = findAll($refSeq, "-");
-	   	foreach ( @insertionInReference ) { substr($cnsSeq, $_,1) = "Z"; }
+	   	foreach ( @insertionInReference ) { if($_ < length($cnsSeq)) { substr($cnsSeq, $_,1) = "Z";  } }
 		$cnsSeq =~ s/Z//g;   ## Remove the insertions from the target and reference sequences to keep the frame of reference as the reference sequence only
     }
     return $cnsSeq;
@@ -532,13 +531,13 @@ sub _translateCNSSpaceToGenomeSpace {
     }
     my $startGaps = $seqToStart =~ tr/-//;
     my $endGaps = $seqToEnd =~ tr/-//;
-    $start -= $startGaps;
-    $end -= $endGaps; 
+
+#    print "$start:$end:$startGaps:$endGaps:" . $self->getLen() . "\n";
 
     if($self->getStrand() eq "+") {
-        return ($start, $end );
+        return ($start - $startGaps, $end - $endGaps);
     } else {
-        return ($self->getLen() - $end, $self->getLen() - $start);
+        return ($self->getLen() - $end -$startGaps, $self->getLen() - $start - $endGaps);
     }
 }
 
@@ -557,10 +556,7 @@ sub _countGaps {
 }
 sub _translateCNSSpaceToReferenceSpace {
     my ($self, $start, $end) = @_;
- #   my $startGaps = _countGaps($self->getRefSeq(), $start);
-  #  my $endGaps = _countGaps($self->getRefSeq(), $end); 
-   # my $refSpaceStart = $start + $startGaps;
-   # my $refSpaceEnd = $end + $endGaps;    
+;    
     return $self->_translateCNSSpaceToTargetSpace($start,$end);
 }
 
@@ -572,10 +568,6 @@ sub merge {
     if(geneToGenome($self->getLocus()) ne geneToGenome($other->getLocus()) ) {
         die "ERROR: Trying to merge two mappings from different genomes: " . $self->getLocus() . " and " . $other->getLocus() . "\n";
     }
-
-   if($self->getStrand() ne $other->getStrand()) {
-        $other->flip();
-   }
 
     my $mySeq = $self->getTargetSeq();
     my $otherSeq = $other->getTargetSeq();
@@ -593,35 +585,19 @@ sub merge {
     my $overlapLen = ($minEnd >= $self->getAbsPos() && $minEnd >= $other->getAbsPos())
                 ? $minEnd - max($self->getAbsPos(), $other->getAbsPos())
                 : 0;
-    if($self->getStrand() eq "+") {
-       	substr($combinedSequence,$self->getAbsPos() - $combinedSeqStart, length($mySeq)) = $mySeq;
 
-        if(substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart, $overlapLen) ne substr($otherSeq,0,$overlapLen)) {
-            $bias = _findMergeBias($combinedSequence, $other->getAbsPos() - $combinedSeqStart, substr($otherSeq,0,$overlapLen), $maxBias);
-        }           
-        if(!defined $bias) {
-            $rejectMerge=1;
-        } else {
-    	    substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart + $bias, length($otherSeq)) = $otherSeq;
-        }
-    } else { 
-        $mySeq = reverseComplement($mySeq);
-        $otherSeq = reverseComplement($otherSeq);
-       	substr($combinedSequence,$self->getAbsPos() - $combinedSeqStart, length($mySeq)) = $mySeq;
+   	substr($combinedSequence,$self->getAbsPos() - $combinedSeqStart, length($mySeq)) = $mySeq;
 
-        if(substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart, $overlapLen) ne substr($otherSeq,0,$overlapLen)) {
-            $bias = _findMergeBias($combinedSequence, $other->getAbsPos() - $combinedSeqStart, substr($otherSeq,0,$overlapLen), $maxBias);
-        }           
-        if(!defined $bias) {
-            $rejectMerge=1;
-        } else {
-    	    substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart+$bias, length($otherSeq)) = $otherSeq;
-            $combinedSequence = reverseComplement($combinedSequence);
-        }
+    if(substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart, $overlapLen) ne substr($otherSeq,0,$overlapLen)) {
+        $bias = _findMergeBias($combinedSequence, $other->getAbsPos() - $combinedSeqStart, substr($otherSeq,0,$overlapLen), $maxBias);
+    }           
+    if(!defined $bias) {
+        $rejectMerge=1;
+    } else {
+        substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart + $bias, length($otherSeq)) = $otherSeq;
     }
-
+    
     if(!$rejectMerge) {
-
         $self->setAbsPos($combinedSeqStart);
         $self->setSeq($combinedSequence);
         $self->setPos(min($self->getPos(), $other->getPos));

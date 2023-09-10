@@ -191,7 +191,9 @@ if($fixPositions) {
             ## Get the absolute coordiantes for the gene to update the relative position
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
             if($curMapping->getAbsPos() != $newAbsStart) {
-                $totalFixedPositions++; 
+                $totalFixedPositions++;
+#                $curMapping->print;
+ #               print "$newAbsStart\n";
             }
             $curMapping->setAbsPos($newAbsStart);
             $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
@@ -340,13 +342,15 @@ sub remap {
                                                                      ## record where we started
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
 
+    #print "$regionSequence\n";
+    #print "$searchSequence\n";    
     my @searchPositions = (0);
     foreach my $curFlankPos (1..$regionSearchFlank) {
         push @searchPositions, $curFlankPos;
         push @searchPositions, -$curFlankPos;        
     }
     my $hitPosition = -1;
-    my $foundHit=0;
+    my $foundHit=0; 
     foreach my $curSearchPosition (@searchPositions) {
         if(compareSequences(substr($regionSequence, $regionSearchFlank + $searchPositions[$curSearchPosition], length($searchSequence)), $searchSequence) ) { 
             $hitPosition = $curSearchPosition;

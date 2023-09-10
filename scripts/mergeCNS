@@ -147,7 +147,7 @@ foreach my $curCNS (@orderedCNSs[1..(scalar @orderedCNSs-1)]) {
 		$lastCNS->getRefGenome() eq $curCNS->getRefGenome() && 
 		$lastCNS->getRefLocus() ne $curCNS->getRefLocus() && 
 		$lastCNS->getRefChr() eq $curCNS->getRefChr() && 
-		$lastCNS->getReferenceMapping->overlap( $curCNS->getReferenceMapping() )) {
+		$lastCNS->getReferenceMapping->overlap( $curCNS->getReferenceMapping() )> $minCNSOverlapToMerge) {
 
 			## Prefer the CNS with the most conserved synteny (largest number of supporting species for CNS-Gene synteny)
 			my $syntenyComparison = $lastCNS->compareSynteny($curCNS, $mappingDB, $conservatoryTree );
@@ -403,9 +403,17 @@ foreach my $anchorCNSID (keys %superGroups) {
 				last;
 			}
 		}
+		my $mergedCNSLength=0;
+		foreach my $curCNSID (keys %CNSsInGroup) {
+			$mergedCNSLength += $CNSDB->getCNSByID($curCNSID)->getLen();
+#			if($CNSDB->getCNSByID($curCNSID)->getLen() > $mergedCNSLength) {
+#				$mergedCNSLength = $CNSDB->getCNSByID($curCNSID)->getLen();				
+#			}
+		}
 
 		my $mergedCNSName = "$superCNSPrefix.$anchorCNSID";
-		my $mergedCNS = new CNS($mergedRefGenome, $mergedCNSName, join("|", sort keys %CNSsInGroup), );
+	
+		my $mergedCNS = new CNS($mergedRefGenome, $mergedCNSName, join("|", sort keys %CNSsInGroup), 0, $mergedCNSLength);
 		$CNSDB->add($mergedCNS);
 
 		## Merged mappings for the new CNS and delete individual CNS		

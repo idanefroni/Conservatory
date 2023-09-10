@@ -383,6 +383,7 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 					$mappingForCNS->setCNSID($CNSID);
 					$mappingForCNS->setRRP( $mappingForCNS->getRRP() - $newCNS->getPos());
 					$mappingDB->add($mappingForCNS);
+#					if($mappingForCNS->getLocus() eq "Aalpina-Aalpina-Aa_G754810") { $mappingForCNS->print;}
 
 					if(!defined $cnsSeqs{$curMapping->getSpecies()}) {
 						$cnsSeqs{$curMapping->getSpecies()} = ("-" x $mappingForCNS->getRRP()) . $mappingForCNS->getCNSSeq();
@@ -452,7 +453,6 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 	foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {
 		my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS);
 
-#		if(@CNSBreakpoints > 200) {
 		if(@CNSBreakpoints > 2) {
 			if($verbose) { print "PROGRESS: Breaking CNS " . $curCNS->getID() . ". Breakpoints: " . join(",", @CNSBreakpoints) . "...\n"; }
 			my @assignedMappings = $mappingDB->assignMappingsToBreakpoints($curCNS, \@CNSBreakpoints);
@@ -532,7 +532,7 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 				foreach my $curMapping (@{ $mappingDB->getMappingsForCNS($curCNS) }) {
 		  	  		my @classification = split /-/ , $genomeDB->getClassification($curMapping->getGenome());
 		  	  		if($classification[$levelToCheck] ne $referenceClassification[$levelToCheck]) {
-  	 	  	  			if($verbose) { print "PROGRESS: Removing alignment of " . $curMapping->getLocus() . " at $levelToCheck. because $classification[$levelToCheck] ne $referenceClassification[$levelToCheck]. (SpNum:" . $curCNS->getSupportingSpeciesNumber() .")\n"; }
+  	 	  	  			if($verbose) { print "PROGRESS: Removing alignment of " . $curMapping->getLocus() . " for " . $curMapping->getCNSID() . " at level $levelToCheck. because $classification[$levelToCheck] ne $referenceClassification[$levelToCheck]. (SpNum:" . $curCNS->getSupportingSpeciesNumber() .")\n"; }
 						$mappingDB->deleteMapping($curMapping);
 					}
 				}
@@ -543,7 +543,12 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 	$CNSDB->updateNumberOfSupportingSpecies($mappingDB);
 	foreach my $curCNS (@{ $CNSDB->getCNSByOrder() }) {
 		my @CNSSpecies = $mappingDB->getSpeciesForCNS($curCNS);
-		$curCNS->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@CNSSpecies ));
+		if(scalar @CNSSpecies >= $minSpeciesForCNS) {
+			$curCNS->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@CNSSpecies ));
+		} else {
+			$mappingDB->deleteCNS($curCNS);
+			$CNSDB->deleteCNS($curCNS);
+		}
 	}
 	if($verbose) { print "PROGRESS: Updating absolute coordinates..."; }
 	$mappingDB->updateAbsoluteCoordinates($genomeDB, $verbose);
@@ -716,6 +721,7 @@ sub loadMAF {
 		if($alignmentLengthFilter==0 || $referenceSequenceLength >= $alignmentLengthFilter*$referenceSequenceMaxLength ) {
 			my $mapping = new Mapping($referenceLocus, geneToSpecies($targetLocus), $targetLocus, $targetRelativePosition, $targetAlignmentStrand, $referenceRelativePosition, $targetSequence, $referenceSequence);
 			$mappings->add($mapping);
+#			if($mapping->getLocus() eq "Aalpina-Aalpina-Aa_G754810") { $mapping->print;}
 			# Merge the aligned sequences
 			$MSARef->{$targetSpecies} = mergeFastaSequences($MSARef->{$targetSpecies}, $mapping->getCNSSeq(), $referenceAlignment->start()-1);
 		} else {
