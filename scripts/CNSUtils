@@ -192,8 +192,8 @@ if($fixPositions) {
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
             if($curMapping->getAbsPos() != $newAbsStart) {
                 $totalFixedPositions++;
-#                $curMapping->print;
- #               print "$newAbsStart\n";
+                #$curMapping->print;
+                #print "$newAbsStart\n";
             }
             $curMapping->setAbsPos($newAbsStart);
             $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
@@ -338,12 +338,10 @@ sub remap {
     my ($curMapping, $curGenomeSequence) = @_;
 
     my $searchSequence = $curMapping->getTargetSeqInGenome();
-    my $startCoordBias = min(0,$curMapping->getAbsPos() - $regionSearchFlank);  ### If this is the start of the choromosome and we donot have enough flank sequeuence
+    my $startCoordBias = min(0,$curMapping->getAbsPos() - $regionSearchFlank -1);  ### If this is the start of the choromosome and we donot have enough flank sequeuence
                                                                      ## record where we started
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
 
-    #print "$regionSequence\n";
-    #print "$searchSequence\n";    
     my @searchPositions = (0);
     foreach my $curFlankPos (1..$regionSearchFlank) {
         push @searchPositions, $curFlankPos;

@@ -20,6 +20,8 @@ my $threads=16;
 my @threadPids;
 
 my $skipConservation=0;
+my $skipMerge=0;
+
 my $justFamilyAlignment=0;
 my $minIdentity=0;
 my $minSpeciesNum= -1;
@@ -37,7 +39,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-species=i" => \$minSpeciesNum,
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"skip-conservation" => \$skipConservation,
-			"do-not-filter" =>\$donotFilter,
+			"skip-merge" => \$skipMerge,
 			"just-family-alignment" => \$justFamilyAlignment,
 			"tmp-dir=s" => \$tmpDir,			
 			"force" => \$force,
@@ -57,6 +59,7 @@ if($help || $referenceGenome eq "") {
 	print "\t--min-phylop-score\t\tMinimum phyloP score to consider as significant CNS.\n";
 	print "\t--skip-missing-genomes\t\tSkip genomes with incomplete data and continue analysis (DEFAULT: terminate with error message).\n";
 	print "\t--skip-conservation\t\tSkip conservation calculation step (just merge existing files).\n";
+	print "\t--skip-merge\t\tSkip merging of CNSs.\n";
 	print "\t--just-family-alignment\t\tPerform just the alignment step (no CNS or deep CNS calculations).\n";
     print "\t--tmp-dir\t\tSpecify the temporary directory (DEFAULT is alignments/<referenceName>/tmp).\n"; 	
 	print "\t--force\t\tForce rebuilding alignments.\n";
@@ -144,7 +147,7 @@ while(my $curgenomeline= <$genomedb>) {
 						print localtime() . ": Thread $placeForProcess is processing $curLocus.\n";
 						my $alignmentParams;
 						
-						$alignmentParams = "--reference $referenceGenome --locus $curLocus --skip-kaks";
+						$alignmentParams = "--reference $referenceGenome --locus $curLocus ";
 
 						if($minIdentity>0) { $alignmentParams .= " --min-identity $minIdentity"; }
 						if($minSpeciesNum>=0) { $alignmentParams .= " --min-species $minSpeciesNum"; }
@@ -219,34 +222,33 @@ while(my $curgenomeline= <$genomedb>) {
 			system("find $conservationDir/$family/ -name '*.bed' -exec cat {} \\; | sed 's/ /\t/g' | awk '(\$4>0 && \$3>\$2 && \$2>=0)' | LC_COLLATE=C sort -k1,1 -k2,2n -u > $conservationDir/$family.bed");
 		}
 		if($verbose) { print "PROGRESS: Exporting bigwig file...\n"; }				
-		system("bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
+		system("~/bedGraphToBigWig $conservationDir/$family.bed $genomesDir/$curgenomeFamily/$curgenomeReference.chrom.size $conservationDir/$family.bw");
 
-		if($verbose) { print "PROGRESS: Merging CNS files...\n"; }
+		if(!$skipMerge) {
+			if($verbose) { print "PROGRESS: Merging CNS files...\n"; }
+			system("find $conservationDir/$family/ -name '*.cns.csv' -exec cat {} \\; | sort -t',' -k1,1 -k7,7n | uniq > $conservationDir/$family.cns.sorted.csv");
+			if($verbose) { print "PROGRESS: Merging map files...\n"; }		
+			system("find $conservationDir/$family/ -name '*.map.csv' -exec cat {} \\; | sort -t',' -k1,1 | uniq > $conservationDir/$family.map.sorted.csv");
+			# Make nice output files. BW for the phylop track and GFF for the CNS
+			print "PROGRESS: END data merge and sort.\n";		
+			## Merge CNSs
+			print "PROGRESS: START merging CNS (" . localtime() . ").\n";
+			my $options;
+			if($verbose) { $options .= "--verbose "; }
+
+			system("/usr/bin/perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.cns.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.prefix.csv --remove-original-CNS  $options");
+			unlink("$conservationDir/$family.cns.sorted.csv");
+			unlink("$conservationDir/$family.map.sorted.csv");
+
+			print "PROGRESS: END merging CNS (" . localtime() . ").\n";
+			print "PROGRESS: START CNS verification (" . localtime() . ").\n";
+			if($verbose) { $options = "--verbose "; }
+
+			system("/usr/bin/perl $conservatoryDir/scripts/CNSUtils --verify-positions --sort --in-cns $conservationDir/$family.cns.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.prefix.csv --out-map $conservationDir/$family.map.csv $options");
+			print "PROGRESS: END CNS verification (" . localtime() . ").\n";
+			unlink("$conservationDir/$family.map.prefix.csv");
 		
-		system("find $conservationDir/$family/ -name '*.cns.csv' -exec cat {} \\; | sort -t',' -k1,1 -k7,7n | uniq > $conservationDir/$family.cns.sorted.csv");
-		if($verbose) { print "PROGRESS: Merging map files...\n"; }		
-		system("find $conservationDir/$family/ -name '*.map.csv' -exec cat {} \\; | sort -t',' -k1,1 | uniq > $conservationDir/$family.map.sorted.csv");
-	
-		# Make nice output files. BW for the phylop track and GFF for the CNS
-		print "PROGRESS: END data merge and sort.\n";		
-		## Merge CNSs
-		print "PROGRESS: START merging CNS (" . localtime() . ").\n";
-		my $options;
-		if($verbose) { $options .= "--verbose "; }
-		if($donotFilter) { $options .= "--do-not-filter "; }
-		system("/usr/bin/perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.cns.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.prefix.csv --remove-original-CNS  $options");
-		unlink("$conservationDir/$family.cns.sorted.csv");
-		unlink("$conservationDir/$family.map.sorted.csv");
-
-		print "PROGRESS: END merging CNS (" . localtime() . ").\n";
-
-		print "PROGRESS: START CNS verification (" . localtime() . ").\n";
-		if($verbose) { $options = "--verbose "; }
-
-		system("/usr/bin/perl $conservatoryDir/scripts/CNSUtils --verify-positions --sort --in-cns $conservationDir/$family.cns.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.prefix.csv --out-map $conservationDir/$family.map.csv $options");
-		print "PROGRESS: END CNS verification (" . localtime() . ").\n";
-		unlink("$conservationDir/$family.map.prefix.csv");
-		
+		}
 		print "END: processing conservation for $family (reference genome $curgenomeName)\n";
 	}
 }

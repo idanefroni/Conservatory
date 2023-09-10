@@ -401,9 +401,10 @@ sub updateAbsoluteCoordinates {
         if($curGenome eq "") { $curGenome = $curMapping->getGenome(); }
         if($curGenome ne $curMapping->getGenome()) { 
             clearGeneCooordinateDatabase();
+            $curGenome = $curMapping->getGenome();
+            if($verbose) { print "."; }            
         }
         $curMapping->fillAbsoluteCoordiantes($genomeDB);
-        if($verbose) { print "."; }
 	}
 }
 
