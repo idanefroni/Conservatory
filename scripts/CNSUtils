@@ -172,7 +172,7 @@ if($fixPositions) {
 
         if($verbose) { print "PROGRESS: Processing mappings..." . $totalVerifiedPositions++ . " ($curGenome)....\r" };
 
-        if($curMapping->getAbsEnd() > length($curGenomeSequence->{ cleanChrName($curMapping->getAbsChr()) })) {
+        if($curMapping->getAbsEnd() > length($curGenomeSequence->{ cleanChrName($curMapping->getAbsChr()) })+1) {
             if(defined $outRejectFileName) {
                 $curMapping->print($outMapRejectFile);
             }
@@ -192,8 +192,6 @@ if($fixPositions) {
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
             if($curMapping->getAbsPos() != $newAbsStart) {
                 $totalFixedPositions++;
-                #$curMapping->print;
-                #print "$newAbsStart\n";
             }
             $curMapping->setAbsPos($newAbsStart);
             $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
@@ -342,8 +340,8 @@ sub remap {
                                                                      ## record where we started
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
 
-#    $curMapping->print;
-#    print "$regionSequence\n$searchSequence\n";
+ #   $curMapping->print;
+  #  print "$regionSequence\n$searchSequence\n";
     my @searchPositions = (0);
     foreach my $curFlankPos (1..$regionSearchFlank) {
         push @searchPositions, $curFlankPos;
@@ -360,7 +358,7 @@ sub remap {
 
     if($hitPosition != -1) { ### If we found our sequence, update the coordiantes
         my $newAbsStart = $curMapping->getAbsPos() + $searchPositions[$hitPosition];
-        #print "$newAbsStart\n";
+#        print "$newAbsStart\n";
         return $newAbsStart;
     } else {
         return -1;

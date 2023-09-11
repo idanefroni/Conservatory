@@ -487,7 +487,7 @@ sub createSubSetMapping {
     my $subSeq = substr(($self->{_Seq} . $seqPadding ), $startInTargetSpace, $endInTargetSpace - $startInTargetSpace);
     $subMapping->setSeq($subSeq);
 
-    if(defined $self->getRefSeq()) {
+    if(defined $self->getRefSeq() && $self->getRefSeq() ne "") {
         my $subRefSeq =substr($self->{_RefSeq} . $seqPadding, $startInReferenceSpace, $endInReferenceSpace - $startInReferenceSpace);
         $subMapping->setRefSeq($subRefSeq);
     }
@@ -595,23 +595,6 @@ sub merge {
         substr($combinedSequence, $combinedSeqStart - $other->getAbsPos()-length($otherSeq) + length($combinedSequence), length($otherSeq)) = $otherSeq;
     }
 
-    if($self->getGenome() eq "Fvesca") {
-         $self->print;
-         $other->print;
-        print "$combinedSeqStart:me " . $self->getAbsPos() . ":" . length($mySeq) . ":" . $mySeq . ":" . ($self->getAbsPos() - $combinedSeqStart - length($mySeq) + length($combinedSequence)) . "\n";        
-        print "$combinedSeqStart:other " . $other->getAbsPos() . ":" . length($otherSeq) . ":" . $otherSeq . ":" . ($other->getAbsPos() - $combinedSeqStart - length($otherSeq) + length($combinedSequence)) . "\n";            
-        print "Combinding $mySeq:$otherSeq\n";
-        print "Overlap: $overlapLen\n$combinedSequence\n";
-    }
-
-#    if(substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart, $overlapLen) ne substr($otherSeq,0,$overlapLen)) {
-#        $bias = _findMergeBias($combinedSequence, $other->getAbsPos() - $combinedSeqStart, substr($otherSeq,0,$overlapLen), $maxBias);
-#    }           
-#    if(!defined $bias) {
-#        $rejectMerge=1;
- #   } else {
-  #      substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart + $bias, length($otherSeq)) = $otherSeq;
-   # }
     
     $self->setAbsPos($combinedSeqStart);
     $self->setSeq($combinedSequence);
