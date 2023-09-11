@@ -374,7 +374,7 @@ sub nodeToLevel {
     my @angiospermsNodes = ("N12","N13","N14");
     my @dicotNodes = ("N15","N16","N17","N18");
     my @rosidNodes = ("N19","N20");
-    my @asteridNodes = ("N167","N168");
+    my @asteridNodes = ("N167","N168", "N170","N182","N192","N193");
     my @monocotNodes = ("N226","N227","N228","N269","N228","229");
 
     my $conservationLevel = "Order/Family";

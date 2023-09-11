@@ -367,7 +367,7 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 		if($positionInReference<0) {
 			$refSeq = substr($MSAUpstream{$referenceSpecies}, $positionInReference + $genomeDB->getUpstreamLength($referenceGenome), $CNSLength );
 		} else {
-			$refSeq = substr($MSADownstream{$referenceSpecies}, $positionInReference-1, $CNSLength );
+			$refSeq = substr($MSADownstream{$referenceSpecies}, max(0,$positionInReference-1), $CNSLength );
 		}
 		my $referenceMapping = new Mapping($newCNS->getID(), $referenceSpecies, $refLocusFullName, $positionInReference, "+", 0, $refSeq,$refSeq );
 		$CNSDB->add($newCNS);
@@ -383,7 +383,6 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 					$mappingForCNS->setCNSID($CNSID);
 					$mappingForCNS->setRRP( $mappingForCNS->getRRP() - $newCNS->getPos());
 					$mappingDB->add($mappingForCNS);
-#					if($mappingForCNS->getLocus() eq "Aalpina-Aalpina-Aa_G754810") { $mappingForCNS->print;}
 
 					if(!defined $cnsSeqs{$curMapping->getSpecies()}) {
 						$cnsSeqs{$curMapping->getSpecies()} = ("-" x $mappingForCNS->getRRP()) . $mappingForCNS->getCNSSeq();
@@ -708,6 +707,8 @@ sub loadMAF {
 			$referenceRelativePosition -= $referenceSequenceMaxLength +1;
 		}
 
+
+
 	   	if(not defined $MSARef->{$referenceSpecies}) {
 	    	$MSARef->{$referenceSpecies} = 'N' x $referenceSequenceMaxLength;;
 	   	}
@@ -719,11 +720,11 @@ sub loadMAF {
 		#### Log the alignment, if it is at the right length
 
 		if($alignmentLengthFilter==0 || $referenceSequenceLength >= $alignmentLengthFilter*$referenceSequenceMaxLength ) {
+			# Merge the aligned sequences
 			my $mapping = new Mapping($referenceLocus, geneToSpecies($targetLocus), $targetLocus, $targetRelativePosition, $targetAlignmentStrand, $referenceRelativePosition, $targetSequence, $referenceSequence);
 			$mappings->add($mapping);
-#			if($mapping->getLocus() eq "Aalpina-Aalpina-Aa_G754810") { $mapping->print;}
-			# Merge the aligned sequences
 			$MSARef->{$targetSpecies} = mergeFastaSequences($MSARef->{$targetSpecies}, $mapping->getCNSSeq(), $referenceAlignment->start()-1);
+
 		} else {
 			if($verbose) {
 				print "PROGRESS: Rejected alignment to $referenceLocus because length is too short ($referenceSequenceLength). CNS length: " . $referenceSequenceMaxLength . "\n";
@@ -759,8 +760,6 @@ sub loadMAFforCNSs {
 		my $targetRelativePosition = $targetAlignment->start() ;
 		my $targetGenome = geneToGenome($targetLocus);
 		my $targetSpecies = geneToSpecies($targetLocus);
-
-		if($targetRelativePosition<0) { $targetRelativePosition }
 
 		if( $upOrDownDictionary[$curAlnIndex] eq "U") {
 			$targetRelativePosition -= $genomeDB->getUpstreamLength($targetGenome) +1;
