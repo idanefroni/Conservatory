@@ -565,6 +565,7 @@ sub merge {
     if(geneToGenome($self->getLocus()) ne geneToGenome($other->getLocus()) ) {
         die "ERROR: Trying to merge two mappings from different genomes: " . $self->getLocus() . " and " . $other->getLocus() . "\n";
     }
+
     my $mySeq = $self->getTargetSeq();
     my $otherSeq = $other->getTargetSeq();
 
@@ -684,7 +685,7 @@ sub printFasta {
 								    $self->{_AbsStrand},
 								    $self->{_AbsPos},
 								    $self->{_Name}) ) . "\n" . 
-								    $self->getCNSSeq() . "\n";
+								    $self->getTargetSeq() . "\n";
 }
 
 1;
