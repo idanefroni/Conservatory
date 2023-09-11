@@ -136,7 +136,7 @@ if(defined $gffOutputFileName) {
 }
 
 
-my $mappingDB = new MappingDatabase($inMapFileName, 0);
+my $mappingDB = new MappingDatabase($inMapFileName, 1);
 
 if($fixPositions) {
     my $totalVerifiedPositions=0;
@@ -342,6 +342,8 @@ sub remap {
                                                                      ## record where we started
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
 
+#    $curMapping->print;
+#    print "$regionSequence\n$searchSequence\n";
     my @searchPositions = (0);
     foreach my $curFlankPos (1..$regionSearchFlank) {
         push @searchPositions, $curFlankPos;
@@ -350,14 +352,15 @@ sub remap {
     my $hitPosition = -1;
     my $foundHit=0; 
     foreach my $curSearchPosition (@searchPositions) {
-        if(compareSequences(substr($regionSequence, $regionSearchFlank + $searchPositions[$curSearchPosition], length($searchSequence)), $searchSequence) ) { 
+        if(compareSequences(substr($regionSequence, $regionSearchFlank + $searchPositions[$curSearchPosition]+$startCoordBias, length($searchSequence)), $searchSequence) ) { 
             $hitPosition = $curSearchPosition;
             last;
         }
     }
 
     if($hitPosition != -1) { ### If we found our sequence, update the coordiantes
-        my $newAbsStart = $curMapping->getAbsPos() + $searchPositions[$hitPosition] - $startCoordBias;
+        my $newAbsStart = $curMapping->getAbsPos() + $searchPositions[$hitPosition];
+        #print "$newAbsStart\n";
         return $newAbsStart;
     } else {
         return -1;
