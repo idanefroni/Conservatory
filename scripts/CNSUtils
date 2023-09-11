@@ -136,7 +136,7 @@ if(defined $gffOutputFileName) {
 }
 
 
-my $mappingDB = new MappingDatabase($inMapFileName, 1);
+my $mappingDB = new MappingDatabase($inMapFileName, 0);
 
 if($fixPositions) {
     my $totalVerifiedPositions=0;
