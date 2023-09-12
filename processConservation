@@ -226,9 +226,9 @@ while(my $curgenomeline= <$genomedb>) {
 
 		if(!$skipMerge) {
 			if($verbose) { print "PROGRESS: Merging CNS files...\n"; }
-			system("find $conservationDir/$family/ -name '*.cns.csv' -exec cat {} \\; | sort -t',' -k1,1 -k7,7n | uniq > $conservationDir/$family.cns.sorted.csv");
+			system("find $conservationDir/$family/ -name '*.cns.csv' -exec cat {} \\; | sort -t',' -k1,1 -k7,7n | uniq > $conservationDir/$family.cns.concat.csv");
 			if($verbose) { print "PROGRESS: Merging map files...\n"; }		
-			system("find $conservationDir/$family/ -name '*.map.csv' -exec cat {} \\; | sort -t',' -k1,1 | uniq > $conservationDir/$family.map.sorted.csv");
+			system("find $conservationDir/$family/ -name '*.map.csv' -exec cat {} \\; | sort -t',' -k1,1 | uniq > $conservationDir/$family.map.concat.csv");
 			# Make nice output files. BW for the phylop track and GFF for the CNS
 			print "PROGRESS: END data merge and sort.\n";		
 			## Merge CNSs
@@ -236,15 +236,15 @@ while(my $curgenomeline= <$genomedb>) {
 			my $options;
 			if($verbose) { $options .= "--verbose "; }
 
-			system("/usr/bin/perl $conservatoryDir/scripts/mergeCNSTables --in-cns $conservationDir/$family.cns.sorted.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.sorted.csv --out-map $conservationDir/$family.map.prefix.csv --remove-original-CNS  $options");
-			unlink("$conservationDir/$family.cns.sorted.csv");
-			unlink("$conservationDir/$family.map.sorted.csv");
+			system("/usr/bin/perl $conservatoryDir/scripts/mergeCNS --sort --in-cns $conservationDir/$family.cns.concat.csv --out-cns $conservationDir/$family.cns.merge.csv --in-map $conservationDir/$family.map.concat.csv --out-map $conservationDir/$family.map.merge.csv  $options");
+			unlink("$conservationDir/$family.cns.concat.csv");
+			unlink("$conservationDir/$family.map.concat.csv");
 
 			print "PROGRESS: END merging CNS (" . localtime() . ").\n";
 			print "PROGRESS: START CNS verification (" . localtime() . ").\n";
 			if($verbose) { $options = "--verbose "; }
 
-			system("/usr/bin/perl $conservatoryDir/scripts/CNSUtils --verify-positions --sort --in-cns $conservationDir/$family.cns.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.prefix.csv --out-map $conservationDir/$family.map.csv $options");
+			system("/usr/bin/perl $conservatoryDir/scripts/CNSUtils --fix-positions --sort --in-cns $conservationDir/$family.cns.merge.csv --out-cns $conservationDir/$family.cns.csv --in-map $conservationDir/$family.map.merge.csv --out-map $conservationDir/$family.map.csv --out-reject $conservationDir/$family.map.reject.csv $options");
 			print "PROGRESS: END CNS verification (" . localtime() . ").\n";
 			unlink("$conservationDir/$family.map.prefix.csv");
 		
