@@ -207,6 +207,14 @@ sub hasReferenceMapping {
     }
 }
 
+sub hasConservationLevel {
+    my ($self) = @_;
+    if(defined $self->{_Level} && $self->{_Level} ne "") {
+        return 1;
+    } else {
+        return 0;
+    }
+}
 sub isMerged {
     my ($self) = @_;
     if(index($self->{_ID}, $superCNSPrefix) != -1) {
@@ -246,18 +254,24 @@ sub compareSynteny {
 		return 0;
 	}
     ## if we do not have an assigned conservation level, find it
-    if(!defined $self->getConservationLevel()) {
-        my @species = $self->getSupportingSpecies();
+    if(!$self->hasConservationLevel()) {
+        my @species = @{ $self->getSupportingSpecies($mappingDB) };
         $self->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@species));
     }
 
-    if(!defined $CNSTwo->getConservationLevel()) {
-        my @species = $CNSTwo->getSupportingSpecies();
+    if(!$CNSTwo->hasConservationLevel()) {
+        my @species = @{ $CNSTwo->getSupportingSpecies($mappingDB) };
         $CNSTwo->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@species));
     }
 
 	### Pick the one with deepest conservation. If conservation level is the same, pick the better supported one by number of species
 	### And if they are all the same, return 0.
+    if($conservatoryTree->getAgeForNode($self->getConservationLevel()) == -1 || $conservatoryTree->getAgeForNode( $CNSTwo->getConservationLevel() ) == -1 ) {
+        print "ERROR: Cannot determine node age for:\n";
+        $self->print;
+        $CNSTwo->print;
+        return 0;
+    }
 
 	if($conservatoryTree->getAgeForNode($self->getConservationLevel()) > $conservatoryTree->getAgeForNode( $CNSTwo->getConservationLevel() )) {
 		return 1;

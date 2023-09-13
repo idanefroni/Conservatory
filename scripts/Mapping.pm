@@ -144,6 +144,10 @@ sub setRelPosFromAbs {
             $newRelativePosition = $geneCoordinates->{'End'} - $absPos - $self->getAbsLen() + 1; 
         }
     }
+    if($self->getStrand() eq "-") {
+        $newRelativePosition = $newRelativePosition + $self->getAbsLen();
+    }
+
     $self->{_Pos} = $newRelativePosition;
 }
 
@@ -301,7 +305,11 @@ sub unlink {
 
 sub hasAbsCoordiantes {
     my ($self) =@_;
-    return ($self->getAbsStrand() ne "");
+    if(defined $self->{_AbsChr} && $self->{_AbsChr} ne "") {
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
 sub getRRP {
@@ -560,37 +568,32 @@ sub _translateCNSSpaceToReferenceSpace {
 ### Merge two mappings. must be from the same genome.
 sub merge {
     my ($self, $other) = @_;
-    my $maxBias=0;
 
     if(geneToGenome($self->getLocus()) ne geneToGenome($other->getLocus()) ) {
         die "ERROR: Trying to merge two mappings from different genomes: " . $self->getLocus() . " and " . $other->getLocus() . "\n";
     }
 
+    if($self->getStrandInGenome() ne $other->getStrandInGenome()) {
+        $other->flip();
+    }
+
     my $mySeq = $self->getTargetSeq();
     my $otherSeq = $other->getTargetSeq();
 
-    my $combinedSequence = '-' x (max( $self->getAbsEnd(), $other->getAbsEnd()) - min($self->getAbsPos(), $other->getAbsPos())+ $maxBias);
+    my $combinedSequence = '-' x (max( $self->getAbsEnd(), $other->getAbsEnd()) - min($self->getAbsPos(), $other->getAbsPos()));
     my $combinedSeqStart = min($self->getAbsPos(), $other->getAbsPos());
 
     if(length($combinedSequence)> 10000) { ## Sanity check
         die "ERROR: merging sequences longer than 10kb:" . $self->getLocus() . " and " . $other->getLocus() . "\n";
     }
-    my $bias=0;
-    my $rejectMerge=0;
 
-    # Calculate overlap length
-    my $minEnd = ($self->getAbsPos + length($mySeq) < $other->getAbsPos + length($otherSeq)) ? $self->getAbsPos + length($mySeq) :  $other->getAbsPos + length($otherSeq);
-    my $overlapLen = ($minEnd >= $self->getAbsPos() && $minEnd >= $other->getAbsPos())
-                ? $minEnd - max($self->getAbsPos(), $other->getAbsPos())
-                : 0;
-
-
-    if($self->getAbsStrand() eq "+") {
+    if($self->getStrandInGenome() eq "+") {        
    	    substr($combinedSequence,$self->getAbsPos() - $combinedSeqStart, length($mySeq)) = $mySeq;
-    } else {
-        substr($combinedSequence, $combinedSeqStart - $self->getAbsPos()-length($mySeq) + length($combinedSequence), length($mySeq)) = $mySeq;    }
+     } else {
+        substr($combinedSequence, $combinedSeqStart - $self->getAbsPos()-length($mySeq) + length($combinedSequence), length($mySeq)) = $mySeq;
+    }
 
-    if($other->getAbsStrand() eq "+") {
+    if($other->getStrandInGenome() eq "+") {                
    	    substr($combinedSequence,$other->getAbsPos() - $combinedSeqStart, length($otherSeq)) = $otherSeq;
     } else {
         substr($combinedSequence, $combinedSeqStart - $other->getAbsPos()-length($otherSeq) + length($combinedSequence), length($otherSeq)) = $otherSeq;

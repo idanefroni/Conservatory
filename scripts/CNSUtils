@@ -191,10 +191,12 @@ if($fixPositions) {
             ## Get the absolute coordiantes for the gene to update the relative position
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
             if($curMapping->getAbsPos() != $newAbsStart) {
+                $curMapping->print;
                 $totalFixedPositions++;
+                $curMapping->setAbsPos($newAbsStart);
+                $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);            
+                $curMapping->print;                
             }
-            $curMapping->setAbsPos($newAbsStart);
-            $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);
         } else {  ### Else, reject
             $curMapping->flipKeepStrand(); ## Flip back.
             $curMapping->print($outMapRejectFile);
@@ -322,7 +324,7 @@ sub compareSequences {
     for (my $i = 0; $i < $len; $i++) {
         my $charSeq1 = substr($seq1, $i, 1);
         my $charSeq2 = substr($seq2, $i, 1);
-        next if ($charSeq1 eq 'X' || $charSeq2 eq 'X' || $charSeq1 eq 'N' || $charSeq2 eq 'N');
+        next if (! ($charSeq1 =~ /ACGT/ && $charSeq2 =~ /ACGT/));
 
         if ($charSeq1 ne $charSeq2) {
             return 0;
@@ -340,8 +342,8 @@ sub remap {
                                                                      ## record where we started
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
 
- #   $curMapping->print;
-  #  print "$regionSequence\n$searchSequence\n";
+#    $curMapping->print;
+#    print "$regionSequence\n$searchSequence\n";
     my @searchPositions = (0);
     foreach my $curFlankPos (1..$regionSearchFlank) {
         push @searchPositions, $curFlankPos;
@@ -358,7 +360,6 @@ sub remap {
 
     if($hitPosition != -1) { ### If we found our sequence, update the coordiantes
         my $newAbsStart = $curMapping->getAbsPos() + $searchPositions[$hitPosition];
-#        print "$newAbsStart\n";
         return $newAbsStart;
     } else {
         return -1;

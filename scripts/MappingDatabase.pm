@@ -390,6 +390,18 @@ sub writeDatabase {
     close($outputFile);
 }
 
+sub hasAbsCoordiantes() {
+    my ($self) = @_;
+    my $allMappingsHaveCoordiantes=1;
+
+ 	foreach my $curMapping ( @{ $self->getMappingsByOrder() } ) {
+        if(!$curMapping->hasAbsCoordiantes()) {
+            $allMappingsHaveCoordiantes = 0;
+            last;
+        }
+    }
+    return $allMappingsHaveCoordiantes;
+}
 
 sub updateAbsoluteCoordinates {
     my ($self, $genomeDB, $verbose) = @_;
@@ -404,7 +416,9 @@ sub updateAbsoluteCoordinates {
             $curGenome = $curMapping->getGenome();
             if($verbose) { print "."; }            
         }
-        $curMapping->fillAbsoluteCoordiantes($genomeDB);
+        if(!$curMapping->hasAbsCoordiantes()) {
+            $curMapping->fillAbsoluteCoordiantes($genomeDB);
+        }
 	}
 }
 

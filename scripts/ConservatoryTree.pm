@@ -174,7 +174,8 @@ sub getAgeForNode {
     if(defined $self->{_NodeAges}->{$node}) {
         return $self->{_NodeAges}->{$node};
     } else {
-        die "ERROR: Cannot find node $node in the conservatory tree.\n";
+        print "WARNING: Cannot find node $node in the conservatory tree.\n";		
+		return -1;
     }
 }
 
