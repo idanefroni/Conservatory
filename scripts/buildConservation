@@ -82,6 +82,7 @@ my $force=0;
 my $skipMissingGenomes=0;
 my $justFamily = 0;
 my $justOneOrtholog =0;
+my $noGenomeCoordinates=0;
 
 my $help = 0;
 
@@ -101,7 +102,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"min-align-threshold-global=i" => \$minHSPthresholdGlobal,			
 			"min-phylop-score=f" => \$minPhyloPscore,
 			"min-deep-cns-coverage" => \$minCNSCoverageInitial,
-#			"atrich-length-filter=i" => \$atRichRegionFilterLength,
+			"no-genome-coordinates" => \$noGenomeCoordinates,
 			"just-one-ortholog" => \$justOneOrtholog,
 			"no-position-filter" => \$noPositionFilter,
 			"cns-merge-length" => \$CNSMergeLength,
@@ -227,10 +228,6 @@ if($tmpDir eq "") {
 $tmpDir = "$tmpDir/$refLocusFullName/";
 
 $genomeDB->setTemporaryDir($tmpDir);
-### make place for the alignment and CNS
-if (! -e $outputDir) { mkdir($outputDir); }
-if (! -e $tmpDir) { mkdir($tmpDir); }
-if (! -e $outputCNSDir) { mkdir($outputCNSDir); }	
 
 ### Extract the absolute coordinates of the locus
 
@@ -243,6 +240,11 @@ my $refGeneStrand= $referenceAbsoluteCoordiantes{'Strand'};
 die "ERROR: Cannot find locus $refLocusFullName in reference genome $referenceGenome.\n" unless ($refGeneChr ne "");
 
 if($verbose) { print "PROGRESS: Extracted genome coordinates $locus:$refGeneChr:$refGeneStart:$refGeneEnd:$refGeneStrand. Upstream sequence " . $genomeDB->getUpstreamLength($referenceGenome) . " bp. Downstream sequence " . $genomeDB->getUpstreamLength($referenceGenome) . " bp.\n"; }
+
+### make place for the alignment and CNS
+if (! -e $outputDir) { mkdir($outputDir); }
+if (! -e $tmpDir) { mkdir($tmpDir); }
+if (! -e $outputCNSDir) { mkdir($outputCNSDir); }	
 
 #remember where we are
 $curDir = getcwd;
@@ -549,9 +551,11 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 			$CNSDB->deleteCNS($curCNS);
 		}
 	}
-	if($verbose) { print "PROGRESS: Updating absolute coordinates..."; }
-	$mappingDB->updateAbsoluteCoordinates($genomeDB, $verbose);
-	if($verbose) { print "Done\n"; }		
+	if(!$noGenomeCoordinates) { 
+		if($verbose) { print "PROGRESS: Updating absolute coordinates..."; }
+		$mappingDB->updateAbsoluteCoordinates($genomeDB, $verbose);
+		if($verbose) { print "Done\n"; }		
+	}
 
 	if($verbose) { print "PROGRESS: Writing output files..."; }
 	$CNSDB->writeDatabase($finalCNSFileName);
@@ -561,9 +565,9 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 
 
 #### Go back to the original directory, and we are done!
-rmdir($tmpDir);
 chdir $curDir;	
 
+rmdir($tmpDir);
 if($verbose) { print "DONE: End $referenceGenome:$locus.\n";	}
 
 ###############################################################################################################################

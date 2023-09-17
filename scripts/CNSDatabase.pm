@@ -25,10 +25,12 @@ sub new {
         while(<$CNSInputFile>) {
             chomp;
 	        if($verbose) { print "PROGRESS: Reading CNS..." . ($curPos++) . "/$CNSLineCount.\r" };
-
-            my $newCNS = new CNS($_);
-            if(defined $newCNS) {
-                $CNSTable{ $newCNS->getID() } = $newCNS;
+            if(defined $_ && $_ ne "") {
+                my $newCNS = new CNS($_);
+            
+                if(defined $newCNS) {
+                    $CNSTable{ $newCNS->getID() } = $newCNS;
+                }
             }
         }
         if($verbose) { print "\n"; };

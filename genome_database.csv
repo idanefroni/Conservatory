@@ -11,7 +11,7 @@ Afiliculoides,Afiliculoides,Salviniaceae,,100,20,Parent,,Azfi,,Embryophyta-Trach
 Afimbriata,Afimbriata,Aristolochiaceae,,53,11,protein_id,\.[0-9]+$,KAG,\.[0-9]+$,Embryophyta-Tracheophytes-Angiosperms-Magnoliidae-Piperales-Aristolochiaceae
 Agraveolens,Agraveolens,Apiaceae,,78,16,protein_id,\.[0-9]+$,KAF,\.[0-9]+$,Embryophyta-Tracheophytes-Angiosperms-Dicots-Asterids-Apiaceae
 Ahalleri,Ahalleri,Brassicaceae,,10,2,Parent,\.[0-9+]\.v[0-9]\.[0-9]+$,Araha,,Embryophyta-Tracheophytes-Angiosperms-Dicots-Rosids-Brassicaceae
-Ahypochondriacus,Ahypochondriacus,Amaranthaceae,,68,14,Parent,#NAME?,AH,#NAME?,Embryophyta-Tracheophytes-Angiosperms-Dicots-Caryophyllales-Amaranthaceae
+Ahypochondriacus,Ahypochondriacus,Amaranthaceae,,68,14,Parent,-RA\.v2\.1,AH,-RA,Embryophyta-Tracheophytes-Angiosperms-Dicots-Caryophyllales-Amaranthaceae
 Ahypogaea,Ahypogaea,Fabaceae,,100,20,Parent,(\.Tifrunner\.gnm2\.ann1)|(\.[0-9]+$),arahy,(\.Tifrunner\.gnm2\.ann1)|(\.[0-9]+$),Embryophyta-Tracheophytes-Angiosperms-Dicots-Rosids-Fabaceae
 Ahypogaea_Shitouqi,Ahypogaea,Fabaceae,,100,20,protein_id,\.[0-9]+$,QH,\.[0-9]+$,Embryophyta-Tracheophytes-Angiosperms-Dicots-Rosids-Fabaceae
 Ahypogaea_GDAAS,Ahypogaea,Fabaceae,,100,20,protein_id,\.[0-9]+$,RY,\.[0-9]+$,Embryophyta-Tracheophytes-Angiosperms-Dicots-Rosids-Fabaceae

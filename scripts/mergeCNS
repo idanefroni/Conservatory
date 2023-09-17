@@ -106,6 +106,12 @@ my $CNSDB = new CNSDatabase($CNSFileName, $verbose);
 my $mappingDB = new MappingDatabase($mapFileName, 0);
 if( $mappingDB->getNumberOfMappings()==0) { die "ERROR: Mapping database is empty.\n"; }
 
+if(!$mappingDB->hasAbsCoordiantes()) {
+	if($verbose) { print "PROGRESS: Collecting genome references..."; }
+	$mappingDB->updateAbsoluteCoordinates($genomeDB, $verbose);
+	if($verbose) { print "...Done.\n"; }
+}
+
 ##### Give genome-unique names for the mappings
 if($doSort) {
 	if($verbose) { print "PROGRESS: Sorting mappings..."; }
@@ -318,7 +324,14 @@ for my $curCNSA (keys %CNSToMergeMap ) {
 			if($pairwise->percentage_identity() < $minCNSIdentityToMerge) {
 				### perhaps the CNS has switch directions?
 				my $rcPairwise = alignPairwise($CNSDB->getCNSByID($curCNSA)->getSeq() , reverseComplement($CNSDB->getCNSByID($curCNSB)->getSeq() ));
+
 				if($rcPairwise->percentage_identity() >= $minCNSIdentityToMerge) {
+
+	#				print "FLIP!: $curCNSA - $curCNSB:" . $rcPairwise->percentage_identity() . "\n";
+	#				print "orig:" . $CNSDB->getCNSByID($curCNSA)->getSeq() . "|" .  $CNSDB->getCNSByID($curCNSB)->getSeq() . "\n";
+	#				print "flip:" . $CNSDB->getCNSByID($curCNSA)->getSeq() . "|" .  reverseComplement($CNSDB->getCNSByID($curCNSB)->getSeq()) . "\n";					
+	#				foreach my $curS ($rcPairwise->each_seq) { print $curS->seq() . "\n"; }					
+
 					## We should merge, but first reverse complement the sequence
 					$CNSDB->getCNSByID($curCNSB)->setSeq(reverseComplement( $CNSDB->getCNSByID($curCNSB)->getSeq()) );
 					### and reverse all positions

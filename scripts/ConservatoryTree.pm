@@ -103,6 +103,46 @@ sub findDeepestCommonNode {
 }
 
 ##########################################################################################################
+###############
+##### Find the birth of the CNS (one node),
+sub getCNSBirth {
+	my ($self, $leavesListRef) = @_;
+	return $self->findDeepestCommonNode($leavesListRef);
+}
+
+##########################################################################################################
+###############
+##### Find the all deaths of a CNS, given a certain birth point
+#####  i.e. all the nodes where a CNS is lost (but not in a single species)
+sub getCNSDeaths {
+	my ($self, $birthNodeID, $leavesListRef, $deathList) = @_;
+	my $thisNode = $self->getNodeByID($birthNodeID);
+	#print $thisNode->id . "\n";
+	if($thisNode->is_Leaf) { 
+		if(grep /$birthNodeID/, @$leavesListRef ) {
+			return 1;
+		} else {
+			return 0;
+		}
+	}
+	my %childrenHaveCNS;
+	my $totalCNSs=0;
+
+	foreach my $curChild ( $thisNode->each_Descendent()) {
+		$childrenHaveCNS{$curChild->id} = $self->getCNSDeaths($curChild->id, $leavesListRef, $deathList);
+		$totalCNSs += $childrenHaveCNS{$curChild->id};
+	}
+	foreach my $curChild ( $thisNode->each_Descendent()) {
+		my $numOfDescendents = scalar $curChild->get_all_Descendents;
+
+		if($totalCNSs>0 && $numOfDescendents> 4 && !$curChild->is_Leaf && $childrenHaveCNS{$curChild->id} == 0) { ## If this child has no CNS, BUT is not a leaf, add a death point
+			push @{ $deathList },  $curChild->id;
+		}
+	}
+
+	return $totalCNSs;
+}
+##########################################################################################################
 ############
 ############ Given a CNS, reconstuct the ancesteral sequence for the CNS
 ###########    Accepts CNS Name (for the temporary files) and CNS sequences with the species being the key
@@ -179,6 +219,10 @@ sub getAgeForNode {
     }
 }
 
+sub getNodeByID {
+	my ($self, $nodeID) = @_;
+	return $self->{_AnnotatedTree}->find_node( -id => $nodeID=~ s/\./_/gr );
+}
 #################################################################
 ### check if a certain node exists in the tree
 sub exists {

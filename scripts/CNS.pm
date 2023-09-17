@@ -54,7 +54,7 @@ sub new {
 
     bless $self, $class;
 
-    if($refGenome ne "" && $CNSID ne "") {
+    if($refGenome ne "" && defined $CNSID && $CNSID ne "") {
         return $self;
     } else {
         return undef;
