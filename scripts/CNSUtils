@@ -20,10 +20,11 @@ my $outRejectFileName;
 my $outMapFileName;
 my $help =0;
 
+my $maxCNSLength=250;
 my $filterDeepCNS=0;
 my $filterRepetitive=0;
 my $filterPlastid=0;
-my $filterLowSupport=0;
+my $filterLongCNS=0;
 my $fixPositions=0;
 my $fixGenome;
 my $gffOutputFileName;
@@ -47,7 +48,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
             "filter-deep-cns" => \$filterDeepCNS,
             "filter-repetitive" => \$filterRepetitive,
             "filter-plastid" => \$filterPlastid,
-            "filter-low" => \$filterLowSupport,
+            "filter-long" => \$filterLongCNS,
             "fix-positions" => \$fixPositions,
             "fix-genome=s" => \$fixGenome,
             "make-gff=s" => \$gffOutputFileName,
@@ -60,18 +61,18 @@ if($help || $inCNSFileName eq "" || $inMapFileName eq "") {
 	print "Conservatory version 2.0.1\n\n";
 
 	print "CNSUtils --in-cns <cnsFile> --in-map <cnsPositionMapFile> [--out-cns <cnsFile>] [--out-map <cnsPositionMapFile>].\n";
-    print "\t\t[--filter-deep-cns] [--filter-repetitive] [--filter-plastid] [--fix-positions] [--make-gff <output gff filename>] [--verbose]\n\n";
+    print "\t\t[--filter-deep-cns] [--filter-repetitive] [--filter-plastid] [--filter-long] [--fix-positions] [--make-gff <output gff filename> --gff-reference <reference genome>] [--verbose]\n\n";
     print "\n\nFilter the merged CNS file based on the following rules:\n";
     print "   - Remove Deep CNS (deeper than node N14) that are only called by one reference\n";
     print "   - Remove highly repetitive sequences\n";
     print "   - Remove plastid CNS\n\n";
     print "   - Fix positions Verify (and correct if needed) the positions of the CNS in all genomes\n";
-    print "   - Make GFF - create a GFF file";
+    print "   - Make GFF - create a GFF file\n\n\n";
 	
 	exit();
 }
 
-if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filters: $filterDeepCNS $filterRepetitive $filterPlastid $filterLowSupport $fixPositions.\n"; }
+if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filters: $filterDeepCNS $filterRepetitive $filterPlastid $filterLongCNS $fixPositions.\n"; }
 
 ### Read CNS file
 
@@ -264,19 +265,17 @@ if($filterRepetitive) {
 
 }
 
-my $lowSupportFiltered=0;
+my $longFiltered=0;
 
-if($filterLowSupport) {
+if($filterLongCNS) {
     foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
-        if(!defined $curCNS->getSupportingSpecies($mappingDB) ) {
-            $curCNS->setComment("LowSupportFilter");
-            $lowSupportFiltered++;      
-        } elsif( scalar @{ $curCNS->getSupportingSpecies($mappingDB) } < $minSpeciesForCNS) {
-            $curCNS->setComment("LowSupportFilter");
-            $lowSupportFiltered++;
+        if($curCNS->getLen() > $maxCNSLength) {
+           $curCNS->setComment("TooLong");
+           $longFiltered++;
         }
     }
-    if($verbose) { print "Filtered $lowSupportFiltered for low support...\n"; }    
+
+    if($verbose) { print "Filtered $longFiltered with length > $maxCNSLength...\n"; }    
 }
 
 ## open Reject DB
@@ -342,8 +341,6 @@ sub remap {
                                                                      ## record where we started
     my $regionSequence = substr($curGenomeSequence->{cleanChrName($curMapping->getAbsChr() )}, max(0,$curMapping->getAbsPos() - $regionSearchFlank - 1), $curMapping->getAbsLen()+$regionSearchFlank*2);
 
-#    $curMapping->print;
-#    print "$regionSequence\n$searchSequence\n";
     my @searchPositions = (0);
     foreach my $curFlankPos (1..$regionSearchFlank) {
         push @searchPositions, $curFlankPos;

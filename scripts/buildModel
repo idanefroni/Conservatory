@@ -49,7 +49,7 @@ if($help || $referenceGenomeList eq "" || $treeFileName eq "") {
    print "\t--conservatory-directory\tName of the conservatory directory. Default is current directory.\n";
    print "\t--reference\tComma delimited list of reference genomes (At least one is REQUIRED).\n";
    print "\t--tree\t\tFamily tree file for phyloFit (REQUIRED).\n";
-   print "\t--mode\t\tSubstitution model for phyloFit (Default: REV).\n";
+   print "\t--model\t\tSubstitution model for phyloFit (Default: REV).\n";
    print "\t--mode\t\tSource for neutral model estimation. Either CODON or INTRON (used 4-variant codon position, or alignments of first intron). Only CODON is supported.\n";
    print "\t--keep-tmp\t\tDo not delete the temporary fasta file of the 3rd condon positions.\n";
    print "\t--help\t\tPrints this message.\n\n";
@@ -200,7 +200,7 @@ foreach my $curReferenceGenome (keys %referenceGenomeSpecies) {
 		$oneToOneOrthologs{$curReferenceGenome}{$curCREOrth}{$referenceGenomeSpecies{$curReferenceGenome} } = $fullReferenceGeneName;
 
 		while(my $curLine = <$curCREOrthFile>) {
-			my ($genome, $geneName, $upscore, $downscore) = split /\t/, $curLine;
+			my ($genome, $geneName, $upscore, $downscore) = split /,/, $curLine;
 			my $orthScore = $upscore + $downscore;
 			my $species = $geneName;
 			$species =~ s/-.*$//;
