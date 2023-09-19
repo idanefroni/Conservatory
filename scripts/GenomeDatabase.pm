@@ -89,6 +89,24 @@ sub getSpeciesForFamily {
     }
     return @speciesForFamily;
 }
+
+sub getSpecies {
+    my ($self)  = @_;
+    return keys %{ $self->{_speciesToFamilyHash} };
+}
+
+sub getSpeciesForLevel {
+    my ($self, $level, $levelName) = @_;
+    my %speciesForLevel;
+    foreach my $curGenome ($self->getGenomeNames) {
+        my @classes = split /-/, $self->{_classificationsHash}->{$curGenome};
+        if($classes[$level] eq $levelName) {
+            $speciesForLevel{ $self->genomeToSpecies($curGenome) } =1;
+        }
+    }
+    return keys %speciesForLevel;
+}
+
 sub getGenomeNames {
     my ($self) = @_;
     return sort keys %{ $self->{ _genomeToSpeciesHash }};

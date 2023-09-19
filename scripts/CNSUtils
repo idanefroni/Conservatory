@@ -6,10 +6,9 @@ use Cwd 'abs_path';
 use Getopt::Long;
 use lib './scripts';
 use ConservatoryUtils;
-use CNS;
 use CNSDatabase;
-use Mapping;
 use MappingDatabase;
+use ConservatoryTree;
 
 $|=1;
 
@@ -74,8 +73,10 @@ if($help || $inCNSFileName eq "" || $inMapFileName eq "") {
 
 if($verbose) { print "Starting filtering. $inCNSFileName, $inMapFileName. Filters: $filterDeepCNS $filterRepetitive $filterPlastid $filterLongCNS $fixPositions.\n"; }
 
-### Read CNS file
+my $genomeDB = new GenomeDatabase($conservatoryDir);
+my $conservatoryTree = new ConservatoryTree($genomeDB);
 
+### Read CNS file
 my $CNSDB = new CNSDatabase($inCNSFileName, $verbose);
 
 if(defined $gffOutputFileName) {
@@ -147,7 +148,6 @@ if($fixPositions) {
     my %genomeToFamily;
 
     if($verbose) { print "PROGRESS: Begin verifying positions\n"; }
-    my $genomeDB = new GenomeDatabase($conservatoryDir);
 
     my $curGenome="";
     my $curGenomeSequence;
@@ -222,21 +222,67 @@ if($filterPlastid) {
             $plastidFiltered++;
         }
     }
-    if($verbose) { print "Plastid Filter: Removed $plastidFiltered CNS\n";}
+    if($verbose) { print "PROGRESS: Plastid Filter: Removed $plastidFiltered CNS\n";}
 }
 
 if($filterDeepCNS) {
+    if($verbose) { print "PROGRESS: Start Deep Filter..";}    
     my $deepCNSFiltered=0;
+    my $deepCNSTrimmed=0;
+    my @angiosperms = $genomeDB->getSpeciesForLevel(2, "Angiosperms");
+    my @nonAngiosperms = grep { my $element = $_; not grep {$_ eq $element } @angiosperms } $genomeDB->getSpecies();
+
     foreach my $curCNS ( @{ $CNSDB->getCNSByOrder()}) {
+
         my $nodeLevel = $curCNS->getConservationLevel();
         $nodeLevel =~ s/N//;
 
-        if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=13) && $curCNS->getRefGenome() ne "Super" ) {
-            $curCNS->setComment("DeepFilter");
-            $deepCNSFiltered++;
+        # for the deep CNS. Apply multiple filters. First, it must be found in more than one reference
+        if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=13)) {
+            $curCNS->print;
+            if($curCNS->getRefGenome() ne "Super" ) {
+                $curCNS->setComment("DeepFilter");
+                $deepCNSFiltered++;
+            } else {  ### Make sure these are not sproious mappings
+                if($verbose) { print "."; }
+                my @speciesForCNS =  @{ $curCNS->getSupportingSpecies($mappingDB) };
+                my @speciesToTest = sort grep { my $element=$_; grep {$_ eq $element} @speciesForCNS } @nonAngiosperms;
+                my @childNodes;
+                my @speciesToTrim;
+                my $trimmed;
+                do {
+                    $trimmed=0;
+                    @speciesToTest = grep { my $element=$_; not grep {$_ eq $element} @speciesToTrim } @speciesToTest;
+                    my @trimmedSpeciesForCNS = grep { my $element=$_; not grep {$_ eq $element} @speciesToTrim } @speciesForCNS;
+                    print join(",", @trimmedSpeciesForCNS) . "\n";
+                    $curCNS->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@trimmedSpeciesForCNS));
+
+                    @childNodes = $conservatoryTree->getChildren($curCNS->getConservationLevel());
+
+                    foreach my $curSpeciesToOmit (@speciesToTest) {
+                        my @speciesLessOne = grep { $_ ne $curSpeciesToOmit } @speciesForCNS;
+                        my $newNode = $conservatoryTree->findDeepestCommonNode(\@speciesLessOne);
+
+                        ### We removed one species. If that changes the conservation level by more than one junction in the tree, remove the species
+                        if($newNode ne $curCNS->getConservationLevel() && !(grep {$_ eq $newNode} @childNodes) ) {
+                            push @speciesToTrim, $curSpeciesToOmit;
+                            $trimmed = 1;
+                        }
+                    }
+                } while($trimmed);
+                ### Now remove the mappings
+                foreach my $curMapping (@{ $mappingDB->getMappingsForCNS($curCNS) }) {
+                    if(grep {$_ eq $curMapping->getSpecies()} @speciesToTrim ) {
+                        $mappingDB->deleteMapping($curMapping);
+                        $deepCNSTrimmed++;
+                    }
+                }
+                my @newSpeciesForCNS = @{ $curCNS->getSupportingSpecies($mappingDB) };
+                $curCNS->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@newSpeciesForCNS));
+            }
         }
     }
-    if($verbose) { print "Deep CNS Filter: Removed $deepCNSFiltered CNS\n"; }
+    if($verbose) { print "\nDeep CNS Filter: Removed $deepCNSFiltered CNS, trimmed $deepCNSTrimmed mappings.\n"; }
 }
 
 if($filterRepetitive) {
@@ -296,6 +342,7 @@ foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
         $mappingDB->deleteCNS($curCNS);
     }
 }
+
 
 if(defined $outCNSFileName) {
     $CNSDB->writeDatabase($outCNSFileName);

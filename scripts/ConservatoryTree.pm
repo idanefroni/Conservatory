@@ -102,6 +102,18 @@ sub findDeepestCommonNode {
 	return $deepestNode;
 }
 
+sub getChildren {
+	my ($self, $nodeName) = @_;
+	my @children=();
+	my $treeNode = $self->{_AnnotatedTree}->find_node( $nodeName );
+	if(defined $treeNode) { 
+		foreach my $curChildNode  ($treeNode->each_Descendent()) {
+			push @children, $curChildNode->id;
+		}
+	}	
+	return @children;
+}
+
 ##########################################################################################################
 ###############
 ##### Find the birth of the CNS (one node),
