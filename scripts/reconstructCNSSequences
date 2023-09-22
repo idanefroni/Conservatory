@@ -4,7 +4,6 @@ use POSIX;
 use Cwd;
 use Cwd 'abs_path';
 
-#use Array::Utils qw(:all);
 use List::Util qw(min max);
 use Getopt::Long;
 
@@ -30,6 +29,8 @@ my $CNSSubsetFile;
 my $keep_tmp=0;
 
 ## Filtering parameters
+my $splitCNSSensitivity=2; ### Parameters for sensing CNS split. High sensitivity (2) low sensitivity (4)
+my $minOverlapAfterSplit=0.3; ### Mandate at least this level of overlap to assign a mapping to a split CNS
 
 my $verbose=0;
 my $help=0;
@@ -103,11 +104,11 @@ foreach my $curCNS (@{ $CNSDB->getCNSByOrder() } ) {
 
 	if($curCNS->isMerged()) {
 		if($break) {
-			my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS);
+			my @CNSBreakpoints = $mappingDB->findBreakPointsForCNS($curCNS, $splitCNSSensitivity);  ### Find breakpoints with high sensitivity
 						
 			if(@CNSBreakpoints > 2) {
 				if($verbose) { print "PROGRESS: Breaking CNS (" . $curPos ."/ $totalToScreen). Breakpoints: " . join(",", @CNSBreakpoints) . ".......\n"; }
-				my @assignedMappings = $mappingDB->assignMappingsToBreakpoints($curCNS, \@CNSBreakpoints);
+				my @assignedMappings = $mappingDB->assignMappingsToBreakpoints($curCNS, \@CNSBreakpoints, $minOverlapAfterSplit); ### Assign to split CNS, filtering low overlap
 				### Now break the CNSs		
 				for my $curBreakpoint (0.. ((scalar @CNSBreakpoints) - 2)) {
 					my $breakLen = $CNSBreakpoints[$curBreakpoint+1]- $CNSBreakpoints[$curBreakpoint];

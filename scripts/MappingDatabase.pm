@@ -239,7 +239,7 @@ sub mergeOverlappingMappingsForCNS {
     my $lastMapping = $mappingsForCNS[0];
     if(scalar @mappingsForCNS >1) {
         foreach my $curMapping (@mappingsForCNS[1..(scalar @mappingsForCNS-1)]) {
-            if($curMapping->isAlive() && $lastMapping->overlap($curMapping)) {
+            if($curMapping->isAlive() && $lastMapping->overlap($curMapping) && $lastMapping->getLocus() eq $curMapping->getLocus()) {
                 ## Try to merge.
                 $lastMapping->merge($curMapping);
                 $self->deleteMapping($curMapping);
@@ -270,7 +270,11 @@ sub mergeMappings {
 ###
 
 sub findBreakPointsForCNS {
-	my ($self, $CNS) = @_;
+	my ($self, $CNS, $breakPointSDtoSplit) = @_;
+
+    if(!defined $breakPointSDtoSplit) {
+        $breakPointSDtoSplit = $standardDeviationsToSplit;
+    }
 
 	my @mappings = @{ $self->getMappingsForCNS($CNS) };
 	my @CNSCoverage = (0) x $CNS->getLen();
@@ -317,7 +321,7 @@ sub findBreakPointsForCNS {
 	foreach my $pos (0..(scalar @CNSdelta -1)) {
 		### split CNS if larger than minCNSlength and high variability. But don't split CNS if its too short, has too many species
 		## or if the split point is not well supported
-		if((abs($CNSdelta[$pos]) > $deltaSD * $standardDeviationsToSplit) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNS->getLen()) &&
+		if((abs($CNSdelta[$pos]) > $deltaSD * $breakPointSDtoSplit) && (abs($CNSdelta[$pos])> $minSpeciesToSplitCNS ) && ($pos + $minCNSLength < $CNS->getLen()) &&
 		 ($pos - $lastBreakpointPos > $minCNSLength && ($CNS->getLen() - $pos) > $minCNSLength ) && ($CNSCoverage[$pos+1] >= $minSpeciesForCNS)) {
 			push @breakpoints, $pos;
 			$lastBreakpointPos = $pos;
@@ -338,8 +342,11 @@ sub findBreakPointsForCNS {
 ########
 
 sub assignMappingsToBreakpoints {
-	my ($self, $CNS, $breakpointRef) = @_;
+	my ($self, $CNS, $breakpointRef, $minCoverage) = @_;
 	my @breakpoints = @$breakpointRef;
+    if(!defined $minCoverage) {
+        $minCoverage = $minCNSCoverageAfterSplit;
+    }
     my @mappings =  @{ $self->getMappingsForCNS($CNS) };
     my @assignedMappings;
 
@@ -357,7 +364,7 @@ sub assignMappingsToBreakpoints {
                 my $numOfInternalGaps = () = ($subsetSeq =~ /-/g);
                 ### Only include the hit of the coverage is sufficient and if its not too gappy
                 
-				if((length($subsetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCNSCoverageAfterSplit && length($subsetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subsetSeq)) < $minSequenceContentInAlignment ) {
+				if((length($subsetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCoverage && length($subsetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subsetSeq)) < $minSequenceContentInAlignment ) {
 
                     my $breakpointMapping = $curMapping->createSubSetMapping( $breakpoints[$curBreakpoint],$breakpoints[$curBreakpoint+1] , $CNS->getLen());
                     $breakpointMapping->setBreakpoint($curBreakpoint);

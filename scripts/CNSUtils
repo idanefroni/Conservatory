@@ -26,6 +26,7 @@ my $filterPlastid=0;
 my $filterLongCNS=0;
 my $fixPositions=0;
 my $fixGenome;
+my $assignBySynteny=0;
 my $gffOutputFileName;
 my $makegffReference;
 my $sortMapFile;
@@ -50,6 +51,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
             "filter-long" => \$filterLongCNS,
             "fix-positions" => \$fixPositions,
             "fix-genome=s" => \$fixGenome,
+            "assign-by-synteny" => \$assignBySynteny,
             "make-gff=s" => \$gffOutputFileName,
             "gff-reference=s" => \$makegffReference,
             "sort" => \$sortMapFile,
@@ -134,11 +136,47 @@ if(defined $gffOutputFileName) {
     }
 
     close($gffOutputFile);
-    die;
+    exit(0);
 }
 
 
 my $mappingDB = new MappingDatabase($inMapFileName, 0);
+if($assignBySynteny) {
+    $mappingDB->renameMappings();
+    $mappingDB->orderMappingByPosition();
+    my $lastMapping;
+    foreach my $curMapping (@{ $mappingDB->getMappingsByOrder()}) {
+        if(defined $lastMapping && $lastMapping->overlap($curMapping)) {
+            ## If these are two genes for the same CNS, see which one has better synteny
+            if($curMapping->getLocus() eq $lastMapping->getLocus() && $curMapping->getCNSID() eq $lastMapping->getCNSID()) {
+                $curMapping->merge($lastMapping);
+                $mappingDB->deleteMapping($lastMapping);
+                $lastMapping=$curMapping;
+            } elsif ($curMapping->getLocus() eq $lastMapping->getLocus() && $curMapping->getCNSID() ne $lastMapping->getCNSID()) {
+                my $lastCNS = $CNSDB->getCNSByID($lastMapping->getCNSID());
+                my $curCNS = $CNSDB->getCNSByID($curMapping->getCNSID());
+                my $syntenyComparison = $lastCNS->compareSynteny($curCNS, $mappingDB, $conservatoryTree );
+                if($syntenyComparison ==1) { ##if it is more syntentic with the last cns, remove the mapping
+                    $mappingDB->deleteMapping($curMapping);
+                } elsif($syntenyComparison ==2) {
+                    $mappingDB->deleteMapping($lastMapping);
+                    $lastMapping = $curMapping;
+                } 
+            } else { ## if it is the same CNS but different gene
+                ### assign by default to the closest gene.
+                ### alternative is looking at broader synteny?
+                if(abs($curMapping->getPos()) < abs($lastMapping->getPos())) {
+                    $mappingDB->deleteMapping($lastMapping);
+                    $lastMapping=$curMapping;
+                } else {
+                    $mappingDB->deleteMapping($curMapping);
+                }
+            }
+        } else {
+            $lastMapping = $curMapping;
+        }
+    }
+}
 
 if($fixPositions) {
     my $totalVerifiedPositions=0;
@@ -192,11 +230,9 @@ if($fixPositions) {
             ## Get the absolute coordiantes for the gene to update the relative position
             my %geneCoordinates = getGeneCoordinates($genomeDB->getConservatoryDir(), $genomeDB->genomeToFamily( geneToGenome($curMapping->getLocus() ) ),  geneToGenome($curMapping->getLocus()), $curMapping->getLocus());
             if($curMapping->getAbsPos() != $newAbsStart) {
-                $curMapping->print;
                 $totalFixedPositions++;
                 $curMapping->setAbsPos($newAbsStart);
                 $curMapping->setRelPosFromAbs($newAbsStart, \%geneCoordinates);            
-                $curMapping->print;                
             }
         } else {  ### Else, reject
             $curMapping->flipKeepStrand(); ## Flip back.
@@ -238,8 +274,7 @@ if($filterDeepCNS) {
         $nodeLevel =~ s/N//;
 
         # for the deep CNS. Apply multiple filters. First, it must be found in more than one reference
-        if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=13)) {
-            $curCNS->print;
+        if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=14)) {
             if($curCNS->getRefGenome() ne "Super" ) {
                 $curCNS->setComment("DeepFilter");
                 $deepCNSFiltered++;
@@ -254,7 +289,6 @@ if($filterDeepCNS) {
                     $trimmed=0;
                     @speciesToTest = grep { my $element=$_; not grep {$_ eq $element} @speciesToTrim } @speciesToTest;
                     my @trimmedSpeciesForCNS = grep { my $element=$_; not grep {$_ eq $element} @speciesToTrim } @speciesForCNS;
-                    print join(",", @trimmedSpeciesForCNS) . "\n";
                     $curCNS->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@trimmedSpeciesForCNS));
 
                     @childNodes = $conservatoryTree->getChildren($curCNS->getConservationLevel());

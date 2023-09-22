@@ -37,6 +37,7 @@ sub new {
 			my ($targetLocus,$targetPosition,$targetStrand,$absChromosome, $geneStrand,$absPosition, $targetName) = split /:/, $firstparam->id();
             $species = geneToSpecies($targetLocus);
             $locus = $targetLocus;
+            $locus =~ s/-CNS[0-9]+$//; ### remove the unique ID
             $pos = $targetPosition;
             $strand = $targetStrand;
             $absChr = $absChromosome;
@@ -678,10 +679,14 @@ sub print {
 }
 
 sub printFasta {
-    my ($self, $outFile) = @_;
+    my ($self, $outFile, $uniqueID) = @_;
     if(!defined $outFile) { $outFile = \*STDOUT; } 
+    my $locus = $self->{_Locus};
+    if(defined $uniqueID) {
+        $locus = $locus . "-CNS$uniqueID";
+    }
 
-	print $outFile ">" . join(":", ($self->{_Locus},
+	print $outFile ">" . join(":", ($locus,
     							    $self->{_Pos},
 								    $self->{_Strand},
 								    $self->{_AbsChr},

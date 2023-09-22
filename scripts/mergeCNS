@@ -49,6 +49,7 @@ my $minCNSIdentityToMerge=70;
 my $minCNSOverlapToMerge=0.2;
 my $maxMappingsPerCNS=100000;
 my $maxCNSLength=2000;
+
 my $mergeDeep=0;
 
 my $keep_tmp=0;
@@ -118,8 +119,9 @@ if($doSort) {
 	$mappingDB->orderMappingByPosition();
 	if($verbose) { print "...Done.\n"; }
 }
-
-$mappingDB->renameMappings($verbose);
+if($verbose) { print "PROGRESS: Naming mappings..."; }
+$mappingDB->renameMappings(0);
+if($verbose) { print "...Done.\n"; }
 
 if($verbose) { print "PROGRESS: Setting up CNS database..."; }
 ##### Find the absolute genome positions for all CNSs
@@ -326,12 +328,6 @@ for my $curCNSA (keys %CNSToMergeMap ) {
 				my $rcPairwise = alignPairwise($CNSDB->getCNSByID($curCNSA)->getSeq() , reverseComplement($CNSDB->getCNSByID($curCNSB)->getSeq() ));
 
 				if($rcPairwise->percentage_identity() >= $minCNSIdentityToMerge) {
-
-	#				print "FLIP!: $curCNSA - $curCNSB:" . $rcPairwise->percentage_identity() . "\n";
-	#				print "orig:" . $CNSDB->getCNSByID($curCNSA)->getSeq() . "|" .  $CNSDB->getCNSByID($curCNSB)->getSeq() . "\n";
-	#				print "flip:" . $CNSDB->getCNSByID($curCNSA)->getSeq() . "|" .  reverseComplement($CNSDB->getCNSByID($curCNSB)->getSeq()) . "\n";					
-	#				foreach my $curS ($rcPairwise->each_seq) { print $curS->seq() . "\n"; }					
-
 					## We should merge, but first reverse complement the sequence
 					$CNSDB->getCNSByID($curCNSB)->setSeq(reverseComplement( $CNSDB->getCNSByID($curCNSB)->getSeq()) );
 					### and reverse all positions
@@ -419,9 +415,7 @@ foreach my $anchorCNSID (keys %superGroups) {
 		my $mergedCNSLength=0;
 		foreach my $curCNSID (keys %CNSsInGroup) {
 			$mergedCNSLength += $CNSDB->getCNSByID($curCNSID)->getLen();
-#			if($CNSDB->getCNSByID($curCNSID)->getLen() > $mergedCNSLength) {
-#				$mergedCNSLength = $CNSDB->getCNSByID($curCNSID)->getLen();				
-#			}
+
 		}
 
 		my $mergedCNSName = "$superCNSPrefix.$anchorCNSID";
@@ -454,9 +448,9 @@ foreach my $anchorCNSID (keys %superGroups) {
 			print $filesToAlignFile "$tmpOutputSuperCNSFastaFileName,$mergedCNSName\n";
 
 			open(my $tmpOutputSuperCNSFastaFile, ">" , $tmpOutputSuperCNSFastaFileName);
-
+			my $uniqueID=0;
 			for my $curMapping ( @{ $mappingDB->getMappingsForCNS($mergedCNS) }) {
-				$curMapping->printFasta($tmpOutputSuperCNSFastaFile);
+				$curMapping->printFasta($tmpOutputSuperCNSFastaFile, $uniqueID++);
 			}
 			close($tmpOutputSuperCNSFastaFile);
 
