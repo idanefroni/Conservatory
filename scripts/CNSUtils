@@ -27,11 +27,12 @@ my $filterLongCNS=0;
 my $fixPositions=0;
 my $fixGenome;
 my $assignBySynteny=0;
+my $renameCNS=0;
 my $gffOutputFileName;
 my $makegffReference;
 my $sortMapFile;
 
-my $filterRepetitiveCNSCutoff = 0.01; ### Filter the top 0.01%
+my $filterRepetitiveCNSCutoff = 0.005; ### Filter the top 0.005%
 my $regionSearchFlank=75;
 
 my $verbose=0;
@@ -51,6 +52,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
             "filter-long" => \$filterLongCNS,
             "fix-positions" => \$fixPositions,
             "fix-genome=s" => \$fixGenome,
+            "rename-cns" => \$renameCNS,
             "assign-by-synteny" => \$assignBySynteny,
             "make-gff=s" => \$gffOutputFileName,
             "gff-reference=s" => \$makegffReference,
@@ -112,7 +114,7 @@ if(defined $gffOutputFileName) {
 
                 my $lastMapping;
                 foreach my $curMapping (@mappingsInRef) {
-                    if(defined $lastMapping && $lastMapping->overlap($curMapping)) { next; }
+                    if(defined $lastMapping && $lastMapping->overlap($curMapping)==1) { next; }
 
                     print $gffOutputFile join("\t", $curMapping->getAbsChr(),
                                          "Conservatory2",
@@ -122,7 +124,7 @@ if(defined $gffOutputFileName) {
                                             ".",
                                             $curMapping->getStrandInGenome(),
                                             ".",
-                                            "Syntenic_loci=" . $locusMerge .
+                                            "Associated_loci=" . $locusMerge .
                                             ";Name=" . $curCNS->getID() . ";Species=" . $curCNS->getSupportingSpeciesNumber() . 
                                             ";Node=" . $node . 
                                             ";Level=" . $conservationLevel . 
@@ -146,6 +148,10 @@ if($assignBySynteny) {
     $mappingDB->orderMappingByPosition();
     my $lastMapping;
     foreach my $curMapping (@{ $mappingDB->getMappingsByOrder()}) {
+        if(!$CNSDB->exists($curMapping->getCNSID())) {
+            $mappingDB->deleteMapping($curMapping);
+            next;
+        }
         if(defined $lastMapping && $lastMapping->overlap($curMapping)) {
             ## If these are two genes for the same CNS, see which one has better synteny
             if($curMapping->getLocus() eq $lastMapping->getLocus() && $curMapping->getCNSID() eq $lastMapping->getCNSID()) {
@@ -162,7 +168,7 @@ if($assignBySynteny) {
                     $mappingDB->deleteMapping($lastMapping);
                     $lastMapping = $curMapping;
                 } 
-            } else { ## if it is the same CNS but different gene
+            } elsif($curMapping->getLocus() ne $lastMapping->getLocus() && $curMapping->getCNSID() eq $lastMapping->getCNSID()) { ## if it is the same CNS but different gene
                 ### assign by default to the closest gene.
                 ### alternative is looking at broader synteny?
                 if(abs($curMapping->getPos()) < abs($lastMapping->getPos())) {
@@ -358,6 +364,23 @@ if($filterLongCNS) {
     if($verbose) { print "Filtered $longFiltered with length > $maxCNSLength...\n"; }    
 }
 
+if($renameCNS) {        ### Rename all the CNSs to give consistent name based on their conservation level and a unique ID.
+    my %CNSNameIndices;
+    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
+        my $conservationLevel;
+
+        if($curCNS->isMerged()) {
+            $conservationLevel = $superCNSPrefix . "_" . nodeToLevel($curCNS->getConservationLevel());
+        } else {
+            $conservationLevel = $curCNS->getRefGenome();
+        }
+        if(!defined $CNSNameIndices{$conservationLevel}) { $CNSNameIndices{$conservationLevel}=1; }
+        my $newCNSName = $conservationLevel . "_" . $CNSNameIndices{$conservationLevel};
+        $mappingDB->renameCNS($curCNS, $newCNSName);
+        $CNSNameIndices{$conservationLevel}++;
+    }
+}
+
 ## open Reject DB
 my $rejectCNSDB = new CNSDatabase();
 
@@ -457,7 +480,14 @@ sub nodeToLevel {
     my @asteridNodes = ("N167","N168", "N170","N182","N192","N193");
     my @monocotNodes = ("N226","N227","N228","N269","N228","229");
 
-    my $conservationLevel = "Order/Family";
+    my @solanaceaeNodes =("N194","N195","N196","N199","N197","N200","N201","N202","N204");
+    my @poaceaeNodes=("N233","N234","N235","N236","N237","N238","N239","N240","N248","N249","N252","N255","N253","N251","N250","N243","N245","N246");
+    my @fabaceaeNodes=("N90","N91","N92","N111","N93","N100","N94","N97","N95","N98","N101","N102","N103","N104","N106","N105","N109","N107");
+    my @brassicaceaeNodes=("N24","N25","N52","N26","N51","N42","N43","N44","N50","N49","N45","N46","N47","N41","N40","N29","N27","N39","N37","N30","N31","N32","N28","N33");
+    my @lemnaceaNodes=("N269","N270","N276","N271","N272","N273");
+    my @asteraceaNodes =("N172","N173","N178","N180","N179","N174","N176","N175","N177");
+
+    my $conservationLevel = "Order";
     if( grep( /^$node$/, @ancientNodes) ) { $conservationLevel = "Ancient"; }
     if( grep( /^$node$/, @tracheophyteNodes) ) { $conservationLevel = "Tracheophytes"; }
     if( grep( /^$node$/, @angiospermsNodes) ) { $conservationLevel = "Angiosperms"; }
@@ -465,6 +495,13 @@ sub nodeToLevel {
     if( grep( /^$node$/, @monocotNodes) ) { $conservationLevel = "Monocots"; }
     if( grep( /^$node$/, @rosidNodes) ) { $conservationLevel = "Rosides"; }
     if( grep( /^$node$/, @asteridNodes) ) { $conservationLevel = "Asterids"; }
+
+   if( grep( /^$node$/, @solanaceaeNodes) ) { $conservationLevel = "Solanaceae"; }
+   if( grep( /^$node$/, @poaceaeNodes) ) { $conservationLevel = "Poaceae"; }
+   if( grep( /^$node$/, @fabaceaeNodes) ) { $conservationLevel = "Fabaceae"; }
+   if( grep( /^$node$/, @brassicaceaeNodes) ) { $conservationLevel = "Brassicaeae"; }
+   if( grep( /^$node$/, @lemnaceaNodes) ) { $conservationLevel = "Lemnaceae"; }
+   if( grep( /^$node$/, @asteraceaNodes) ) { $conservationLevel = "Asteraceae"; }
 
     return $conservationLevel;
 }

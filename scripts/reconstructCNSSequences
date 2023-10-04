@@ -30,7 +30,7 @@ my $keep_tmp=0;
 
 ## Filtering parameters
 my $splitCNSSensitivity=2; ### Parameters for sensing CNS split. High sensitivity (2) low sensitivity (4)
-my $minOverlapAfterSplit=0.3; ### Mandate at least this level of overlap to assign a mapping to a split CNS
+my $minOverlapAfterSplit=0.2; ### Mandate at least this level of overlap to assign a mapping to a split CNS
 
 my $verbose=0;
 my $help=0;

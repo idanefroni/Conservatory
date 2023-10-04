@@ -415,7 +415,6 @@ foreach my $anchorCNSID (keys %superGroups) {
 		my $mergedCNSLength=0;
 		foreach my $curCNSID (keys %CNSsInGroup) {
 			$mergedCNSLength += $CNSDB->getCNSByID($curCNSID)->getLen();
-
 		}
 
 		my $mergedCNSName = "$superCNSPrefix.$anchorCNSID";

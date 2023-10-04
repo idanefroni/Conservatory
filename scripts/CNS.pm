@@ -122,6 +122,10 @@ sub getID {
     return $self->{_ID};
 }
 
+sub setID {
+    my ($self, $newID) = @_;
+    $self->{_ID} = $newID;
+}
 sub getLocus {
     my ($self) = @_;
     return $self->{_Locus};

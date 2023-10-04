@@ -29,7 +29,7 @@ sub new {
             chomp;
             my $newMapping = new Mapping($_);
 
-            if(defined $genome && geneToGenome($newMapping->getLocus) ne $genome) { next; }
+            if(defined $genome && geneToGenome($newMapping->getLocus()) ne $genome) { next; }
 
 	        if($verbose) { print "PROGRESS: Reading Mappings..." . ($curPos++) . ".\r" };
             push(@mappingDB, $newMapping);
@@ -135,6 +135,16 @@ sub linkMappingToCNS {
     push @{ $self->{_mappingCNSIndex}->{$CNSID} }, $mapping; 
 }
 
+sub renameCNS {
+    my ($self, $CNS, $newCNSName) = @_;
+    foreach my $curMapping (@{ $self->getMappingsForCNS($CNS) }) { 
+        $curMapping->setCNSID($newCNSName);
+    }
+    $self->{_mappingCNSIndex}->{$newCNSName} = $self->{_mappingCNSIndex}->{$CNS->getID() };
+    delete $self->{_mappingCNSIndex}->{ $CNS->getID() };
+    $CNS->setID($newCNSName);
+}
+
 sub deleteMapping {
     my ($self, $mappingToDelete) = @_;
     my @newMappingsForCNS = grep { $_ != $mappingToDelete} @{ $self->getMappingsForCNS( $mappingToDelete->getCNSID() ) };
@@ -193,7 +203,7 @@ sub renameMappings {
     foreach my $curMapping ( @{ $self->{_MappingDB} } [1..((scalar @{ $self->{_MappingDB} }) -1 )]) {
 	    if($verbose) { print "PROGRESS: Naming..." . ($curPos++) . "/" . (scalar @{ $self->{_MappingDB} }) . ".\r"; };
 
-	    if( geneToGenome($lastMapping->getLocus) ne geneToGenome($curMapping->getLocus()) ) {
+	    if( geneToGenome($lastMapping->getLocus()) ne geneToGenome($curMapping->getLocus()) ) {
 		    $nameCounter=1;
 	    } elsif (! $lastMapping->overlap($curMapping) ) {
 		    $nameCounter++;
@@ -210,7 +220,7 @@ sub removeDuplicatesForCNS {
 
     my @mappingsForCNS = @{ $self->getMappingsForCNS($CNSID)  };
 
-    @mappingsForCNS = sort { geneToGenome($a->getLocus()) cmp geneToGenome($b->getLocus()) ||
+    @mappingsForCNS = sort { $a->getLocus() cmp $b->getLocus() ||
 				  		   $a->getAbsChr() cmp $b->getAbsChr() ||
 				  		   $a->getAbsPos() <=>  $b->getAbsPos() } @mappingsForCNS;
         
@@ -232,14 +242,14 @@ sub mergeOverlappingMappingsForCNS {
 
     my @mappingsForCNS = @{ $self->getMappingsForCNS($CNSID)  };
 
-    @mappingsForCNS = sort { geneToGenome($a->getLocus()) cmp geneToGenome($b->getLocus()) ||
+    @mappingsForCNS = sort { $a->getLocus() cmp $b->getLocus() ||
 				  		   $a->getAbsChr() cmp $b->getAbsChr() ||
 				  		   $a->getAbsPos() <=>  $b->getAbsPos() } @mappingsForCNS;
 
     my $lastMapping = $mappingsForCNS[0];
     if(scalar @mappingsForCNS >1) {
         foreach my $curMapping (@mappingsForCNS[1..(scalar @mappingsForCNS-1)]) {
-            if($curMapping->isAlive() && $lastMapping->overlap($curMapping) && $lastMapping->getLocus() eq $curMapping->getLocus()) {
+            if($curMapping->isAlive() && $lastMapping->overlap($curMapping) && ($lastMapping->getLocus() eq $curMapping->getLocus())) {
                 ## Try to merge.
                 $lastMapping->merge($curMapping);
                 $self->deleteMapping($curMapping);
@@ -291,6 +301,7 @@ sub findBreakPointsForCNS {
 			}
 		}
 	}
+    print join("|",@CNSCoverage) . "\n";
 	### Smooth the coverage vector to avoid spliting on very small gaps
 	foreach my $pos (0..($CNS->getLen()-4)) {
 		$CNSCoverageSmooth[$pos] = mean(@CNSCoverage[($pos)..($pos+3)])
@@ -365,7 +376,6 @@ sub assignMappingsToBreakpoints {
                 ### Only include the hit of the coverage is sufficient and if its not too gappy
                 
 				if((length($subsetSeq)-$numOfInternalGaps) / ($breakpoints[$curBreakpoint+1] - $breakpoints[$curBreakpoint] ) > $minCoverage && length($subsetSeq) >= $minCNSLength && ($numOfInternalGaps / length($subsetSeq)) < $minSequenceContentInAlignment ) {
-
                     my $breakpointMapping = $curMapping->createSubSetMapping( $breakpoints[$curBreakpoint],$breakpoints[$curBreakpoint+1] , $CNS->getLen());
                     $breakpointMapping->setBreakpoint($curBreakpoint);
                     $self->linkMappingToCNS($breakpointMapping, $CNS);
