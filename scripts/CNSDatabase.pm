@@ -145,6 +145,14 @@ sub deleteCNS {
     delete $self->{_CNSTable}->{$CNSID};
 }
 
+sub renameCNS {
+    my ($self, $CNS, $newCNSName) = @_;
+    $self->{_CNSTable}->{ $newCNSName } = $CNS;
+    delete $self->{_CNSTable}->{ $CNS->getID() };
+
+    $CNS->setID($newCNSName);
+    $self->{_Ordered} = 0;
+}
 sub add {
     my ($self, $CNS) = @_;
     $self->{_CNSTable}->{ $CNS->getID() } = $CNS;

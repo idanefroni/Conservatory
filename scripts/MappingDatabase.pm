@@ -135,14 +135,13 @@ sub linkMappingToCNS {
     push @{ $self->{_mappingCNSIndex}->{$CNSID} }, $mapping; 
 }
 
-sub renameCNS {
+sub renameCNSMappings {
     my ($self, $CNS, $newCNSName) = @_;
     foreach my $curMapping (@{ $self->getMappingsForCNS($CNS) }) { 
         $curMapping->setCNSID($newCNSName);
     }
     $self->{_mappingCNSIndex}->{$newCNSName} = $self->{_mappingCNSIndex}->{$CNS->getID() };
     delete $self->{_mappingCNSIndex}->{ $CNS->getID() };
-    $CNS->setID($newCNSName);
 }
 
 sub deleteMapping {
@@ -237,19 +236,27 @@ sub removeDuplicatesForCNS {
 }
 
 sub mergeOverlappingMappingsForCNS {
-	my ($self,$CNSID) = @_;
+	my ($self,$CNSID, $ignoreLocus) = @_;
+    if(!defined $ignoreLocus) { $ignoreLocus = 0; }
     if(ref($CNSID) eq 'CNS') { $CNSID = $CNSID->getID(); }
 
     my @mappingsForCNS = @{ $self->getMappingsForCNS($CNSID)  };
 
-    @mappingsForCNS = sort { $a->getLocus() cmp $b->getLocus() ||
-				  		   $a->getAbsChr() cmp $b->getAbsChr() ||
-				  		   $a->getAbsPos() <=>  $b->getAbsPos() } @mappingsForCNS;
+    if($ignoreLocus) {
+        @mappingsForCNS = sort { geneToGenome($a->getLocus()) cmp geneToGenome($b->getLocus()) ||
+				  		    $a->getAbsChr() cmp $b->getAbsChr() ||
+				  		    $a->getAbsPos() <=>  $b->getAbsPos() } @mappingsForCNS;
+
+    } else {
+        @mappingsForCNS = sort { $a->getLocus() cmp $b->getLocus() ||
+				  		    $a->getAbsChr() cmp $b->getAbsChr() ||
+				  		    $a->getAbsPos() <=>  $b->getAbsPos() } @mappingsForCNS;
+    }
 
     my $lastMapping = $mappingsForCNS[0];
     if(scalar @mappingsForCNS >1) {
         foreach my $curMapping (@mappingsForCNS[1..(scalar @mappingsForCNS-1)]) {
-            if($curMapping->isAlive() && $lastMapping->overlap($curMapping) && ($lastMapping->getLocus() eq $curMapping->getLocus())) {
+            if($curMapping->isAlive() && $lastMapping->overlap($curMapping) && ( $ignoreLocus || ($lastMapping->getLocus() eq $curMapping->getLocus())) ) {
                 ## Try to merge.
                 $lastMapping->merge($curMapping);
                 $self->deleteMapping($curMapping);

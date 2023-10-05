@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use List::Util qw(min max);
+use Scalar::Util qw(looks_like_number);
 use Cwd 'abs_path';
 use Getopt::Long;
 use lib './scripts';
@@ -90,31 +91,28 @@ if(defined $gffOutputFileName) {
     open(my $gffOutputFile, ">$gffOutputFileName");
     foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
         my $locusMerge="";
+        $mappingDB->mergeOverlappingMappingsForCNS($curCNS, 1); ### Merge overlapping mappings for the CNS, ignoring the associated locus (to get one combined sequence)
         my @mappings = @{ $mappingDB->getMappingsForCNS($curCNS) };
 
         if (scalar @mappings >0) {
-            my @mappingsInRef;
-            foreach my $curMapping (@mappings) {
-                if(geneToGenome($curMapping->getLocus()) eq $makegffReference) {
-                    push @mappingsInRef, $curMapping;
-                    my $newLocus = geneToLocus($curMapping->getLocus());
-                    if(index($locusMerge, $newLocus) == -1) {
-                        $locusMerge = $locusMerge . $newLocus . "|";
-                    }
-                }
-            }
 
-            if(scalar @mappingsInRef >0) {
+            if(scalar @mappings >0) {
                 $locusMerge = substr($locusMerge, 0, length($locusMerge)-1);
                 my $node = $curCNS->getConservationLevel();
                 my $conservationLevel = nodeToLevel($node);
 
-                @mappingsInRef = reverse sort { $a->getAbsChr() cmp $b->getAbsChr() ||
-                                                $a->getAbsPos() cmp $b->getAbsPos() } @mappingsInRef;
+                @mappings = reverse sort { $a->getAbsChr() cmp $b->getAbsChr() ||
+                                                $a->getAbsPos() cmp $b->getAbsPos() } @mappings;
 
                 my $lastMapping;
-                foreach my $curMapping (@mappingsInRef) {
-                    if(defined $lastMapping && $lastMapping->overlap($curMapping)==1) { next; }
+                foreach my $curMapping (@mappings) {
+                    if(geneToGenome($curMapping->getLocus) ne $makegffReference || (defined $lastMapping && $lastMapping->overlap($curMapping)==1)) { next; }
+
+                    my @associatedLoci = split /\|/, $curMapping->getLocus();
+                    my @associatedLociShortName;
+                    foreach my $curLoci (@associatedLoci) {
+                        push @associatedLociShortName, geneToLocus($curLoci);
+                    }
 
                     print $gffOutputFile join("\t", $curMapping->getAbsChr(),
                                          "Conservatory2",
@@ -124,7 +122,7 @@ if(defined $gffOutputFileName) {
                                             ".",
                                             $curMapping->getStrandInGenome(),
                                             ".",
-                                            "Associated_loci=" . $locusMerge .
+                                            "Associated_loci=" . join("|", sort @associatedLociShortName) .
                                             ";Name=" . $curCNS->getID() . ";Species=" . $curCNS->getSupportingSpeciesNumber() . 
                                             ";Node=" . $node . 
                                             ";Level=" . $conservationLevel . 
@@ -266,6 +264,44 @@ if($filterPlastid) {
     }
     if($verbose) { print "PROGRESS: Plastid Filter: Removed $plastidFiltered CNS\n";}
 }
+my $longFiltered=0;
+
+if($filterLongCNS) {
+    foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
+        if($curCNS->getLen() > $maxCNSLength) {
+           $curCNS->setComment("TooLong");
+           $longFiltered++;
+        }
+    }
+
+    if($verbose) { print "Filtered $longFiltered with length > $maxCNSLength...\n"; }    
+}
+
+
+if($filterRepetitive) {
+    my $repetitiveFiltered=0;
+    ## First, establish cutoff
+    my @posPerCNS;
+
+    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder()}) {
+        my $mappingsPerCNS = $mappingDB->getMappingsForCNS( $curCNS->getID());
+        if(defined $mappingsPerCNS) {
+            push @posPerCNS, scalar @{ $mappingsPerCNS };
+        } else {
+            $CNSDB->deleteCNS($curCNS);
+        }
+    }
+    @posPerCNS = reverse sort { $a <=> $b} @posPerCNS;
+    my $filterValue = $posPerCNS[ scalar @posPerCNS * ($filterRepetitiveCNSCutoff/100) ];
+
+    foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
+        if(!defined $curCNS->getComment() && scalar @{ $mappingDB->getMappingsForCNS( $curCNS->getID())  } > $filterValue)  {
+            $curCNS->setComment("RepetitiveFilter");
+            $repetitiveFiltered++;
+        }
+    }
+    if($verbose) { print "Filtering highly repetitive CNS (CNS with more than $filterValue positions). Removed $repetitiveFiltered CNS\n"; }
+}
 
 if($filterDeepCNS) {
     if($verbose) { print "PROGRESS: Start Deep Filter..";}    
@@ -280,6 +316,10 @@ if($filterDeepCNS) {
         $nodeLevel =~ s/N//;
 
         # for the deep CNS. Apply multiple filters. First, it must be found in more than one reference
+        if(! looks_like_number($nodeLevel) ) {
+            print "\n Node level ($nodeLevel) is not a number. Conservation: " . $curCNS->getConservationLevel() . "\n";
+            $curCNS->print;
+        }
         if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=14)) {
             if($curCNS->getRefGenome() ne "Super" ) {
                 $curCNS->setComment("DeepFilter");
@@ -325,44 +365,6 @@ if($filterDeepCNS) {
     if($verbose) { print "\nDeep CNS Filter: Removed $deepCNSFiltered CNS, trimmed $deepCNSTrimmed mappings.\n"; }
 }
 
-if($filterRepetitive) {
-    my $repetitiveFiltered=0;
-    ## First, establish cutoff
-    my @posPerCNS;
-
-    foreach my $curCNS ( @{ $CNSDB->getCNSByOrder()}) {
-        my $mappingsPerCNS = $mappingDB->getMappingsForCNS( $curCNS->getID());
-        if(defined $mappingsPerCNS) {
-            push @posPerCNS, scalar @{ $mappingsPerCNS };
-        } else {
-            $CNSDB->deleteCNS($curCNS);
-        }
-    }
-    @posPerCNS = reverse sort { $a <=> $b} @posPerCNS;
-    my $filterValue = $posPerCNS[ scalar @posPerCNS * ($filterRepetitiveCNSCutoff/100) ];
-
-    foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
-        if(!defined $curCNS->getComment() && scalar @{ $mappingDB->getMappingsForCNS( $curCNS->getID())  } > $filterValue)  {
-            $curCNS->setComment("RepetitiveFilter");
-            $repetitiveFiltered++;
-        }
-    }
-    if($verbose) { print "Filtering highly repetitive CNS (CNS with more than $filterValue positions). Removed $repetitiveFiltered CNS\n"; }
-
-}
-
-my $longFiltered=0;
-
-if($filterLongCNS) {
-    foreach my $curCNS (  @{ $CNSDB->getCNSByOrder()} ) {
-        if($curCNS->getLen() > $maxCNSLength) {
-           $curCNS->setComment("TooLong");
-           $longFiltered++;
-        }
-    }
-
-    if($verbose) { print "Filtered $longFiltered with length > $maxCNSLength...\n"; }    
-}
 
 if($renameCNS) {        ### Rename all the CNSs to give consistent name based on their conservation level and a unique ID.
     my %CNSNameIndices;
@@ -376,7 +378,8 @@ if($renameCNS) {        ### Rename all the CNSs to give consistent name based on
         }
         if(!defined $CNSNameIndices{$conservationLevel}) { $CNSNameIndices{$conservationLevel}=1; }
         my $newCNSName = $conservationLevel . "_" . $CNSNameIndices{$conservationLevel};
-        $mappingDB->renameCNS($curCNS, $newCNSName);
+        $mappingDB->renameCNSMappings($curCNS, $newCNSName);
+        $CNSDB->renameCNS($curCNS, $newCNSName);
         $CNSNameIndices{$conservationLevel}++;
     }
 }

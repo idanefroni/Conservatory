@@ -280,6 +280,12 @@ sub getLocus {
     my ($self) = @_;
     return $self->{_Locus};
 }
+
+sub setLocus {
+    my ($self, $newLocus) = @_;
+    $self->{_Locus} = $newLocus;
+}
+
 sub getGenome {
     my ($self) = @_;
     return geneToGenome($self->{_Locus});
@@ -600,12 +606,22 @@ sub merge {
         substr($combinedSequence, $combinedSeqStart - $other->getAbsPos()-length($otherSeq) + length($combinedSequence), length($otherSeq)) = $otherSeq;
     }
 
-    
     $self->setAbsPos($combinedSeqStart);
     $self->setSeq($combinedSequence);
-    $self->setPos(min($self->getPos(), $other->getPos));
+    $self->setPos(min($self->getPos(), $other->getPos()));
     ## Once we merge, the reference sequence does not make sense
     $self->{_RefSeq}="";
+
+    ## if these are two different associated loci that we are merge, there is no meaning for relative coordiantes
+    if($self->getLocus() ne $other->getLocus()) {
+        $self->setPos(0);
+        my $curLocusName = $self->getLocus();
+        my $otherLocusName = $other->getLocus();
+        if( !($curLocusName =~ /$otherLocusName/ ) ) {
+            $self->setLocus("$curLocusName|$otherLocusName");
+        }
+    }
+   
     return 1;
 }
 
