@@ -13,7 +13,6 @@ use Algorithm::NeedlemanWunsch;
 use Exporter;
 
 
-
 ##############################################################################
 ##### CNS Splitting Parameters
 
@@ -21,7 +20,7 @@ our $standardDeviationsToSplit = 3; ## The number of standard deviation in numbe
 our $minSpeciesToSplitCNS=5;  ### Minimal number of species to consider a split of the CNS
 our $maxSpeciesToInitiateCNSSplit = 200; ## Do not split CNS if it is supported by atleast this number of species
 									 ## To avoid spliting of very highly conserved CNSs
-our $minIdentityToKeepBreakpoint	=50;
+our $minIdentityToKeepBreakpoint=50;
 our $minSpeciesToKeepBreakpoint	= 5;
 our $minSequenceContentInAlignment = 0.5;
 our $minCNSLength=8;
@@ -44,7 +43,7 @@ my $filterCharacter = 'X';
 my %footprintDatabase;   ### Database of footprints for the getGeneCoordiantes function
 
 our @ISA= qw( Exporter );
-our @EXPORT = qw( overlap reverseComplement flipStrand alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments 
+our @EXPORT = qw( overlapFragment reverseComplement flipStrand alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments 
 				  getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase multipleAlignment cleanChrName trimTreeToLeaves
 				  $minCNSLength $minCNSCoverageAfterSplit  $minSequenceContentInAlignment $minSpeciesForCNS $superCNSPrefix $standardDeviationsToSplit $minSpeciesToSplitCNS $maxSpeciesToInitiateCNSSplit $minSequenceContentToConsiderReconstruction
 				  $homoPolymerFilterLength $homoPolymerFuzzyFilterLength $atRichRegionFilterLength $atRichRegionFilterFlankLength $dimerPolymerFilterLength
@@ -119,11 +118,11 @@ sub alignPairwise {
 #############################################################################
 ### Compute overlap between two fragments. 
 ### Parameters:
-### overlap(startOne, endOne, StartTwo, endTwo)
+### overlapFragment(startOne, endOne, StartTwo, endTwo)
 ### returns relative overlap (0-1).
 ###
 
-sub overlap {
+sub overlapFragment {
 	my ($startOne, $endOne, $startTwo, $endTwo) =@_;
 	if ( ($startOne <= $startTwo && $endOne <= $startTwo) ||
 		 ($startOne >= $endTwo) || ($startTwo >= $endOne)) {

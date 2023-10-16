@@ -802,8 +802,8 @@ sub cleanAlignments {
 			my $scanSource = $scannedAln->get_seq_by_pos(1);
 			my $scanTarget = $scannedAln->get_seq_by_pos(2);
 			if(($target->id() eq $scanTarget->id()) && 
-			( overlap($scanSource->start, $scanSource->end, $source->start, $source->end) > $alignmentSeqOverlapToMerge ||
-			 overlap($source->start, $source->end, $scanSource->start, $scanSource->end) > $alignmentSeqOverlapToMerge ) ) {
+			( overlapFragment($scanSource->start, $scanSource->end, $source->start, $source->end) > $alignmentSeqOverlapToMerge ||
+			 overlapFragment($source->start, $source->end, $scanSource->start, $scanSource->end) > $alignmentSeqOverlapToMerge ) ) {
 				## If the hits are not coming from the same region, pick the best one
 				$overlappingSource=1;
 				if($curAln->score > $scannedAln->score) {

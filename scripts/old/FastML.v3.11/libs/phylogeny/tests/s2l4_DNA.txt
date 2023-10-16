@@ -1,4 +1,0 @@
-2  4  
-Sequence1   ACAC
-Sequence2   GCGC
-
