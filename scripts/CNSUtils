@@ -21,6 +21,7 @@ my $outMapFileName;
 my $help =0;
 
 my $maxCNSLength=250;
+my $startCNSNameIndex=1;
 my $filterDeepCNS=0;
 my $filterRepetitive=0;
 my $filterPlastid=0;
@@ -376,7 +377,7 @@ if($renameCNS) {        ### Rename all the CNSs to give consistent name based on
         } else {
             $conservationLevel = $curCNS->getRefGenome();
         }
-        if(!defined $CNSNameIndices{$conservationLevel}) { $CNSNameIndices{$conservationLevel}=1; }
+        if(!defined $CNSNameIndices{$conservationLevel}) { $CNSNameIndices{$conservationLevel}= $startCNSNameIndex; }
         my $newCNSName = $conservationLevel . "_" . $CNSNameIndices{$conservationLevel};
         $mappingDB->renameCNSMappings($curCNS, $newCNSName);
         $CNSDB->renameCNS($curCNS, $newCNSName);

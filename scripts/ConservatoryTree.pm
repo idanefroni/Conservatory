@@ -129,7 +129,7 @@ sub getCNSBirth {
 sub getCNSDeaths {
 	my ($self, $birthNodeID, $leavesListRef, $deathList) = @_;
 	my $thisNode = $self->getNodeByID($birthNodeID);
-	#print $thisNode->id . "\n";
+
 	if(!defined $thisNode) {
 		return 0;
 	}
@@ -150,7 +150,7 @@ sub getCNSDeaths {
 	foreach my $curChild ( $thisNode->each_Descendent()) {
 		my $numOfDescendents = scalar $curChild->get_all_Descendents;
 
-		if($totalCNSs>0 && $numOfDescendents> 4 && !$curChild->is_Leaf && $childrenHaveCNS{$curChild->id} == 0) { ## If this child has no CNS, BUT is not a leaf, add a death point
+		if($totalCNSs>0 && $numOfDescendents>=0 && $childrenHaveCNS{$curChild->id} == 0) { ## If this child has no CNS, BUT is not a leaf, add a death point
 			push @{ $deathList },  $curChild->id;
 		}
 		### also add the living CNSs
