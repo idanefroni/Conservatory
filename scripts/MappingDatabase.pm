@@ -308,7 +308,6 @@ sub findBreakPointsForCNS {
 			}
 		}
 	}
-    print join("|",@CNSCoverage) . "\n";
 	### Smooth the coverage vector to avoid spliting on very small gaps
 	foreach my $pos (0..($CNS->getLen()-4)) {
 		$CNSCoverageSmooth[$pos] = mean(@CNSCoverage[($pos)..($pos+3)])

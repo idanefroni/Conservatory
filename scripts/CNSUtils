@@ -90,6 +90,8 @@ if(defined $gffOutputFileName) {
     my $mappingDB = new MappingDatabase("grep $makegffReference $inMapFileName |", 1, $makegffReference);
 
     open(my $gffOutputFile, ">$gffOutputFileName");
+    print $gffOutputFile "##gff-version 3\n";
+    
     foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
         my $locusMerge="";
         $mappingDB->mergeOverlappingMappingsForCNS($curCNS, 1); ### Merge overlapping mappings for the CNS, ignoring the associated locus (to get one combined sequence)
@@ -123,12 +125,12 @@ if(defined $gffOutputFileName) {
                                             ".",
                                             $curMapping->getStrandInGenome(),
                                             ".",
-                                            "Associated_loci=" . join("|", sort @associatedLociShortName) .
-                                            ";Name=" . $curCNS->getID() . ";Species=" . $curCNS->getSupportingSpeciesNumber() . 
-                                            ";Node=" . $node . 
-                                            ";Level=" . $conservationLevel . 
-                                            ";Original_CNS=" . $curCNS->getLocus() .
-                                            ";Ancesteral=" . $curCNS->getSeq() .  "\n");
+                                            "associated_loci=" . join("|", sort @associatedLociShortName) .
+                                            ";Name=" . $curCNS->getID() . ";species=" . $curCNS->getSupportingSpeciesNumber() . 
+                                            ";node=" . $node . 
+                                            ";level=" . $conservationLevel . 
+                                            ";original_CNS=" . $curCNS->getLocus() .
+                                            ";ancesteral=" . $curCNS->getSeq() .  "\n");
 
                     $lastMapping= $curMapping;
                 }
@@ -314,6 +316,11 @@ if($filterDeepCNS) {
     foreach my $curCNS ( @{ $CNSDB->getCNSByOrder()}) {
 
         my $nodeLevel = $curCNS->getConservationLevel();
+        if($nodeLevel eq "") {
+            my @speciesForCNS =  @{ $curCNS->getSupportingSpecies($mappingDB) };            
+            $curCNS->setConservationLevel($conservatoryTree->findDeepestCommonNode(\@speciesForCNS));        
+            $nodeLevel = $curCNS->getConservationLevel();
+        }
         $nodeLevel =~ s/N//;
 
         # for the deep CNS. Apply multiple filters. First, it must be found in more than one reference
@@ -322,7 +329,7 @@ if($filterDeepCNS) {
             $curCNS->print;
         }
         if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=14)) {
-            if($curCNS->getRefGenome() ne "Super" ) {
+            if(! $curCNS->isMerged() ) {
                 $curCNS->setComment("DeepFilter");
                 $deepCNSFiltered++;
             } else {  ### Make sure these are not sproious mappings
@@ -372,11 +379,11 @@ if($renameCNS) {        ### Rename all the CNSs to give consistent name based on
     foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
         my $conservationLevel;
 
-        if($curCNS->isMerged()) {
-            $conservationLevel = $superCNSPrefix . "_" . nodeToLevel($curCNS->getConservationLevel());
-        } else {
-            $conservationLevel = $curCNS->getRefGenome();
-        }
+#        if($curCNS->isMerged()) {
+            $conservationLevel = nodeToLevel($curCNS->getConservationLevel());
+#        } else {
+ #           $conservationLevel = $curCNS->getRefGenome();
+#        }
         if(!defined $CNSNameIndices{$conservationLevel}) { $CNSNameIndices{$conservationLevel}= $startCNSNameIndex; }
         my $newCNSName = $conservationLevel . "_" . $CNSNameIndices{$conservationLevel};
         $mappingDB->renameCNSMappings($curCNS, $newCNSName);
@@ -482,7 +489,7 @@ sub nodeToLevel {
     my @dicotNodes = ("N15","N16","N17","N18");
     my @rosidNodes = ("N19","N20");
     my @asteridNodes = ("N167","N168", "N170","N182","N192","N193");
-    my @monocotNodes = ("N226","N227","N228","N269","N228","229");
+    my @monocotNodes = ("N226","N227","N228","N228");
 
     my @solanaceaeNodes =("N194","N195","N196","N199","N197","N200","N201","N202","N204");
     my @poaceaeNodes=("N233","N234","N235","N236","N237","N238","N239","N240","N248","N249","N252","N255","N253","N251","N250","N243","N245","N246");

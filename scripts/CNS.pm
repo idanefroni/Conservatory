@@ -221,7 +221,7 @@ sub hasConservationLevel {
 }
 sub isMerged {
     my ($self) = @_;
-    if(index($self->{_ID}, $superCNSPrefix) != -1) {
+    if(index($self->{_ID}, $superCNSPrefix) != -1 || index($self->{_Locus}, "|") != -1) {
         return 1;
     } else {
         return 0;
