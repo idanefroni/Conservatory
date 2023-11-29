@@ -97,48 +97,49 @@ if(defined $gffOutputFileName) {
         $mappingDB->mergeOverlappingMappingsForCNS($curCNS, 1); ### Merge overlapping mappings for the CNS, ignoring the associated locus (to get one combined sequence)
         my @mappings = @{ $mappingDB->getMappingsForCNS($curCNS) };
 
-        if (scalar @mappings >0) {
+        if(scalar @mappings >0) {
+            $locusMerge = substr($locusMerge, 0, length($locusMerge)-1);
+            my $node = $curCNS->getConservationLevel();
+            my $conservationLevel = nodeToLevel($node);
 
-            if(scalar @mappings >0) {
-                $locusMerge = substr($locusMerge, 0, length($locusMerge)-1);
-                my $node = $curCNS->getConservationLevel();
-                my $conservationLevel = nodeToLevel($node);
+            @mappings = reverse sort { $a->getAbsChr() cmp $b->getAbsChr() ||
+                                       $a->getAbsPos() cmp $b->getAbsPos() } @mappings;
 
-                @mappings = reverse sort { $a->getAbsChr() cmp $b->getAbsChr() ||
-                                                $a->getAbsPos() cmp $b->getAbsPos() } @mappings;
+            my $lastMapping;
 
-                my $lastMapping;
-                foreach my $curMapping (@mappings) {
-                    if(geneToGenome($curMapping->getLocus) ne $makegffReference || (defined $lastMapping && $lastMapping->overlap($curMapping)==1)) { next; }
+            foreach my $curMapping (@mappings) {
+                if(geneToGenome($curMapping->getLocus()) ne $makegffReference || (defined $lastMapping && $lastMapping->overlap($curMapping)==1)) { next; }
 
-                    my @associatedLoci = split /\|/, $curMapping->getLocus();
-                    my @associatedLociShortName;
-                    foreach my $curLoci (@associatedLoci) {
-                        push @associatedLociShortName, geneToLocus($curLoci);
-                    }
+                my @associatedLoci = split /\|/, $curMapping->getLocus();
+                my @associatedLociShortName;
 
-                    print $gffOutputFile join("\t", $curMapping->getAbsChr(),
-                                         "Conservatory2",
-                                            "CNS",
-                                            $curMapping->getAbsPos(),
-                                            $curMapping->getAbsPos() + $curMapping->getAbsLen() -1,
-                                            ".",
-                                            $curMapping->getStrandInGenome(),
-                                            ".",
-                                            "associated_loci=" . join("|", sort @associatedLociShortName) .
-                                            ";Name=" . $curCNS->getID() . ";species=" . $curCNS->getSupportingSpeciesNumber() . 
-                                            ";node=" . $node . 
-                                            ";level=" . $conservationLevel . 
-                                            ";original_CNS=" . $curCNS->getLocus() .
-                                            ";ancesteral=" . $curCNS->getSeq() .  "\n");
-
-                    $lastMapping= $curMapping;
+                foreach my $curLoci (@associatedLoci) {
+                    push @associatedLociShortName, geneToLocus($curLoci);
                 }
+
+
+                print $gffOutputFile join("\t", $curMapping->getAbsChr(),
+                                          "Conservatory2",
+                                          "CNS",
+                                          $curMapping->getAbsPos(),
+                                          $curMapping->getAbsPos() + $curMapping->getAbsLen() -1,
+                                          ".",
+                                          $curMapping->getStrandInGenome(),
+                                          ".",
+                                          "associated_loci=" . join("|", sort @associatedLociShortName) .
+                                          ";Name=" . $curCNS->getID() . ";species=" . $curCNS->getSupportingSpeciesNumber() . 
+                                          ";node=" . $node . 
+                                          ";level=" . $conservationLevel . 
+                                          ";original_CNS=" . $curCNS->getLocus() .
+                                          ";ancesteral=" . $curCNS->getSeq() .  "\n");
+
+                $lastMapping= $curMapping;
             }
         }
     }
-
     close($gffOutputFile);
+    ## Now sort the GFF
+    system("{ grep '^##' $gffOutputFileName; grep -v '^##' $gffOutputFileName | sort -k1,1 -k4,4n -k5,5n; } > tmp_$gffOutputFileName && mv tmp_$gffOutputFileName $gffOutputFileName");
     exit(0);
 }
 
@@ -329,7 +330,10 @@ if($filterDeepCNS) {
             $curCNS->print;
         }
         if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=14)) {
-            if(! $curCNS->isMerged() ) {
+            if(! $curCNS->isMerged() && !$curCNS->isMultipleRefs() ) {
+                $curCNS->setComment("DeepFilter");
+                $deepCNSFiltered++;
+            } elsif(($nodeLevel +0 <=8) && ($curCNS->getNumOfRefGenomes() <3)) {  ### For the deepest ones, make sure we have more than 2 ref genomes
                 $curCNS->setComment("DeepFilter");
                 $deepCNSFiltered++;
             } else {  ### Make sure these are not sproious mappings

@@ -228,6 +228,30 @@ sub isMerged {
     }
 }
 
+sub isMultipleRefs {
+    my ($self) = @_;    
+    if($self->getNumOfRefGenomes()==1) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+sub getNumOfRefGenomes {
+    my ($self) = @_;
+    if($self->getRefGenome() eq $superCNSPrefix) {
+        my @mergedCNSs = split /\|/, $self->{_Locus};
+        my %refCNSHeads;
+        foreach my $curCNS (@mergedCNSs) {
+            my $CNSNameHead = substr($curCNS,0,2);
+            $refCNSHeads{$CNSNameHead}++;
+        }
+        return scalar (keys %refCNSHeads);
+    } else {
+        return 1;
+    }
+}
+
 sub isAlive {
     my ($self) = @_;
     return $self->{_Alive};
