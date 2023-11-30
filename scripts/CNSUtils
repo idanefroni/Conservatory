@@ -139,7 +139,7 @@ if(defined $gffOutputFileName) {
     }
     close($gffOutputFile);
     ## Now sort the GFF
-    system("{ grep '^##' $gffOutputFileName; grep -v '^##' $gffOutputFileName | sort -k1,1 -k4,4n -k5,5n; } > tmp_$gffOutputFileName && mv tmp_$gffOutputFileName $gffOutputFileName");
+    system("{ grep '^##' $gffOutputFileName; grep -v '^##' $gffOutputFileName | sort -k1,1 -k4,4n -k5,5n; } > $gffOutputFileName.tmp && mv $gffOutputFileName.tmp $gffOutputFileName");
     exit(0);
 }
 
@@ -336,7 +336,7 @@ if($filterDeepCNS) {
             } elsif(($nodeLevel +0 <=8) && ($curCNS->getNumOfRefGenomes() <3)) {  ### For the deepest ones, make sure we have more than 2 ref genomes
                 $curCNS->setComment("DeepFilter");
                 $deepCNSFiltered++;
-            } else {  ### Make sure these are not sproious mappings
+            } else {  ### Make sure these are not sproious mappings that are only supported by one species
                 if($verbose) { print "."; }
                 my @speciesForCNS =  @{ $curCNS->getSupportingSpecies($mappingDB) };
                 my @speciesToTest = sort grep { my $element=$_; grep {$_ eq $element} @speciesForCNS } @nonAngiosperms;
@@ -383,11 +383,8 @@ if($renameCNS) {        ### Rename all the CNSs to give consistent name based on
     foreach my $curCNS ( @{ $CNSDB->getCNSByOrder() }) {
         my $conservationLevel;
 
-#        if($curCNS->isMerged()) {
-            $conservationLevel = nodeToLevel($curCNS->getConservationLevel());
-#        } else {
- #           $conservationLevel = $curCNS->getRefGenome();
-#        }
+        $conservationLevel = nodeToLevel($curCNS->getConservationLevel());
+
         if(!defined $CNSNameIndices{$conservationLevel}) { $CNSNameIndices{$conservationLevel}= $startCNSNameIndex; }
         my $newCNSName = $conservationLevel . "_" . $CNSNameIndices{$conservationLevel};
         $mappingDB->renameCNSMappings($curCNS, $newCNSName);
