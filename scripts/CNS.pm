@@ -10,7 +10,7 @@ use ConservatoryUtils;
 use GenomeDatabase;
 use Mapping;
 
-my $minSyntenyBiasToAssignCNS= 3; ### The minimum number of species differences between syntenic coding and non-coding region to delete the less
+my $minSyntenyBiasToAssignCNS=4; ### The minimum number of species differences between syntenic coding and non-coding region to delete the less
 									# syntenic one
                                     
 sub new {
@@ -183,7 +183,8 @@ sub findReferenceMapping {
     my ($self, $genomeDB, $MappingDB) = @_;
 
     foreach my $curMapping ( @{ $MappingDB->getMappingsForCNS( $self->{_ID}) }) {
-		if($curMapping->getSpecies() eq $genomeDB->genomeToSpecies( $self->{_RefGenome} ) && geneToLocus( $curMapping->getLocus()) eq $self->{_Locus} )  {
+#		if($curMapping->getSpecies() eq $genomeDB->genomeToSpecies( $self->{_RefGenome} ) && geneToLocus( $curMapping->getLocus()) eq $self->{_Locus} )  {
+		if($curMapping->getSpecies() eq $genomeDB->genomeToSpecies( $self->{_RefGenome} ) )  {
 			$self->{_ReferenceMapping} = $curMapping;
 		}
 	}

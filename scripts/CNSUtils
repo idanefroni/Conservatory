@@ -55,6 +55,7 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
             "fix-positions" => \$fixPositions,
             "fix-genome=s" => \$fixGenome,
             "rename-cns" => \$renameCNS,
+            "name-index-start=n" => \$startCNSNameIndex,
             "assign-by-synteny" => \$assignBySynteny,
             "make-gff=s" => \$gffOutputFileName,
             "gff-reference=s" => \$makegffReference,
@@ -330,7 +331,7 @@ if($filterDeepCNS) {
             $curCNS->print;
         }
         if(!defined $curCNS->getComment() && ($nodeLevel + 0 <=14)) {
-            if(! $curCNS->isMerged() && !$curCNS->isMultipleRefs() ) {
+            if(($curCNS->getNumOfRefGenomes() <2) ) {
                 $curCNS->setComment("DeepFilter");
                 $deepCNSFiltered++;
             } elsif(($nodeLevel +0 <=8) && ($curCNS->getNumOfRefGenomes() <3)) {  ### For the deepest ones, make sure we have more than 2 ref genomes
@@ -489,7 +490,7 @@ sub nodeToLevel {
     my @angiospermsNodes = ("N12","N13","N14");
     my @dicotNodes = ("N15","N16","N17","N18");
     my @rosidNodes = ("N19","N20");
-    my @asteridNodes = ("N167","N168", "N170","N182","N192","N193");
+    my @asteridNodes = ("N167","N168", "N170","N182","N192","N193","N169");
     my @monocotNodes = ("N226","N227","N228","N228");
 
     my @solanaceaeNodes =("N194","N195","N196","N199","N197","N200","N201","N202","N204");
@@ -505,7 +506,7 @@ sub nodeToLevel {
     if( grep( /^$node$/, @angiospermsNodes) ) { $conservationLevel = "Angiosperms"; }
     if( grep( /^$node$/, @dicotNodes) ) { $conservationLevel = "Dicots"; }
     if( grep( /^$node$/, @monocotNodes) ) { $conservationLevel = "Monocots"; }
-    if( grep( /^$node$/, @rosidNodes) ) { $conservationLevel = "Rosides"; }
+    if( grep( /^$node$/, @rosidNodes) ) { $conservationLevel = "Rosids"; }
     if( grep( /^$node$/, @asteridNodes) ) { $conservationLevel = "Asterids"; }
 
    if( grep( /^$node$/, @solanaceaeNodes) ) { $conservationLevel = "Solanaceae"; }

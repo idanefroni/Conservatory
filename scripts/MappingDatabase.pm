@@ -29,6 +29,8 @@ sub new {
             chomp;
             my $newMapping = new Mapping($_);
 
+            ## Sanity and file format checks
+            if(!defined $newMapping->getLocus() || $newMapping->getLocus() eq "" || !defined geneToGenome($newMapping->getLocus())) { next;}          
             if(defined $genome && geneToGenome($newMapping->getLocus()) ne $genome) { next; }
 
 	        if($verbose) { print "PROGRESS: Reading Mappings..." . ($curPos++) . ".\r" };
@@ -140,7 +142,7 @@ sub renameCNSMappings {
     foreach my $curMapping (@{ $self->getMappingsForCNS($CNS) }) { 
         $curMapping->setCNSID($newCNSName);
     }
-    $self->{_mappingCNSIndex}->{$newCNSName} = $self->{_mappingCNSIndex}->{$CNS->getID() };
+    $self->{_mappingCNSIndex}->{$newCNSName} = $self->{_mappingCNSIndex}->{ $CNS->getID() };
     delete $self->{_mappingCNSIndex}->{ $CNS->getID() };
 }
 

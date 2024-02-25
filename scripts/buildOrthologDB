@@ -36,11 +36,14 @@ my $referenceGeneProcessingREGEX="";
 my %genesWithFootprint;
 my $blastLineRead=0;
 my $blastHitForLocusCount;
+my $minIdentity=0;
 
 my $curReadLocus="";
 
 my %genome2RefHits;
 my %ref2GenomeHits;
+
+my $outputOrthologFileName="";
 
 $|++;
 
@@ -49,6 +52,10 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
 			"genome-database=s" => \$genomeDatabaseFileName,
 			"genome=s" => \$genome,
 			"reference=s" => \$referenceGenome,
+			"max-eval=i" => \$MAX_EVAL,
+			"min-eval=s" => \$MIN_EVAL,
+			"min-identity=i" => \$minIdentity,			
+			"output-ortholog-file=s" => \$outputOrthologFileName,
 			"verbose" => \$verbose,
 			"help" => \$help) or die("Error in command line arguments\n");
 			
@@ -106,7 +113,9 @@ if (!( -e $ref2genomeFileName)) {
 	$ref2genomeFileName .= ".gz";
 }
 
-my $outputOrthologFileName = "$conservatoryDir/genomes/$family/$referenceGenome.$genome.orthologs.csv";
+if($outputOrthologFileName eq "") {
+	$outputOrthologFileName = "$conservatoryDir/genomes/$family/$referenceGenome.$genome.orthologs.csv";
+}
 my $footprintGFFFileName = "$conservatoryDir/genomes/$family/$genome.footprint.gff3";
 my $proteinSequenceFileName = "$conservatoryDir/genomes/$referenceGenomeFamily/$referenceGenome.proteins.fasta";
 
@@ -173,6 +182,7 @@ while(my $curline = <$g2ref>) {
 	my @line_s = split(/\t/, $curline);
 	my $locus = $line_s[0];
 	my $refLocus = $line_s[1];
+	my $identity = $line_s[2];
 	my $eval = $line_s[10];
 	my $logeval = logEval($eval);
 
@@ -186,7 +196,7 @@ while(my $curline = <$g2ref>) {
 		$curReadLocus= $locus;
 		$blastHitForLocusCount=0;
 	}
-	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus })) {
+	if(($eval < $MIN_EVAL) && (defined $genesWithFootprint{ $locus }) && $identity > $minIdentity) {
 
 		if(defined $genome2RefHits{$refLocus}{$locus}) {
 			if($logeval > $genome2RefHits{$refLocus}{$locus}) {
@@ -210,6 +220,7 @@ while(my $curline = <$ref2g>) {
 	my @line_s = split(/\t/, $curline);
 	my $refLocus = $line_s[0];
 	my $locus = $line_s[1];
+	my $identity = $line_s[2];
 	my $eval = $line_s[10];
 	my $logeval = logEval($eval);
 
@@ -225,7 +236,7 @@ while(my $curline = <$ref2g>) {
 		$blastHitForLocusCount=0;
 	}
 
-	if(($eval < $MIN_EVAL)) {
+	if($eval < $MIN_EVAL && $identity> $minIdentity) {
 
 		if(defined $ref2GenomeHits{$refLocus}{$locus}) {
 			if($logeval > $ref2GenomeHits{$refLocus}{$locus}) {
