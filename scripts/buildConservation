@@ -70,7 +70,6 @@ my $minCNSCoverageFinal=0.5; ## The coverage a final CNS must have to be conside
 
 #### Alignment filtering parameters
 my @minSpeciesPerConservationLevel= (200,125,100,80,30,10); ## Must have atleast these many alignments to support level assignment
-#my @minSpeciesAtConservationLevel= (1,1,1,3,5,6); ## Must have atleast these many species from each level to support level assignment
 
 my $minHSPthresholdFamily=2000;
 my $minHSPthresholdGlobal=1600;

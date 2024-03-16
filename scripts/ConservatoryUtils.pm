@@ -39,6 +39,9 @@ our $atRichRegionFilterFlankLength = 2;   ###   when filtering atrich, leave fla
 our $dimerPolymerFilterLength = 5;        ### Filter repeating dimers of these many repeats
 my $filterCharacter = 'X';
 
+#### Alignment filtering parameters
+our @minSpeciesPerConservationLevel= (200,125,100,80,30,10); ## Must have atleast these many alignments to support level assignment
+
 
 my %footprintDatabase;   ### Database of footprints for the getGeneCoordiantes function
 
@@ -46,7 +49,7 @@ our @ISA= qw( Exporter );
 our @EXPORT = qw( overlapFragment reverseComplement flipStrand alignPairwise isGeneName geneToSpecies geneToGenome geneToLocus fullNameToShortName lengthWithoutGaps dropAsterixFromProtein findAll getRandomORFLength getLongestORF getCNSbreakpoints polishCNSAlignments 
 				  getGappiness shiftTargetCoordinate translateRealtiveToAbsoluteCoordinates getGeneCoordinates clearGeneCooordinateDatabase multipleAlignment cleanChrName trimTreeToLeaves
 				  $minCNSLength $minCNSCoverageAfterSplit  $minSequenceContentInAlignment $minSpeciesForCNS $superCNSPrefix $standardDeviationsToSplit $minSpeciesToSplitCNS $maxSpeciesToInitiateCNSSplit $minSequenceContentToConsiderReconstruction
-				  $homoPolymerFilterLength $homoPolymerFuzzyFilterLength $atRichRegionFilterLength $atRichRegionFilterFlankLength $dimerPolymerFilterLength
+				  $homoPolymerFilterLength $homoPolymerFuzzyFilterLength $atRichRegionFilterLength $atRichRegionFilterFlankLength $dimerPolymerFilterLength @minSpeciesPerConservationLevel
 				  generateLastzCommandLine extractFastaToFile getMAFQuality fuzzyFilterHomopolymers fuzzyFilterDimers fuzzyFilterATRich mergeFastaSequences);
 
 

@@ -62,8 +62,8 @@ GetOptions ("conservatoryDirectory=s" => \$conservatoryDir,
             "sort" => \$sortMapFile,
 			"verbose" => \$verbose,
 			"help" => \$help) or die ("Error in command line arguments\n");
-						
-if($help || $inCNSFileName eq "" || $inMapFileName eq "") {
+
+if($help || !defined $inCNSFileName || !defined $inMapFileName || $inCNSFileName eq "" || $inMapFileName eq "") {
 	print "Conservatory version 2.0.1\n\n";
 
 	print "CNSUtils --in-cns <cnsFile> --in-map <cnsPositionMapFile> [--out-cns <cnsFile>] [--out-map <cnsPositionMapFile>].\n";
@@ -375,9 +375,30 @@ if($filterDeepCNS) {
             }
         }
     }
+
+    ##### filter by number of species and conservation level (for deep CNSs)
+    foreach my $curCNS (@{ $CNSDB->getCNSByOrder()} ) {
+        my $conservationLevel = nodeToLevel($curCNS->getConservationLevel());
+
+        my $minSpeciesToFilter=0;
+        if($conservationLevel eq "Ancient") {
+            $minSpeciesToFilter = $minSpeciesPerConservationLevel[2];
+        } elsif($conservationLevel eq "Tracheophytes") {
+            $minSpeciesToFilter = $minSpeciesPerConservationLevel[3];
+        } elsif($conservationLevel eq "Angiosperms") {
+            $minSpeciesToFilter = $minSpeciesPerConservationLevel[4];
+        } elsif($conservationLevel eq "Dicots" || $conservationLevel eq "Monocots" ) {
+            $minSpeciesToFilter = $minSpeciesPerConservationLevel[5];
+        }
+
+        if($curCNS->getSupportingSpeciesNumber($mappingDB) <= $minSpeciesToFilter) {
+            $curCNS->setComment("LowSupportingSpeciesFilter");
+            $deepCNSFiltered++;
+        }
+    }
+
     if($verbose) { print "\nDeep CNS Filter: Removed $deepCNSFiltered CNS, trimmed $deepCNSTrimmed mappings.\n"; }
 }
-
 
 if($renameCNS) {        ### Rename all the CNSs to give consistent name based on their conservation level and a unique ID.
     my %CNSNameIndices;
@@ -393,6 +414,7 @@ if($renameCNS) {        ### Rename all the CNSs to give consistent name based on
         $CNSNameIndices{$conservationLevel}++;
     }
 }
+
 
 ## open Reject DB
 my $rejectCNSDB = new CNSDatabase();
