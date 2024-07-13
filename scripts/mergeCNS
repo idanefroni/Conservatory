@@ -40,7 +40,6 @@ my $conservatoryTreeFileName;
 ### Merging parameters
 
 my $minOverlappingSpeciesForMerge=4; ### How many overlapping hits to merge a CNS
-my $minOverlappingSpeciesForMerge=0; ### How many overlapping hits to merge a CNS
 my $minCNSOverlap = 0.1;
 
 my $minSupportingSpeciesToKeepMultipleCNS = 60;
