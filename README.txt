@@ -26,7 +26,7 @@ Last update: 4/12/2023
 			homeobox gene uncovered by cisregulatory dissection. Cell, 184:1724-1739.
 
 
-	For questions\comments email Idan Efroni @ idan.efroni@mail.huji.ac.il
+	For questions\comments email Idan Efroni @ idan.efroni@mail.huji.ac.il \ Zachary Lippman lippman@cshl.edu
 	
 **********************************************************************************************************************************************************
 
