@@ -116,6 +116,29 @@ Setup V2.0.1
 	Output alignment files will be in alignments/<familyName>/<geneName>
 	Output CNS files will be in CNS/<familyName>/<geneName>
 
+	There are two comma-delimited files generated for each gene, a CNS file, containing the list of unique CNSs found, and a MAP file, listing all the instances of the CNS in all genomes in the family.
+	The fields in the CNS file are:
+		ReferenceGenomeName
+		UniqueCNSID
+		Locus
+		Relative position in the reference genome
+		CNS length
+		CNS Age (deepest node in the tree)
+		Number of species having the CNS
+	The fields in the MAP file are:
+		UniqueCNSID
+		Species
+		Locus
+		Relative position
+		Strand (+ or -) relative to the CNS
+		Start of alignment position in CNS
+		CNS sequence in the current genome
+		CNS sequence in reference genome
+		Chromosome
+		Absolute position
+		Chromosome strand
+		Unique location name (optional)
+	
 8. Conservatory can be run for individual genes, but is more powerful when the CNS data is merged into a unified dataset. To merge all CNS for a reference genome:
 
 	Concat all CNS/<familyName>/*.cns.csv directory to a single file <familyName>.cns.csv
