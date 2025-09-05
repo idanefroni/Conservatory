@@ -1,32 +1,36 @@
 *************************************************************************************************************************
 Conservatory v2.0.1
 
-Last update: 4/12/2023
+Last update: 4/9/2025
 *************************************************************************************************************************
 
   Conservatory is a structural-variants and polyploidization-aware program for the identification of conserved non-coding
 	sequences (CNS) in a large number of genomes. Conservatory identifies cis-elements and protein sequence microsynteny to derive
 	multiple alignments of upstream and downstream regulatory sequences in closely related species. It then reconstructs
-	the ancestral sequences for each CNS and searches for that in syntenic regions of distant genomes. 
+	the ancestral sequences for each CNS and searches for them in syntenic regions of distant genomes. 
 	Conservatory utilizes multiple genomes per species to account for genome-specific variants or annotation problems.
 	Conservatory uses a reference genome to define the CNS. After running conservation for each gene separately,
 	 conservatory merges all the CNS for a given reference genome.
 
-	Conservatory can also utilize multiple reference genomes. A separate script than merges the CNS from all references
-         to generate a single concensus file of CNSs.
+	Conservatory can also utilize multiple reference genomes. A separate script that merges the CNS from all references
+         to generate a single consensus file of CNSs.
 
 	Conservatory was developed as a collaboration between the Efroni (HUJI) and Lippman (CSHL) labs.
 
 	This is version 2.0.1.
 
-	Previous version (1.5) was described in this publication:
+	Amundson K.R., Hendelman H., Ciren D., Yang H., de Neve1 A.E., Tal S., Sulema A., Jackson D., Bartlett M.E.,
+		Lippman Z.B., Efroni I. (2025) A deep-time landscape of plant cis-regulatory sequence evolution.
+		bioXriv doi:
+
+
+	The previous version (1.5) was described in this publication:
 
 	Hendelman A., Zebell S., Rodriguez-Leal D., Dukler N., Robitaille G., Wu X., Kostyun J., Tal L., Wang P.,
 		Bartlett M.E., Eshed Y., Efroni I*, Lippman ZB.* (2021) Conserved pleiotropy of an ancient plant
 			homeobox gene uncovered by cisregulatory dissection. Cell, 184:1724-1739.
 
-
-	For questions\comments email Idan Efroni @ idan.efroni@mail.huji.ac.il \ Zachary Lippman lippman@cshl.edu
+	For questions\comments email Idan Efroni @ idan.efroni@mail.huji.ac.il \ Zachary Lippman lippman @ cshl.edu
 	
 **********************************************************************************************************************************************************
 
@@ -49,6 +53,8 @@ Setup V2.0.1
 	* seqkit
 	* bgzip
 
+	You can also build the conda environment using the buildCondaEnvironment script in the Conservatory directory.
+
 3. Download the genomes to the genomes/family directory. For each genome, conservatory requires three files: the genome fasta file (bgziped),
    an annotation GFF3 file and the protein sequence file. Files should be named. <genomename>.fasta.gz, <genomename>.genes.gff3 and <genomename>.proteins.fasta, respectively.
    
@@ -68,7 +74,9 @@ Setup V2.0.1
 
  The genome_database.csv file provided in the github directory has the 314 genomes currently used.
 
-5. For each family, generate a phylogenetic tree in Newick format and store it as "<family>.tree" in the genomes directory.
+5. For each family, generate a phylogenetic tree of all species in the family in Newick format and store it as "<family>.tree" in the genomes directory. 
+   This is best done using an alignment of known ortholog protein sequences, but can also be constructed using prior knowledge. The tree does not need to be calibrated - this will be done by Conservatory. 
+	The directory currently has the trees for all families used in the paper.
 
 6. Build the genome database for a reference genome by running from the conservatory directory:
 
@@ -84,37 +92,54 @@ Setup V2.0.1
 7. Generate a neutral model for phyloP under the name <family>.mod and place in the genomes directory.
    Conservatory can try a generate a neutral model automatically based on 4-fold codon variants. For that, you need the CDS sequences for each genome named <genomename>.cds.fasta in the family directory
    
-   * First, determine the orthology by CNS alignments using:
-	./processConservation --reference <referenceGenomeName> --just-family-alignment
-	* this computes the alignments for all genes in the genome. Depending on genome size and computer resources, this can take hours to days.
-   * Build the model using
+   * First, determine the orthology by CNS alignments by running 'buildConservation --just-family-alignment' for all genes in the genome.
+	This can be done by looping over all genes in the reference and running
+	./scripts/buildConservation --reference <referenceGenomeName> --just-family-alignment --locus <geneID> [--tmp-dir $TMPDIR]
+
+	This computes the alignments for all genes in the genome. Depending on genome size and computer resources, this can take hours to days.
+	This part is best performed in parallel. We use the processConservation job located in the jobs directory.
+
+   * After alignments have been computed, you can build the model and calibrate the tree using
 	./script/buildModel --reference <referenceGenomeName> --tree <treeFileName>
 
-   The model will be placed in the genome directory.
-
-   The models in the github directory are those of the 10 reference genome families currently used by us.
+   The model will be placed in the genomes directory. The models in the github directory are those of the 10 reference genome families currently used by us.
    
 7. Once the genome database has been generated, you can build the CNS for any given gene using:
 	./scripts/buildConservation --reference <referenceGenome> --locus <geneName> --min-phylop-score [score]
 
-	The min-phylop-score is the minimum -log-pvalue used to define conservation. This can vary greatly between different reference genomes and families.
-	  this parameter has to be determined empirically and we detail a method for that in the paper. The git hub cutoffs.csv file has the scores we used for the 10 reference genomes
-
-	Output alignment files will be in alignments\<familyName>\<geneName>
-	Output CNS files will be in CNS\<familyName>\<geneName>
-
-	rocess all genes in the genome. This is a long process.
+	The min-phylop-score is the minimum -log-pvalue used to define conservation. This can vary greatly between different reference genomes and families, and greatly depends on the phylogenetic coverage in your family.
 	
-	See --help for additional options.
-	
+	  For our dataset, the default was 1.75, but if multiple references are used, this parameter is best determined empirically. The cutoffs.csv file has the scores we used for the 10 reference genomes
 
-Conservatory can be run for individual genes. Data can be merged to generate a complete list for a given reference genome or merged between different reference genome
-  to generate a composite CNS database.
+	You can run this script by iterating over all genes in the references, or in parallel on a computing cluster.
+
+	Output alignment files will be in alignments/<familyName>/<geneName>
+	Output CNS files will be in CNS/<familyName>/<geneName>
+
+8. Conservatory can be run for individual genes, but is more powerful when the CNS data is merged into a unified dataset. To merge all CNS for a reference genome:
+
+	Concat all CNS/<familyName>/*.cns.csv directory to a single file <familyName>.cns.csv
+	Concat all CNS/<familyName>/*.map.csv directory to a single file <familyName>.map.csv
+
+	then run
+	./mergeCNS --in-cns <familyName>.cns.csv --in-map <familyName>.map.csv --out-cns <familyName>.merged.cns.csv --out-map <familyName>.merged.map.csv
+
+	This will generate a single merged file with unique names for all CNS in the reference genome.
+
+9. If you want to merge CNS dataset from multiple references:
+
+	Concat all the family.merged.cns.csv files to conservatory.cns.csv
+	Concat all the family.merged.map.csv files to conservatory.map.csv
+
+	Then merge using:
+
+	./mergeCNS --merge-deep --in-cns conservatory.cns.csv --in-map conservatory.map.csv --out-cns conservatory.merged.cns.csv --out-map conservatory.merged.map.csv
 
 
 **********************************************************************************************************************************************************
 
 ** Update History
 
+4/9/2025: Release 2.0.1
 3/12/2022: Version 2.0.1 beta version
 
