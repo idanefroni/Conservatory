@@ -55,10 +55,10 @@ Setup V2.0.1
 	* seqkit
 	* bgzip
 
-	You can also build the conda environment using the buildCondaEnvironment script in the Conservatory directory.
+	You can also build the conda environment using the ./buildCondaEnvironment script in the Conservatory directory.
 
 3. Download the genomes to the genomes/family directory. For each genome, conservatory requires three files: the genome fasta file (bgziped),
-   an annotation GFF3 file and the protein sequence file. Files should be named. <genomename>.fasta.gz, <genomename>.genes.gff3 and <genomename>.proteins.fasta, respectively.
+   an annotation GFF3 file, and the protein sequence file. Files should be named. <genomename>.fasta.gz, <genomename>.genes.gff3 and <genomename>.proteins.fasta, respectively.
    
 4. Once all genomes are downloaded, set up the genome_database.csv file. This is a comma-delimited text file with the following fields:
  Genome - a unique genome name (must match the name of the genome data files)
@@ -91,8 +91,9 @@ Setup V2.0.1
 
 	If you want to use multiple reference genomes, this script has to be run for each one separately
 
-7. Generate a neutral model for phyloP under the name <family>.mod and place in the genomes directory.
-   Conservatory can try a generate a neutral model automatically based on 4-fold codon variants. For that, you need the CDS sequences for each genome named <genomename>.cds.fasta in the family directory
+7. Generate a neutral model for phyloP under the name <family>.mod and place it in the genomes directory.
+   Conservatory can try a generate a neutral model automatically based on 4-fold codon variants. For that, you need the CDS sequences for each genome named <genomename>.cds.fasta in the family directory.
+   If such a file does not exist, processGenome will attempt to generate it automatically during setup.
    
    * First, determine the orthology by CNS alignments by running 'buildConservation --just-family-alignment' for all genes in the genome.
 	This can be done by looping over all genes in the reference and running
@@ -109,16 +110,18 @@ Setup V2.0.1
 7. Once the genome database has been generated, you can build the CNS for any given gene using:
 	./scripts/buildConservation --reference <referenceGenome> --locus <geneName> --min-phylop-score [score]
 
-	The min-phylop-score is the minimum -log-pvalue used to define conservation. This can vary greatly between different reference genomes and families, and greatly depends on the phylogenetic coverage in your family.
+	The min-phylop-score is the minimum -log-pvalue used to define conservation. This can vary greatly between different reference genomes and families, and depends on the phylogenetic coverage in your family
+		and the required sensitivity.
 	
 	  For our dataset, the default was 1.75, but if multiple references are used, this parameter is best determined empirically. The cutoffs.csv file has the scores we used for the 10 reference genomes
 
 	You can run this script by iterating over all genes in the references, or in parallel on a computing cluster.
 
-	Output alignment files will be in alignments/<familyName>/<geneName>
-	Output CNS files will be in CNS/<familyName>/<geneName>
+	Output alignment files will be in alignments/<referenceName>/<geneName>
+	Output CNS files will be in CNS/<referenceName>/<geneName>
 
-	There are two comma-delimited files generated for each gene, a CNS file, containing the list of unique CNSs found, and a MAP file, listing all the instances of the CNS in all genomes in the family.
+	There are two comma-delimited files generated for each gene: a CNS file, containing the list of unique CNSs found, and a MAP file, listing all the instances of the CNS in all genomes in the family.
+
 	The fields in the CNS file are:
 		ReferenceGenomeName
 		UniqueCNSID
@@ -127,13 +130,14 @@ Setup V2.0.1
 		CNS length
 		CNS Age (deepest node in the tree)
 		Number of species having the CNS
+
 	The fields in the MAP file are:
 		UniqueCNSID
-		Species
+		Species Name
 		Locus
-		Relative position
-		Strand (+ or -) relative to the CNS
-		Start of alignment position in CNS
+		Relative position to the gene
+		Strand (+ or -) relative to the reference CNS
+		Start of alignment position in the reference CNS
 		CNS sequence in the current genome
 		CNS sequence in reference genome
 		Chromosome
@@ -143,24 +147,47 @@ Setup V2.0.1
 	
 8. Conservatory can be run for individual genes, but is more powerful when the CNS data is merged into a unified dataset. To merge all CNS for a reference genome:
 
-	Concat all CNS/<familyName>/*.cns.csv directory to a single file <familyName>.cns.csv
-	Concat all CNS/<familyName>/*.map.csv directory to a single file <familyName>.map.csv
+	Concat all CNS/<referenceName>/*.cns.csv directory to a single file <referenceName>.cns.csv
+	Concat all CNS/<referenceName>/*.map.csv directory to a single file <referenceName>.map.csv
 
 	then run
-	./mergeCNS --in-cns <familyName>.cns.csv --in-map <familyName>.map.csv --out-cns <familyName>.merged.cns.csv --out-map <familyName>.merged.map.csv
+	./scripts/mergeCNS --in-cns <referenceName>.cns.csv --in-map <referenceName>.map.csv --out-cns <referenceName>.merged.cns.csv --out-map <referenceName>.merged.map.csv
 
 	This will generate a single merged file with unique names for all CNS in the reference genome.
 
 9. If you want to merge CNS dataset from multiple references:
 
-	Concat all the family.merged.cns.csv files to conservatory.cns.csv
-	Concat all the family.merged.map.csv files to conservatory.map.csv
+	Concat all the <referenceName>.merged.cns.csv files to conservatory.cns.csv
+	Concat all the <referenceName>.merged.map.csv files to conservatory.map.csv
 
 	Then merge using:
 
-	./mergeCNS --merge-deep --in-cns conservatory.cns.csv --in-map conservatory.map.csv --out-cns conservatory.merged.cns.csv --out-map conservatory.merged.map.csv
+	./scripts/mergeCNS --merge-deep --sort --in-cns conservatory.cns.csv --in-map conservatory.map.csv --out-cns conservatory.merged.cns.csv --out-map conservatory.merged.map.csv
 
+	Running mergeCNS on a cluster:
+	  * mergeCNS can be run as a single process, but it can take a long time for a large number of CNSs. Running time can be improved by running a helper parallel alignment process
+		to do that user add the following: --align-CNS-process --tmp-dir  [temporary directory]
+        execute the script. It will generate all the files requiring alignments and will let you know it is waiting for the aligner. After all files were generated,
+		split the conservatory.cns.csv file into N separate files (N being the number of parallel jobs you plan to run).
 
+		Then run in parallel:
+		./scripts/reconstructCNSSequences --in-cns <PartialCNSFile> --in-map conservatory.map.csv --out-cns <outputPartialCNSFile> --out-map <outputPartialMapFile> --break --reconstruct
+
+		Once all files were aligned by the help, mergeCNS will continue to process the data.
+	* Note: mergeCNS loads all CNS data to memory. Merging a family can be done on a 16GB RAM machine. Merging the 314 genome dataset required 192GB
+
+10. After merging, CNS data needs to be filtered. CNS can be renamed so they have more meaningful UniqID. To do that run
+		./scripts/CNSUtils --in-cns conservatory.merged.cns.csv --in-map conservatory.merged.map.csv --out-cns conservatory.final.cns.csv --out-map conservatory.final.map.csv --filter-long --filter-deep-cns --filter-repetitive --filter-plastid --rename-cns
+							--rename-positions --verbose --out-reject conservatoryV10.reject.cns.csv
+
+   It is recommended to verify the integrity of the data after the merge procedure using:
+		./scripts/CNSUtils --in-cns conservatory.final.cns.csv --in-map conservatory.final.map.csv --fix-positions --sort --out-cns conservatory.final.verified.cns.csv --out-map conservatory.final.verified.map.csv --out-reject conservatory.final.rejected.map.csv
+
+11. Finally, you can convert the raw CNS and MAP files to GFF3 files that can be used as track on genome browser. To do so, run:
+
+	./script/CNSUtils --in-cns conservatory.final.cns.csv --out-cns conservatory.final.map.csv --gff-reference <genomeToGenerateGFFTo> --make-gff <outputGFFFileName>
+
+	
 **********************************************************************************************************************************************************
 
 ** Update History
