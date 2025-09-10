@@ -1,0 +1,37 @@
+#!/bin/bash
+#SBATCH --time=12:00:00
+#SBATCH --ntasks=1
+#SBATCH --mem=8GB
+
+echo "Starting job..."
+
+module load agat
+echo "Module loaded"
+
+### Load conda environment. Usually conda activate, but our cluster implementation requires a workaround
+
+
+cd /sci/backup/idanef/idanef/conservatory
+__conda_setup="$('/sci/home/idanef/backuphome/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+eval "$__conda_setup"
+
+/sci/home/idanef/backuphome/miniconda3/etc/profile.d/conda.sh
+
+echo "Conda initialized"
+
+conda activate conservatory2
+export PERL5LIB="/sci/home/idanef/backuphome/miniconda3/envs/conservatory2/lib/perl5/site_perl/"
+
+echo "Conda activated"
+
+
+echo "Gene Number: $SLURM_ARRAY_TASK_ID"
+export linenum1=`expr $SLURM_ARRAY_TASK_ID + 0000`
+
+export locus=`cat genomes/Brassicaceae/Athaliana.footprint.gff3 | head -n $SLURM_ARRAY_TASK_ID | tail -n 1 | sed 's/.*-//'`
+
+echo "Processing $locus"
+
+perl ./scripts/buildConservation --reference Athaliana --min-phylop-score 1.5 --locus $locus --force
+
+echo "done"
