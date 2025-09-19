@@ -21,7 +21,7 @@ Last update: 4/9/2025
 
 	Amundson K.R., Hendelman H., Ciren D., Yang H., de Neve1 A.E., Tal S., Sulema A., Jackson D., Bartlett M.E.,
 		Lippman Z.B., Efroni I. (2025) A deep-time landscape of plant cis-regulatory sequence evolution.
-		bioXriv doi:
+		bioXriv, https://doi.org/10.1101/2025.09.17.676453
 
 	The processed CNS for 314 genomes detailed in the paper is available from www.conservatorycns.com.
 
