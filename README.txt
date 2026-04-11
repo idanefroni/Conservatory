@@ -95,9 +95,9 @@ Setup V2.0.1
    Conservatory can try a generate a neutral model automatically based on 4-fold codon variants. For that, you need the CDS sequences for each genome named <genomename>.cds.fasta in the family directory.
    If such a file does not exist, processGenome will attempt to generate it automatically during setup.
    
-   * First, determine the orthology by CNS alignments by running 'buildConservation --just-family-alignment' for all genes in the genome.
+   * First, determine the orthology by CNS alignments by running 'buildConservation --just-family' for all genes in the genome.
 	This can be done by looping over all genes in the reference and running
-	./scripts/buildConservation --reference <referenceGenomeName> --just-family-alignment --locus <geneID> [--tmp-dir $TMPDIR]
+	./scripts/buildConservation --reference <referenceGenomeName> --just-family --locus <geneID> [--tmp-dir $TMPDIR]
 
 	This computes the alignments for all genes in the genome. Depending on genome size and computer resources, this can take hours to days.
 	This part is best performed in parallel. We use the processConservation job located in the jobs directory.

@@ -3,7 +3,7 @@
 use POSIX;
 use strict;
 
-#use Text::CSV;
+use lib '.';
 use Data::Dumper qw(Dumper);
 use List::Util qw(min max sum);
 use List::MoreUtils qw(uniq firstidx);
@@ -142,7 +142,7 @@ if( $locus eq "" or $referenceGenome eq "" or $help ) {
    print "\t--atrich-length-filter\t\tLength of AT-rich strech to mask (Default 10).\n";
    print "\t--cns-merge-length\t\tMerge CNSs which distance apart is less than this parameter (Default 5).\n";   
    print "\t--no-position-filter\t\tDo not filter CNS conservation based on relative position to the gene (allow CNSs to move up/down stream to the gene).\n";
-   
+   print "\t--just-family\t\tOnly analyze the taxonomic family (no global alignments).\n";
    print "\t--skip-missing-genomes\t\tIf genome information can't be found, skip and continue analysis (DEFAULT: Terminate with error message),\n";
    print "\t--tmp-dir\t\tSpecify the temporary directory (DEFAULT is alignments/<referenceName>/tmp).\n"; 
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the temporary directory.\n";
