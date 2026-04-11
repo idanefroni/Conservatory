@@ -17,31 +17,40 @@ sub new {
     if(!defined $genomeDB) { die "ERROR: no genome database provided.\n"; }
     # we can initialize a CNS database from file.
     ## set up defaults, if not specified
+	my $conservatoryUnannotatedTree;
+	my $conservatoryAnnotatedTree;
+
     if(!defined $treeFileName) { $treeFileName = $genomeDB->getConservatoryDir() . "/genomes/Conservatory.tree"; }
     if(!defined $annotatedTreeFileName) { $annotatedTreeFileName = $genomeDB->getConservatoryDir() . "/genomes/Conservatory.Annotated.tree"; }
     if(!defined $treeNodeAgesFileName) { $treeNodeAgesFileName = $genomeDB->getConservatoryDir() . "/genomes/Conservatory.Annotated.NodeAges.csv"; }
 
-    if(! -e $treeFileName) { print "WARNING: Cannot find unannotated conservatory tree ($treeFileName).\n"; }
-    if(! -e $annotatedTreeFileName) { print "WARNING: Cannot find annotated conservatory tree ($annotatedTreeFileName).\n"; }
-    if(! -e $treeNodeAgesFileName) { print "WARNING: Cannot find node ages files for annotated conservatory tree ($treeNodeAgesFileName).\n"; }
-
-    my $conservatoryAnnotatedTreeio = Bio::TreeIO->new(-file => $annotatedTreeFileName, -format => 'newick');
-    my $conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
-    if(!defined $conservatoryAnnotatedTree) { die "ERROR: Cannot read annotated tree file $annotatedTreeFileName. Bad format.\n"; }
-    my %speciesInTree = map { ($_)->id => 1} $conservatoryAnnotatedTree->get_leaf_nodes();
+    if(! -e $treeFileName) { die "ERROR: Cannot find unannotated conservatory tree ($treeFileName).\n"; }
 
     my $conservatoryUnannotatedTreeio = Bio::TreeIO->new(-file => $treeFileName, -format => 'newick');
-    my $conservatoryUnannotatedTree = $conservatoryUnannotatedTreeio->next_tree;
+    $conservatoryUnannotatedTree = $conservatoryUnannotatedTreeio->next_tree;
     if(!defined $conservatoryUnannotatedTreeio) { die "ERROR: Cannot read unannotated tree file $treeFileName. Bad format.\n"; }
+    my %speciesInTree = map { ($_)->id => 1} $conservatoryUnannotatedTree->get_leaf_nodes();
 
-    my %conservatoryTreeNodeAges;
-    open(my $nodeAgesFile, $treeNodeAgesFileName) || die ("ERROR: Error reading $treeNodeAgesFileName.\n");
-    while(<$nodeAgesFile>) {
-	    chomp;
-	    my ($node,$age)= split /,/;
-	    $conservatoryTreeNodeAges{$node}=$age;
-    }
-    close($nodeAgesFile);
+    if(! -e $annotatedTreeFileName) {
+		print "WARNING: Cannot find annotated conservatory tree ($annotatedTreeFileName).\n";
+	} else {
+    	my $conservatoryAnnotatedTreeio = Bio::TreeIO->new(-file => $annotatedTreeFileName, -format => 'newick');
+    	my $conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
+    	if(!defined $conservatoryAnnotatedTree) { die "ERROR: Cannot read annotated tree file $annotatedTreeFileName. Bad format.\n"; }
+	}
+	my %conservatoryTreeNodeAges;
+    
+    if(! -e $treeNodeAgesFileName) {
+		print "WARNING: Cannot find node ages files for annotated conservatory tree ($treeNodeAgesFileName).\n";
+	} else {
+    	open(my $nodeAgesFile, $treeNodeAgesFileName) || die ("ERROR: Error reading $treeNodeAgesFileName.\n");
+    	while(<$nodeAgesFile>) {
+	    	chomp;
+	    	my ($node,$age)= split /,/;
+	    	$conservatoryTreeNodeAges{$node}=$age;
+    	}
+	    close($nodeAgesFile);
+	}
 
     my $self = {
         _fastML => $genomeDB->getConservatoryDir() . "/scripts/fastml",
@@ -68,6 +77,9 @@ sub findDeepestCommonNode {
 	if(scalar @leavesList ==0) {
 		print "WARNING: No species provided for findDeepestCommonNode.\n"; 
 		return "NA";
+	}
+	if(!defined $self->{_AnnotatedTree}) {
+		return "";
 	}
 	
 	my $anchorLeafNode = $self->{_AnnotatedTree}->find_node( ($leavesList[0] =~ s/\./_/gr) );
