@@ -1,0 +1,21 @@
+#!/usr/bin/perl
+
+use POSIX;
+use strict;
+use warnings;
+use lib './scripts';
+use lib '.';
+use Cwd 'abs_path';
+use GenomeDatabase;
+use ConservatoryTree;
+
+my $conservatoryDir=abs_path(".");
+my $genomeDB = new GenomeDatabase($conservatoryDir);
+my $conservatoryTree = new ConservatoryTree($genomeDB);
+
+if(! $conservatoryTree->hasAnnotatedTree()) {
+	print "No annotated tree found. Creating one.\n";
+	$conservatoryTree->writeTree($conservatoryDir . "/genomes/Conservatory.Annotated.tree", 1);
+} else {
+    print "Annotated tree found. Nothing to do.\n";
+}

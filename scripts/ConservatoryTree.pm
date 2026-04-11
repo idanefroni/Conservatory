@@ -35,7 +35,7 @@ sub new {
 		print "WARNING: Cannot find annotated conservatory tree ($annotatedTreeFileName).\n";
 	} else {
     	my $conservatoryAnnotatedTreeio = Bio::TreeIO->new(-file => $annotatedTreeFileName, -format => 'newick');
-    	my $conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
+    	$conservatoryAnnotatedTree = $conservatoryAnnotatedTreeio->next_tree;
     	if(!defined $conservatoryAnnotatedTree) { die "ERROR: Cannot read annotated tree file $annotatedTreeFileName. Bad format.\n"; }
 	}
 	my %conservatoryTreeNodeAges;
@@ -267,14 +267,20 @@ sub getTmpDir {
     return $self->{_genomeDB}->getTemporaryDir();
 }
 
+sub hasAnnotatedTree {
+	my ($self) = @_;
+	return defined $self->{_AnnotatedTree};
+}
+
 sub writeTree {
     my ($self, $outputFileName, $annotate) = @_;
     if(defined $annotate && $annotate!=0) { 
         ### Annotated Internal nodes
         my $curNodeNumber=1;
+		$self->{_AnnotatedTree} = $self->{_UnannotatedTree}->clone();
         my @nodes = $self->{_AnnotatedTree}->get_nodes();
         foreach my $curNode (@nodes) {
-            if($curNode->id eq "") { 
+            if(!defined $curNode->id || $curNode->id eq "") { 
             	$curNode->id("N$curNodeNumber");
             	$curNodeNumber++;
             }
