@@ -67,13 +67,22 @@ if($help || !defined $inCNSFileName || !defined $inMapFileName || $inCNSFileName
 	print "Conservatory version 2.0.1\n\n";
 
 	print "CNSUtils --in-cns <cnsFile> --in-map <cnsPositionMapFile> [--out-cns <cnsFile>] [--out-map <cnsPositionMapFile>].\n";
-    print "\t\t[--filter-deep-cns] [--filter-repetitive] [--filter-plastid] [--filter-long] [--fix-positions] [--make-gff <output gff filename> --gff-reference <reference genome>] [--verbose]\n\n";
+ 
     print "\n\nFilter the merged CNS file based on the following rules:\n";
-    print "   - Remove Deep CNS (deeper than node N14) that are only called by one reference\n";
-    print "   - Remove highly repetitive sequences\n";
-    print "   - Remove plastid CNS\n\n";
-    print "   - Fix positions Verify (and correct if needed) the positions of the CNS in all genomes\n";
-    print "   - Make GFF - create a GFF file\n\n\n";
+    print "   --filter-deep-cns\t\tRemove Deep CNS (deeper than node N14) that are only called by one reference\n";
+    print "   --filter-repetitive\t\tRemove highly repetitive sequences\n";
+    print "   --filter-plastid\t\tRemove plastid CNS\n";
+    print "   --filter-long\t\tRemove CNS longer than 250bp.\n"
+    print "   --rename-cns\t\tRename CNS to be in the format CNS_1, CNS_2, etc.\n";
+    print "   --name-index-start\t\tThe starting index for the CNS names.\n";
+    print "   --assign-by-synteny\t\tAssign CNS to genes based on synteny.\n";
+    print "   --fix-positions\t\tFix positions of CNS in all genomes.\n";
+    print "   --fix-genome\t<genome name>\t\tFix positions in only one specific genome.\n";
+    print "   --make-gff\t<output gff filename>\t\tCreate a GFF file.\n";
+    print "   --gff-reference\t<reference genome>\t\tThe reference genome for the GFF file.\n";
+    print "   --sort\t\tSort the map file.\n";
+    print "   --verbose\t\tVerbose output.\n";
+    print "   --help\t\tHelp message.\n";
 	
 	exit();
 }
