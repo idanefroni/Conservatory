@@ -72,17 +72,17 @@ if($help || !defined $inCNSFileName || !defined $inMapFileName || $inCNSFileName
     print "   --filter-deep-cns\t\tRemove Deep CNS (deeper than node N14) that are only called by one reference\n";
     print "   --filter-repetitive\t\tRemove highly repetitive sequences\n";
     print "   --filter-plastid\t\tRemove plastid CNS\n";
-    print "   --filter-long\t\tRemove CNS longer than 250bp.\n"
-    print "   --rename-cns\t\tRename CNS to be in the format CNS_1, CNS_2, etc.\n";
+    print "   --filter-long\t\tRemove CNS longer than 250bp.\n";
+    print "   --rename-cns\t\t\tRename CNS to be in the format CNS_1, CNS_2, etc.\n";
     print "   --name-index-start\t\tThe starting index for the CNS names.\n";
     print "   --assign-by-synteny\t\tAssign CNS to genes based on synteny.\n";
     print "   --fix-positions\t\tFix positions of CNS in all genomes.\n";
-    print "   --fix-genome\t<genome name>\t\tFix positions in only one specific genome.\n";
-    print "   --make-gff\t<output gff filename>\t\tCreate a GFF file.\n";
-    print "   --gff-reference\t<reference genome>\t\tThe reference genome for the GFF file.\n";
-    print "   --sort\t\tSort the map file.\n";
-    print "   --verbose\t\tVerbose output.\n";
-    print "   --help\t\tHelp message.\n";
+    print "   --fix-genome <genome>\tFix positions in only one specific genome.\n";
+    print "   --make-gff <filename>\tCreate a GFF file.\n";
+    print "   --gff-reference <genome>\tThe reference genome for the GFF file.\n";
+    print "   --sort\t\t\tort the map file.\n";
+    print "   --verbose\t\t\tVerbose output.\n";
+    print "   --help\t\t\tHelp message.\n";
 	
 	exit();
 }
