@@ -130,6 +130,7 @@ if( $locus eq "" or $referenceGenome eq "" or $help ) {
    print "\t--locus\t\t\tLocus in the reference genome for the family (REQUIRED).\n";
    print "\t--conservatoryDirectory\t\tPath of the main conservatory directory.\n";
    print "\t--force\t\tOverwrite existing CNS file.\n";
+   print "\t--just-family\t\tOnly build family alignments (without CNS analysis).\n";
    print "\n\t\tAlignment options\n\n";
    print "\t--min-identity-family\t\tMinimum identity for alignments within the family. Default is 70.\n";
    print "\t--min-identity-globa\t\tMinimum identity for alignments of CNS for genomes outside the family. Default is 60.\n";
@@ -142,7 +143,7 @@ if( $locus eq "" or $referenceGenome eq "" or $help ) {
    print "\t--atrich-length-filter\t\tLength of AT-rich strech to mask (Default 10).\n";
    print "\t--cns-merge-length\t\tMerge CNSs which distance apart is less than this parameter (Default 5).\n";   
    print "\t--no-position-filter\t\tDo not filter CNS conservation based on relative position to the gene (allow CNSs to move up/down stream to the gene).\n";
-   print "\t--just-family\t\tOnly analyze the taxonomic family (no global alignments).\n";
+   
    print "\t--skip-missing-genomes\t\tIf genome information can't be found, skip and continue analysis (DEFAULT: Terminate with error message),\n";
    print "\t--tmp-dir\t\tSpecify the temporary directory (DEFAULT is alignments/<referenceName>/tmp).\n"; 
    print "\t--keep-tmp\t\tDo not delete all the temporary files produced in the temporary directory.\n";
@@ -311,6 +312,12 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 	writeMSAToFasta(\%MSADownstream, $finalFASTADownFileName);	
 	$orthologList->removeTemporaryFiles();
 
+	if($justFamily) { 
+		die "END: Finished building family alignments for $refLocusFullName.\n";
+	}
+
+	if(!(-e $modelFileName)) { die "ERROR: Model file $modelFileName does not exist.\n"; }
+
 	### Get CNS from alignments
 	if($verbose) { print "PROGRESS: Begin family conservation analysis for $locus. Model file: $modelFileName. Minimum phyloP score: $minPhyloPscore.\n"; }
 
@@ -428,15 +435,13 @@ if($orthologList->getSpeciesNumber() > $minOrthologsForConservationAnalysis) {
 
 	my $deepOrthologList = new CREOrthologList($genomeDB);
 
-	if(!$justFamily) {
-		### Now search for deep CNS
-		foreach my $curGenome ($genomeDB->getGenomeNames()) {
-			if($genomeDB->genomeToFamily($curGenome) ne $referenceGenomeFamily) {
-				my $orthologListForGenome = new CREOrthologList($genomeDB, $referenceGenome, $refLocusFullName, $curGenome, $ancesteralLocusCNSFileName, $ancesteralLocusCNSFileName, 1, $verbose);
-				if(defined $orthologListForGenome) { $deepOrthologList->add($orthologListForGenome); } 
-			}
+	foreach my $curGenome ($genomeDB->getGenomeNames()) {
+		if($genomeDB->genomeToFamily($curGenome) ne $referenceGenomeFamily) {
+			my $orthologListForGenome = new CREOrthologList($genomeDB, $referenceGenome, $refLocusFullName, $curGenome, $ancesteralLocusCNSFileName, $ancesteralLocusCNSFileName, 1, $verbose);
+			if(defined $orthologListForGenome) { $deepOrthologList->add($orthologListForGenome); } 
 		}
 	}
+	
 	unlink($ancesteralLocusCNSFileName);
 	$deepOrthologList->pickBestPutativeOrthologs();
 	if($verbose) { print "PROGRESS: Found " . $deepOrthologList->getOrthologsNumber() . " deep orthologs.\n"; }
